@@ -12,9 +12,9 @@
       user-select: none;
     }
     body {
-      background: #0d1117;
+      background: #06090e;
       color: #e6edf3;
-      font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+      font-family: 'Courier New', 'Segoe UI', monospace;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -24,14 +24,43 @@
     }
     #game-container {
       position: relative;
-      box-shadow: 0 0 30px rgba(0, 255, 204, 0.25), 0 0 10px rgba(255, 0, 128, 0.2);
-      border-radius: 8px;
+      box-shadow: 0 0 40px rgba(0, 255, 180, 0.2), 0 0 80px rgba(255, 0, 100, 0.15);
+      border-radius: 16px;
       overflow: hidden;
-      border: 2px solid #30363d;
-      background: #05070a;
+      border: 4px solid #202b38;
+      background: #020408;
     }
     canvas {
       display: block;
+      image-rendering: pixelated;
+    }
+    /* ブラウン管 (CRT) エフェクトレイヤー */
+    .crt-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      /* 走査線（スキャンライン） */
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%,
+        rgba(0, 0, 0, 0.35) 50%
+      );
+      background-size: 100% 4px;
+      z-index: 10;
+    }
+    /* CRT曲面ガラス反射＆ビネット（四隅の湾曲減光） */
+    .crt-vignette {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: radial-gradient(circle at center, transparent 65%, rgba(0, 0, 0, 0.75) 100%);
+      box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.9), inset 0 0 10px rgba(0, 255, 200, 0.1);
+      z-index: 11;
     }
     #ui-layer {
       position: absolute;
@@ -40,6 +69,7 @@
       width: 100%;
       height: 100%;
       pointer-events: none;
+      z-index: 12;
     }
     .hud {
       position: absolute;
@@ -49,67 +79,78 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-weight: bold;
-      font-size: 14px;
-      text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
-    }
-    .hud-stage {
-      color: #58a6ff;
-      font-size: 16px;
-      letter-spacing: 2px;
-    }
-    .hud-phase {
-      padding: 4px 12px;
-      border-radius: 12px;
+      font-weight: 900;
       font-size: 13px;
       letter-spacing: 1px;
-      text-transform: uppercase;
-      font-weight: 800;
+      text-shadow: 0 0 6px rgba(0, 255, 200, 0.6);
     }
-    .phase-tetris {
-      background: rgba(0, 230, 150, 0.25);
-      border: 1px solid #00e696;
-      color: #00ffaa;
-      box-shadow: 0 0 10px rgba(0, 255, 170, 0.3);
-    }
-    .phase-shooting {
-      background: rgba(255, 50, 100, 0.25);
-      border: 1px solid #ff3264;
-      color: #ff507a;
-      box-shadow: 0 0 10px rgba(255, 80, 122, 0.3);
-    }
-    .hud-score {
-      color: #f0883e;
+    .hud-stage {
+      color: #00f0ff;
       font-size: 15px;
     }
-    .timer-container {
+    .hud-phase {
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      text-transform: uppercase;
+      font-weight: 900;
+    }
+    .phase-tetris {
+      background: rgba(0, 255, 150, 0.2);
+      border: 1px solid #00ffaa;
+      color: #00ffaa;
+    }
+    .phase-shooting {
+      background: rgba(255, 40, 80, 0.2);
+      border: 1px solid #ff2255;
+      color: #ff3366;
+    }
+    .hud-score {
+      color: #ffea00;
+      font-size: 14px;
+    }
+    .tetris-stock-container {
       position: absolute;
-      top: 42px;
+      top: 40px;
       left: 15px;
       right: 15px;
-      height: 6px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 3px;
-      overflow: hidden;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: #8be9fd;
     }
-    .timer-bar {
-      height: 100%;
-      width: 100%;
-      transition: width 0.1s linear;
+    .stock-icons {
+      display: flex;
+      gap: 6px;
+    }
+    .stock-block {
+      width: 12px;
+      height: 12px;
+      background: #00ffaa;
+      border: 1px solid #ffffff;
+      box-shadow: 0 0 6px #00ffaa;
+      transition: opacity 0.2s;
+    }
+    .stock-block.spent {
+      opacity: 0.2;
+      background: #444;
+      border-color: #666;
+      box-shadow: none;
     }
     #instructions {
-      margin-top: 12px;
-      font-size: 13px;
+      margin-top: 10px;
+      font-size: 12px;
       color: #8b949e;
       text-align: center;
       line-height: 1.6;
     }
     kbd {
-      background: #21262d;
+      background: #161b22;
       border: 1px solid #30363d;
       padding: 2px 6px;
       border-radius: 4px;
-      color: #c9d1d9;
+      color: #00ffcc;
       font-size: 11px;
     }
   </style>
@@ -117,20 +158,27 @@
 <body>
   <div id="game-container">
     <canvas id="game-canvas" width="540" height="720"></canvas>
+    <div class="crt-overlay"></div>
+    <div class="crt-vignette"></div>
     <div id="ui-layer">
       <div class="hud">
         <div class="hud-stage" id="hud-stage">STAGE 1 / 10</div>
-        <div class="hud-phase phase-tetris" id="hud-phase">TETRIS TIME</div>
+        <div class="hud-phase phase-tetris" id="hud-phase">TETRIS (3 PIECES)</div>
         <div class="hud-score" id="hud-score">SCORE: 0</div>
       </div>
-      <div class="timer-container">
-        <div class="timer-bar" id="timer-bar" style="background: #00ffaa;"></div>
+      <div class="tetris-stock-container" id="stock-container">
+        <span id="stock-label">DROP PIECES: [1][2][3] OR TAB TO SWITCH</span>
+        <div class="stock-icons" id="stock-icons">
+          <div class="stock-block" id="stock-1"></div>
+          <div class="stock-block" id="stock-2"></div>
+          <div class="stock-block" id="stock-3"></div>
+        </div>
       </div>
     </div>
   </div>
   <div id="instructions">
-    テトリスタイム: <kbd>←</kbd><kbd>→</kbd> または <kbd>A</kbd><kbd>D</kbd> で移動 ｜ <kbd>↑</kbd> または <kbd>Space</kbd> で回転 ｜ <kbd>↓</kbd> で高速落下 ｜ 接触した瞬間に確定！<br/>
-    シューティング: <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> または <kbd>WASD</kbd> / マウスで上下左右移動 ｜ <kbd>Space</kbd> / クリック: ショット(自動連射有) ｜ <kbd>M</kbd>: ミュート
+    テトリスタイム: <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>/<kbd>Tab</kbd>で操作ミノ選択 ｜ <kbd>←</kbd><kbd>→</kbd>移動 ｜ <kbd>↑</kbd><kbd>Space</kbd>回転 ｜ <kbd>↓</kbd>高速落下(スルー可) ｜ 3つ落下でバトル突入！<br/>
+    シューティング: <kbd>WASD</kbd> / <kbd>↑↓←→</kbd> / マウスで全方向移動 ｜ <kbd>Space</kbd> / クリックで極太弾(自動連射有) ｜ <kbd>M</kbd>: ミュート
   </div>
 
   <script type="module" src="/src/main.ts"></script>

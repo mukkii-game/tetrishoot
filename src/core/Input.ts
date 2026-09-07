@@ -1,4 +1,4 @@
-// ユーザー入力の管理（テトリス操作用 JustPressed / Continuous 対応）
+// ユーザー入力の管理（テトリス3ピース選択 [1][2][3]/Tab、移動、回転、上下左右）
 export class Input {
   public left = false;
   public right = false;
@@ -7,11 +7,13 @@ export class Input {
   public shoot = false;
   public mutePressed = false;
 
-  // 単発押し判定（テトリスの回転や1マス移動用）
+  // 単発押し判定
   public justLeft = false;
   public justRight = false;
   public justRotate = false;
   public justDrop = false;
+  public justTab = false;
+  public selectedPieceIndex: number | null = null;
 
   public mouseX: number | null = null;
   public mouseY: number | null = null;
@@ -27,8 +29,7 @@ export class Input {
 
   private setupListeners(): void {
     window.addEventListener('keydown', (e) => {
-      // 画面スクロール防止
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code)) {
         e.preventDefault();
       }
 
@@ -56,8 +57,23 @@ export class Input {
           this.down = true;
           break;
         case 'Space':
-          if (!this.shoot) this.justRotate = true; // テトリスタイム時はSpaceでも回転
+          if (!this.shoot) this.justRotate = true;
           this.shoot = true;
+          break;
+        case 'Tab':
+          this.justTab = true;
+          break;
+        case 'Digit1':
+        case 'Numpad1':
+          this.selectedPieceIndex = 0;
+          break;
+        case 'Digit2':
+        case 'Numpad2':
+          this.selectedPieceIndex = 1;
+          break;
+        case 'Digit3':
+        case 'Numpad3':
+          this.selectedPieceIndex = 2;
           break;
         case 'KeyM':
           this.mutePressed = true;
@@ -102,7 +118,6 @@ export class Input {
       if (e.button === 0) {
         this.isMouseDown = true;
         this.shoot = true;
-        this.justRotate = true;
       }
     });
 
@@ -116,6 +131,7 @@ export class Input {
     this.canvas.addEventListener('mouseleave', () => {
       this.hasMouseMoved = false;
       this.mouseX = null;
+      this.mouseY = null;
     });
   }
 
@@ -125,5 +141,7 @@ export class Input {
     this.justRight = false;
     this.justRotate = false;
     this.justDrop = false;
+    this.justTab = false;
+    this.selectedPieceIndex = null;
   }
 }

@@ -1,4 +1,4 @@
-import { CANVAS_HEIGHT, CANVAS_WIDTH, SHOOTING_TIME_SECONDS, TETRIS_TIME_SECONDS } from './config';
+import { CANVAS_HEIGHT, CANVAS_WIDTH } from './config';
 import { GameManager } from './core/GameManager';
 import { Input } from './core/Input';
 import { Sound } from './core/Sound';
@@ -14,7 +14,13 @@ window.addEventListener('DOMContentLoaded', () => {
   const hudStage = document.getElementById('hud-stage')!;
   const hudPhase = document.getElementById('hud-phase')!;
   const hudScore = document.getElementById('hud-score')!;
-  const timerBar = document.getElementById('timer-bar')!;
+  const stockContainer = document.getElementById('stock-container')!;
+  const stockLabel = document.getElementById('stock-label')!;
+  const stockBlocks = [
+    document.getElementById('stock-1')!,
+    document.getElementById('stock-2')!,
+    document.getElementById('stock-3')!,
+  ];
 
   const input = new Input(canvas);
   const sound = new Sound();
@@ -23,14 +29,12 @@ window.addEventListener('DOMContentLoaded', () => {
   let lastTime = performance.now();
 
   function gameLoop(currentTime: number): void {
-    const dt = Math.min((currentTime - lastTime) / 1000, 0.1); // 最大フレーム時間を防ぐ
+    const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
     lastTime = currentTime;
 
-    // ゲーム更新と描画
     game.update(dt, input);
     game.draw(ctx);
 
-    // HUDの更新
     updateHUD();
 
     requestAnimationFrame(gameLoop);
@@ -42,16 +46,30 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (game.phase === 'TETRIS') {
       hudPhase.className = 'hud-phase phase-tetris';
-      hudPhase.textContent = `TETRIS TIME (${Math.ceil(game.phaseTimer)}s)`;
-      timerBar.style.background = '#00ffaa';
-      const pct = Math.max(0, (game.phaseTimer / TETRIS_TIME_SECONDS) * 100);
-      timerBar.style.width = `${pct}%`;
+      hudPhase.textContent = `TETRIS (REMAINING: ${game.remainingPiecesCount})`;
+      stockContainer.style.display = 'flex';
+      stockLabel.textContent = `ACTIVE: [${game.activePieceIndex + 1}] | DROP: ${game.remainingPiecesCount}/3`;
+
+      // 各ミノの確定状態
+      game.fallingPieces.forEach((p, idx) => {
+        if (stockBlocks[idx]) {
+          if (p.settled) {
+            stockBlocks[idx].className = 'stock-block spent';
+          } else if (idx === game.activePieceIndex) {
+            stockBlocks[idx].className = 'stock-block';
+            stockBlocks[idx].style.background = '#00ffff';
+            stockBlocks[idx].style.borderColor = '#ffffff';
+          } else {
+            stockBlocks[idx].className = 'stock-block';
+            stockBlocks[idx].style.background = '#00ffaa';
+            stockBlocks[idx].style.borderColor = '#66ffcc';
+          }
+        }
+      });
     } else {
       hudPhase.className = 'hud-phase phase-shooting';
-      hudPhase.textContent = `SHOOTING TIME (${Math.ceil(game.phaseTimer)}s)`;
-      timerBar.style.background = '#ff507a';
-      const pct = Math.max(0, (game.phaseTimer / SHOOTING_TIME_SECONDS) * 100);
-      timerBar.style.width = `${pct}%`;
+      hudPhase.textContent = `GALAGA BATTLE (${Math.ceil(game.shootingTimeLimit)}s)`;
+      stockContainer.style.display = 'none';
     }
   }
 
