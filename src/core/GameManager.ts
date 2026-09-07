@@ -102,7 +102,7 @@ export class GameManager {
 
     this.sound.playPhaseAlert('shooting');
     this.sound.startBGM('shooting');
-    this.showTransitionText('BATTLE START!');
+    this.showTransitionText('デストロイ　ゼム　オール！');
   }
 
   private showTransitionText(text: string): void {
@@ -599,10 +599,16 @@ export class GameManager {
         }
       }
 
-      // ★ ムーンクレスタ完全再現：「レバーとボタンで　ドッキングせよ」をシアン色ピクセルで描画！
+      // ★ ムーンクレスタ完全再現：「ドッキングせよ」をシアン色ピクセルで描画！
       const blink = Math.sin(Date.now() / 200) > -0.7;
       if (blink) {
-        drawMoonCrestaText(ctx, 'レバーとボタンで　ドッキングせよ', CANVAS_WIDTH / 2, 115, 2, '#00f0ff');
+        drawMoonCrestaText(ctx, 'ドッキングせよ', CANVAS_WIDTH / 2, 115, 2.5, '#00f0ff');
+      }
+    } else if (this.phase === 'SHOOTING') {
+      // ★ シューティング時は「デストロイ　ゼム　オール！」を同じピクセルフォントで描画！
+      const blink = Math.sin(Date.now() / 220) > -0.5;
+      if (blink) {
+        drawMoonCrestaText(ctx, 'デストロイ　ゼム　オール！', CANVAS_WIDTH / 2, 70, 2, '#ff3366');
       }
     }
 
@@ -660,22 +666,22 @@ export class GameManager {
       ctx.fillStyle = '#00ffcc';
       ctx.shadowColor = '#00ffcc';
       ctx.shadowBlur = 8;
-      ctx.fillText('〜 パズルタイムとシューティングタイムが交互に到来 〜', CANVAS_WIDTH / 2, 280);
+      ctx.fillText('〜 ドッキングせよ！ そして デストロイ ゼム オール！ 〜', CANVAS_WIDTH / 2, 280);
 
       ctx.font = '13px "Segoe UI", sans-serif';
       ctx.fillStyle = '#c9d1d9';
       ctx.shadowBlur = 0;
       const lines = [
-        '【パズルタイム】',
+        '【ドッキングせよ】',
         '落ちてくるブロックを自機に合体！ 3つ落とし終わるとバトル突入！',
         '',
-        '【シューティングタイム】',
+        '【デストロイ ゼム オール！】',
         '合体したブロックの先端から極太ビーム斉射！',
         '全方位（上下左右）から襲来する大編隊エイリアンを撃破せよ！',
       ];
       lines.forEach((line, idx) => {
         if (line.startsWith('【')) {
-          ctx.fillStyle = line.includes('パズル') ? '#00ffaa' : '#ff3366';
+          ctx.fillStyle = line.includes('ドッキング') ? '#00ffaa' : '#ff3366';
           ctx.font = 'bold 14px "Segoe UI", sans-serif';
         } else {
           ctx.fillStyle = '#d0d7de';

@@ -46,7 +46,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (game.phase === 'TETRIS') {
       hudPhase.className = 'hud-phase phase-tetris';
-      hudPhase.textContent = `PUZZLE TIME (${game.remainingPiecesCount} LEFT)`;
+      hudPhase.textContent = `ドッキングせよ (${game.remainingPiecesCount}/3)`;
       stockContainer.style.display = 'flex';
       stockLabel.textContent = `ACTIVE: [${game.activePieceIndex + 1}] | BLOCKS: ${game.remainingPiecesCount}/3`;
 
@@ -68,7 +68,7 @@ window.addEventListener('DOMContentLoaded', () => {
       });
     } else {
       hudPhase.className = 'hud-phase phase-shooting';
-      hudPhase.textContent = `SHOOTING TIME (${Math.ceil(game.shootingTimeLimit)}s)`;
+      hudPhase.textContent = `デストロイ ゼム オール！ (${Math.ceil(game.shootingTimeLimit)}s)`;
       stockContainer.style.display = 'none';
     }
   }
