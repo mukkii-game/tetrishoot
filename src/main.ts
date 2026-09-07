@@ -46,11 +46,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (game.phase === 'TETRIS') {
       hudPhase.className = 'hud-phase phase-tetris';
-      hudPhase.textContent = `TETRIS (REMAINING: ${game.remainingPiecesCount})`;
+      hudPhase.textContent = `PUZZLE TIME (${game.remainingPiecesCount} LEFT)`;
       stockContainer.style.display = 'flex';
-      stockLabel.textContent = `ACTIVE: [${game.activePieceIndex + 1}] | DROP: ${game.remainingPiecesCount}/3`;
+      stockLabel.textContent = `ACTIVE: [${game.activePieceIndex + 1}] | BLOCKS: ${game.remainingPiecesCount}/3`;
 
-      // 各ミノの確定状態
+      // 各ブロックの確定状態
       game.fallingPieces.forEach((p, idx) => {
         if (stockBlocks[idx]) {
           if (p.settled) {
@@ -68,7 +68,7 @@ window.addEventListener('DOMContentLoaded', () => {
       });
     } else {
       hudPhase.className = 'hud-phase phase-shooting';
-      hudPhase.textContent = `GALAGA BATTLE (${Math.ceil(game.shootingTimeLimit)}s)`;
+      hudPhase.textContent = `SHOOTING TIME (${Math.ceil(game.shootingTimeLimit)}s)`;
       stockContainer.style.display = 'none';
     }
   }

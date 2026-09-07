@@ -93,7 +93,7 @@ export class GameManager {
 
     this.sound.playPhaseAlert('tetris');
     this.sound.startBGM('tetris');
-    this.showTransitionText(`STAGE ${this.stage}: TETRIS TIME (3 PIECES)`);
+    this.showTransitionText(`STAGE ${this.stage}: PUZZLE TIME`);
   }
 
   private startShootingPhase(): void {
@@ -102,12 +102,12 @@ export class GameManager {
     this.shootingTimeLimit = 22; // 最大22秒
     this.formationOffsetAngle = 0;
 
-    // ギャラガ風エイリアン編隊のスポーン
+    // エイリアン編隊のスポーン
     this.spawnGalagaFormation();
 
     this.sound.playPhaseAlert('shooting');
     this.sound.startBGM('shooting');
-    this.showTransitionText('GALAGA BATTLE START!');
+    this.showTransitionText('SHOOTING TIME START!');
   }
 
   private showTransitionText(text: string): void {
@@ -723,47 +723,55 @@ export class GameManager {
   private drawOverlays(ctx: CanvasRenderingContext2D): void {
     if (this.state === 'TITLE') {
       ctx.save();
-      ctx.fillStyle = 'rgba(2, 4, 8, 0.9)';
+      ctx.fillStyle = 'rgba(2, 4, 8, 0.92)';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+      // 1. かっこいいメインロゴ（日本語＆英語）
+      this.drawCoolTitleLogo(ctx, CANVAS_WIDTH / 2, 175);
+
+      // 2. 超シンプルで分かりやすい説明文
       ctx.textAlign = 'center';
-      ctx.font = '900 42px monospace';
-      ctx.fillStyle = '#00f0ff';
-      ctx.shadowColor = '#00f0ff';
-      ctx.shadowBlur = 20;
-      ctx.fillText('TETRISHOOT', CANVAS_WIDTH / 2, 190);
-
-      ctx.font = 'bold 16px monospace';
-      ctx.fillStyle = '#ffea00';
-      ctx.shadowColor = '#ffea00';
+      ctx.font = 'bold 15px "Courier New", monospace';
+      ctx.fillStyle = '#00ffcc';
+      ctx.shadowColor = '#00ffcc';
       ctx.shadowBlur = 8;
-      ctx.fillText('ギャラガ × テトリス (CRT EDITION)', CANVAS_WIDTH / 2, 230);
+      ctx.fillText('〜 パズルタイムとシューティングタイムが交互に到来 〜', CANVAS_WIDTH / 2, 280);
 
-      ctx.font = '13px monospace';
+      ctx.font = '13px "Segoe UI", sans-serif';
       ctx.fillStyle = '#c9d1d9';
       ctx.shadowBlur = 0;
       const lines = [
-        '【テトリスタイム】',
-        '一度に3つのテトリミノが降下！',
-        '[1][2][3] や Tab で操作ミノを選択',
-        '自機や左右の壁に触れた瞬間に確定ドッキング！',
-        'スルーして床に落としてもOK。3つ落とし終わるとバトルへ！',
+        '【パズルタイム】',
+        '落ちてくるブロックを自機や壁に合体！ 3つ落とし終わるとバトル突入！',
         '',
-        '【ギャラガバトル】',
-        '自機は上下左右（WASD / 矢印 / マウス）に全方向移動！',
-        'ミノの「入口と出口」から極太ビーム斉射（塞がれると不発）',
-        '宙返りダイブするエイリアンを撃破せよ！',
+        '【シューティングタイム】',
+        '合体したブロックの先端から極太ビーム斉射！',
+        '上下左右に動いて襲来する敵を撃破せよ！',
       ];
       lines.forEach((line, idx) => {
-        ctx.fillText(line, CANVAS_WIDTH / 2, 280 + idx * 22);
+        if (line.startsWith('【')) {
+          ctx.fillStyle = line.includes('パズル') ? '#00ffaa' : '#ff3366';
+          ctx.font = 'bold 14px "Segoe UI", sans-serif';
+        } else {
+          ctx.fillStyle = '#d0d7de';
+          ctx.font = '13px "Segoe UI", sans-serif';
+        }
+        ctx.fillText(line, CANVAS_WIDTH / 2, 325 + idx * 24);
       });
 
+      // 3. スタートプロンプト
       const blink = Math.sin(Date.now() / 250) > 0;
       if (blink) {
-        ctx.font = 'bold 18px monospace';
-        ctx.fillStyle = '#00ffaa';
-        ctx.fillText('PRESS SPACE OR CLICK TO START', CANVAS_WIDTH / 2, 530);
+        ctx.font = 'bold 18px "Courier New", monospace';
+        ctx.fillStyle = '#ffea00';
+        ctx.shadowColor = '#ffea00';
+        ctx.shadowBlur = 10;
+        ctx.fillText('PRESS SPACE OR CLICK TO START', CANVAS_WIDTH / 2, 510);
       }
+
+      // 4. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
+      this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 635);
+
       ctx.restore();
     } else if (this.state === 'GAMEOVER') {
       ctx.save();
@@ -813,5 +821,93 @@ export class GameManager {
       }
       ctx.restore();
     }
+  }
+
+  // かっこいいタイトルロゴ描画（日本語「テトリシュー」＆ 英語「TETRISHOOT」）
+  private drawCoolTitleLogo(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+    ctx.save();
+    ctx.textAlign = 'center';
+
+    // 1. 英語サブロゴ「- T E T R I S H O O T -」
+    ctx.font = '900 20px "Impact", "Arial Black", sans-serif';
+    const subGrad = ctx.createLinearGradient(cx - 140, 0, cx + 140, 0);
+    subGrad.addColorStop(0, '#ffcc00');
+    subGrad.addColorStop(0.5, '#ffffff');
+    subGrad.addColorStop(1, '#ff8800');
+    ctx.fillStyle = subGrad;
+    ctx.shadowColor = '#ffaa00';
+    ctx.shadowBlur = 10;
+    ctx.fillText('⚡ T E T R I S H O O T ⚡', cx, cy - 44);
+
+    // 2. 日本語メインロゴ「テトリシュー」
+    const jpText = 'テトリシュー';
+    ctx.font = '900 56px "Hiragino Kaku Gothic ProN", "Meiryo", "Arial Black", sans-serif';
+
+    // 3D押し出しドロップシャドウ（重厚な立体感）
+    ctx.fillStyle = '#100030';
+    ctx.fillText(jpText, cx + 4, cy + 6);
+    ctx.fillStyle = '#440066';
+    ctx.fillText(jpText, cx + 3, cy + 4);
+    ctx.fillStyle = '#aa0077';
+    ctx.fillText(jpText, cx + 2, cy + 2);
+
+    // ネオングラデーション（シアン → ホワイト → マゼンタ）
+    const mainGrad = ctx.createLinearGradient(cx, cy - 40, cx, cy + 10);
+    mainGrad.addColorStop(0, '#00ffff');
+    mainGrad.addColorStop(0.45, '#ffffff');
+    mainGrad.addColorStop(0.55, '#ff88cc');
+    mainGrad.addColorStop(1, '#ff0066');
+
+    ctx.fillStyle = mainGrad;
+    ctx.shadowColor = '#00ffff';
+    ctx.shadowBlur = 18;
+    ctx.fillText(jpText, cx, cy);
+
+    // 白い光沢ストローク
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeText(jpText, cx, cy);
+
+    ctx.restore();
+  }
+
+  // 画面下に往年のNAMCO風「MUKKII」作者ロゴを描画
+  private drawNamcoStyleMukkiiLogo(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+    ctx.save();
+    ctx.textAlign = 'center';
+
+    // namco風の鮮烈なクラシックレッド
+    const namcoRed = '#e60012';
+
+    // 「MUKKII」ロゴテキスト
+    const logoText = 'mukkii';
+    ctx.font = '900 28px "Arial Black", "Trebuchet MS", sans-serif';
+
+    // namcoロゴ特有の丸みを帯びた太いストローク押し出し
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    // 白い外枠（アーケード筐体のロゴステッカー感）
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 9;
+    ctx.strokeText(logoText, cx, cy);
+
+    // 赤い太いメインボディ
+    ctx.strokeStyle = namcoRed;
+    ctx.lineWidth = 7;
+    ctx.strokeText(logoText, cx, cy);
+
+    ctx.fillStyle = namcoRed;
+    ctx.shadowColor = 'rgba(230, 0, 18, 0.6)';
+    ctx.shadowBlur = 8;
+    ctx.fillText(logoText, cx, cy);
+
+    // コピーライト表記
+    ctx.font = 'bold 11px "Courier New", monospace';
+    ctx.fillStyle = '#8b949e';
+    ctx.shadowBlur = 0;
+    ctx.fillText('© 2026 MUKKII ALL RIGHTS RESERVED', cx, cy + 24);
+
+    ctx.restore();
   }
 }
