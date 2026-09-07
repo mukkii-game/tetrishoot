@@ -1,4 +1,4 @@
-// Web Audio APIによるレトロシンセBGM & 効果音
+// ムーンクレスタ風 往年チップチューン音源（Web Audio API）
 export class Sound {
   private ctx: AudioContext | null = null;
   public isMuted = false;
@@ -23,97 +23,85 @@ export class Sound {
     return this.isMuted;
   }
 
-  // 1. ショット音（極太ビームの重厚な音）
+  // 1. ムーンクレスタ風 開始ファンファーレ（超高速上昇アルペジオ: ピロリロリロリロ〜〜ン♪）
+  public playStartJingle(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    // C大調/ペンタトニックの超高速駆け上がり
+    const notes = [
+      261.63, 329.63, 392.00, 523.25,
+      659.25, 783.99, 1046.50, 1318.51,
+      1567.98, 2093.00
+    ];
+
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      const startTime = now + idx * 0.045;
+      const isLast = idx === notes.length - 1;
+      const dur = isLast ? 0.45 : 0.04;
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      if (isLast) {
+        // 頂点で少しヴィブラート
+        osc.frequency.setValueAtTime(freq, startTime);
+        osc.frequency.linearRampToValueAtTime(freq * 1.02, startTime + 0.15);
+        osc.frequency.linearRampToValueAtTime(freq, startTime + 0.3);
+      }
+
+      gain.gain.setValueAtTime(0.18, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + dur + 0.02);
+    });
+  }
+
+  // 2. ムーンクレスタ風 ゲームオーバージングル（哀愁の下降アルペジオ: ピロリロ…ポロロン…）
+  public playGameOver(): void {
+    if (this.isMuted) return;
+    this.stopBGM();
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    // 短調の下降フレーズ
+    const notes = [
+      880, 783.99, 698.46, 587.33,
+      523.25, 440, 392, 329.63, 293.66, 220
+    ];
+
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      const startTime = now + idx * 0.1;
+      const isLast = idx === notes.length - 1;
+      const dur = isLast ? 0.6 : 0.09;
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      gain.gain.setValueAtTime(0.2, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + dur + 0.02);
+    });
+  }
+
+  // 3. ムーンクレスタ風 ショット音（ピシューン！と響く矩形波レーザー）
   public playShoot(): void {
-    if (this.isMuted) return;
-    this.initContext();
-    if (!this.ctx) return;
-
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sawtooth';
-    const now = this.ctx.currentTime;
-    osc.frequency.setValueAtTime(440, now);
-    osc.frequency.exponentialRampToValueAtTime(80, now + 0.12);
-
-    gain.gain.setValueAtTime(0.12, now);
-    gain.gain.linearRampToValueAtTime(0.01, now + 0.12);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-
-    osc.start(now);
-    osc.stop(now + 0.12);
-  }
-
-  // 2. ブロック結合音（小気味よいカチッ！というロック音）
-  public playDock(): void {
-    if (this.isMuted) return;
-    this.initContext();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const osc1 = this.ctx.createOscillator();
-    const osc2 = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(520, now);
-    osc1.frequency.exponentialRampToValueAtTime(1040, now + 0.08);
-
-    osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(780, now);
-    osc2.frequency.exponentialRampToValueAtTime(1560, now + 0.08);
-
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-
-    osc1.connect(gain);
-    osc2.connect(gain);
-    gain.connect(this.ctx.destination);
-
-    osc1.start(now);
-    osc2.start(now);
-    osc1.stop(now + 0.1);
-    osc2.stop(now + 0.1);
-  }
-
-  // 3. 爆発音（敵撃破、パーツ破壊）
-  public playExplosion(big = false): void {
-    if (this.isMuted) return;
-    this.initContext();
-    if (!this.ctx) return;
-
-    const dur = big ? 0.35 : 0.18;
-    const bufferSize = this.ctx.sampleRate * dur;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
-
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(big ? 600 : 900, this.ctx.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + dur);
-
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(big ? 0.3 : 0.18, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
-
-    noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.ctx.destination);
-
-    noise.start();
-  }
-
-  // 4. 被弾音（パーツダメージ）
-  public playHit(): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
@@ -123,103 +111,155 @@ export class Sound {
     const gain = this.ctx.createGain();
 
     osc.type = 'square';
-    osc.frequency.setValueAtTime(200, now);
-    osc.frequency.exponentialRampToValueAtTime(80, now + 0.08);
+    // 鋭い周波数急降下ピッチベンド
+    osc.frequency.setValueAtTime(1400, now);
+    osc.frequency.exponentialRampToValueAtTime(180, now + 0.1);
 
     gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.1);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.08);
+    osc.stop(now + 0.11);
   }
 
-  // 5. フェーズ切り替えジングル
+  // 4. ムーンクレスタ合体成功チャープ音（ピロピロピロピロ！）
+  public playDock(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const freqs = [523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98];
+    freqs.forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      const st = now + idx * 0.035;
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, st);
+
+      gain.gain.setValueAtTime(0.18, st);
+      gain.gain.exponentialRampToValueAtTime(0.005, st + 0.07);
+
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+
+      osc.start(st);
+      osc.stop(st + 0.08);
+    });
+  }
+
+  // 5. 往年のアーケード爆発音（バリバリッとした重厚ホワイトノイズ）
+  public playExplosion(big = false): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    const dur = big ? 0.42 : 0.22;
+    const bufferSize = Math.floor(this.ctx.sampleRate * dur);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(big ? 500 : 800, this.ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + dur);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(big ? 0.35 : 0.22, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    noise.start();
+  }
+
+  // 6. 被弾音
+  public playHit(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(350, now);
+    osc.frequency.exponentialRampToValueAtTime(70, now + 0.09);
+
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.09);
+  }
+
+  // 7. フェーズアラート
   public playPhaseAlert(phase: 'tetris' | 'shooting'): void {
-    if (this.isMuted) return;
-    this.initContext();
-    if (!this.ctx) return;
+    if (phase === 'tetris') {
+      this.playStartJingle();
+    } else {
+      if (this.isMuted) return;
+      this.initContext();
+      if (!this.ctx) return;
 
-    const now = this.ctx.currentTime;
-    const notes = phase === 'tetris' ? [440, 554, 659, 880] : [880, 659, 554, 440];
-    notes.forEach((freq, idx) => {
-      const osc = this.ctx!.createOscillator();
-      const gain = this.ctx!.createGain();
-      const startTime = now + idx * 0.07;
-
-      osc.type = phase === 'tetris' ? 'triangle' : 'sawtooth';
-      osc.frequency.setValueAtTime(freq, startTime);
-
-      gain.gain.setValueAtTime(0.15, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.09);
-
-      osc.connect(gain);
-      gain.connect(this.ctx!.destination);
-
-      osc.start(startTime);
-      osc.stop(startTime + 0.1);
-    });
+      const now = this.ctx.currentTime;
+      [440, 880, 1320].forEach((freq, idx) => {
+        const osc = this.ctx!.createOscillator();
+        const gain = this.ctx!.createGain();
+        const st = now + idx * 0.06;
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(freq, st);
+        gain.gain.setValueAtTime(0.16, st);
+        gain.gain.exponentialRampToValueAtTime(0.01, st + 0.08);
+        osc.connect(gain);
+        gain.connect(this.ctx!.destination);
+        osc.start(st);
+        osc.stop(st + 0.09);
+      });
+    }
   }
 
-  // 6. ゲームオーバージングル
-  public playGameOver(): void {
-    if (this.isMuted) return;
-    this.stopBGM();
-    this.initContext();
-    if (!this.ctx) return;
-
-    const notes = [300, 280, 260, 220, 180];
-    const now = this.ctx.currentTime;
-    notes.forEach((freq, idx) => {
-      const osc = this.ctx!.createOscillator();
-      const gain = this.ctx!.createGain();
-      const startTime = now + idx * 0.14;
-
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(freq, startTime);
-
-      gain.gain.setValueAtTime(0.2, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2);
-
-      osc.connect(gain);
-      gain.connect(this.ctx!.destination);
-
-      osc.start(startTime);
-      osc.stop(startTime + 0.22);
-    });
-  }
-
-  // 7. ゲームクリアファンファーレ
+  // 8. 勝利ファンファーレ
   public playVictory(): void {
     if (this.isMuted) return;
     this.stopBGM();
     this.initContext();
     if (!this.ctx) return;
 
-    const notes = [523, 659, 784, 1046, 784, 1046];
+    const notes = [523, 659, 784, 1046, 784, 1046, 1318];
     const now = this.ctx.currentTime;
     notes.forEach((freq, idx) => {
       const osc = this.ctx!.createOscillator();
       const gain = this.ctx!.createGain();
-      const startTime = now + idx * 0.12;
-
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, startTime);
-
-      gain.gain.setValueAtTime(0.22, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.25);
-
+      const st = now + idx * 0.11;
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, st);
+      gain.gain.setValueAtTime(0.22, st);
+      gain.gain.exponentialRampToValueAtTime(0.005, st + 0.22);
       osc.connect(gain);
       gain.connect(this.ctx!.destination);
-
-      osc.start(startTime);
-      osc.stop(startTime + 0.28);
+      osc.start(st);
+      osc.stop(st + 0.25);
     });
   }
 
-  // BGMの再生制御
+  // BGM
   public startBGM(phase: 'tetris' | 'shooting'): void {
     if (this.currentBgmPhase === phase) return;
     this.stopBGM();
@@ -228,9 +268,10 @@ export class Sound {
     this.initContext();
 
     let step = 0;
-    const tetrisMelody = [659, 493, 523, 587, 523, 493, 440, 440, 523, 659, 587, 523, 493, 523, 587, 659];
-    const shootBass = [110, 110, 164, 110, 130, 110, 146, 164];
-    const tempo = phase === 'tetris' ? 180 : 130;
+    // 8-bitチップチューンフレーズ
+    const tetrisNotes = [523, 659, 784, 659, 523, 784, 659, 523];
+    const shootBass = [130, 130, 195, 130, 164, 130, 174, 195];
+    const tempo = phase === 'tetris' ? 170 : 125;
 
     this.bgmIntervalId = window.setInterval(() => {
       if (this.isMuted || !this.ctx) return;
@@ -238,26 +279,17 @@ export class Sound {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
 
-      if (phase === 'tetris') {
-        osc.type = 'square';
-        const freq = tetrisMelody[step % tetrisMelody.length];
-        osc.frequency.setValueAtTime(freq, now);
-        gain.gain.setValueAtTime(0.025, now);
-        gain.gain.exponentialRampToValueAtTime(0.002, now + 0.14);
-      } else {
-        osc.type = 'sawtooth';
-        const freq = shootBass[step % shootBass.length];
-        osc.frequency.setValueAtTime(freq, now);
-        gain.gain.setValueAtTime(0.04, now);
-        gain.gain.exponentialRampToValueAtTime(0.005, now + 0.1);
-      }
+      osc.type = 'square';
+      const freq = phase === 'tetris' ? tetrisNotes[step % tetrisNotes.length] : shootBass[step % shootBass.length];
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(phase === 'tetris' ? 0.025 : 0.038, now);
+      gain.gain.exponentialRampToValueAtTime(0.002, now + 0.11);
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
 
       osc.start(now);
-      osc.stop(now + 0.16);
-
+      osc.stop(now + 0.13);
       step++;
     }, tempo);
   }

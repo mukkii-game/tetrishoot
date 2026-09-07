@@ -1,8 +1,7 @@
-import { BLOCK_SIZE, CANVAS_HEIGHT, CANVAS_WIDTH, LEFT_WALL_COL, PLAYER_INITIAL_Y, PLAYER_SPEED, RIGHT_WALL_COL } from '../config';
+import { BLOCK_SIZE, CANVAS_HEIGHT, CANVAS_WIDTH, PLAYER_INITIAL_Y, PLAYER_SPEED } from '../config';
 import { ParticleManager } from '../effects/Particle';
 import { PlayerBullet } from './Bullet';
 import { TetrominoPiece, TetrominoType } from './Tetromino';
-import { WallManager } from './Wall';
 
 export interface AttachedPiece {
   piece: TetrominoPiece;
@@ -23,7 +22,7 @@ export class Player {
     this.initInitialPiece();
   }
 
-  // 初期の自機：Oミノ（正方形2x2、端点なし＝弾なし）
+  // 初期の自機：Oミノ（正方形2x2、端点なし＝弾なし、肉壁コア）
   public initInitialPiece(): void {
     this.pieces = [];
     const oPiece = new TetrominoPiece('O');
@@ -78,7 +77,7 @@ export class Player {
     };
   }
 
-  // 落下中のミノ（fallGx, fallGy）が自機と接触しているか判定し、結合確定
+  // 落下中のミノが自機と接触しているか判定し、結合確定
   public tryDock(
     fallingPiece: TetrominoPiece,
     fallGx: number,
@@ -87,7 +86,6 @@ export class Player {
     const playerBaseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const playerBaseGy = Math.round(this.anchorY / BLOCK_SIZE);
 
-    // 落下ミノの各セルのグリッド絶対座標
     const fallingAbsoluteCells = fallingPiece.cells.map(c => ({
       gx: fallGx + c.gx,
       gy: fallGy + c.gy,
@@ -95,7 +93,7 @@ export class Player {
 
     const myCells = this.getOccupiedCells();
 
-    // すでに重なっている場合は結合不可
+    // 重なりチェック
     for (const fc of fallingAbsoluteCells) {
       for (const mc of myCells) {
         if (fc.gx === mc.gx && fc.gy === mc.gy) {
@@ -104,21 +102,21 @@ export class Player {
       }
     }
 
-    // 上から、または左右からの接触があるかを判定
+    // 上から、または左右からの接触があるか
     let isAdjacent = false;
     for (const fc of fallingAbsoluteCells) {
       for (const mc of myCells) {
-        // 上から接触（落下セルの下が自機セル）
+        // 上から接触
         if (fc.gx === mc.gx && fc.gy + 1 === mc.gy) {
           isAdjacent = true;
           break;
         }
-        // 左から接触（落下セルの右が自機セル）
+        // 左から接触
         if (fc.gx + 1 === mc.gx && fc.gy === mc.gy) {
           isAdjacent = true;
           break;
         }
-        // 右から接触（落下セルの左が自機セル）
+        // 右から接触
         if (fc.gx - 1 === mc.gx && fc.gy === mc.gy) {
           isAdjacent = true;
           break;
@@ -128,7 +126,6 @@ export class Player {
     }
 
     if (isAdjacent) {
-      // 自機のアンカー相対セル座標を計算してドッキング！
       const relGx = fallGx - playerBaseGx;
       const relGy = fallGy - playerBaseGy;
       this.pieces.push({
@@ -142,7 +139,7 @@ export class Player {
     return { docked: false };
   }
 
-  // 移動処理（シューティングタイム用：上下左右に移動可能！）
+  // 上下左右（全方向）移動処理（左右の壁撤廃、画面端までオープンに動ける！）
   public updateMovement(
     dt: number,
     inputs: {
@@ -153,93 +150,55 @@ export class Player {
       mouseX: number | null;
       mouseY: number | null;
       hasMouseMoved: boolean;
-    },
-    wallManager: WallManager
+    }
   ): void {
     const bounds = this.getBoundingBox();
     const width = bounds.maxX - bounds.minX;
     const height = bounds.maxY - bounds.minY;
 
-    const minWallX = (LEFT_WALL_COL + 1) * BLOCK_SIZE;
-    const maxWallX = RIGHT_WALL_COL * BLOCK_SIZE;
-    const minMovableY = 80; // HUDの下
-    const maxMovableY = CANVAS_HEIGHT - 20;
+    // 画面全体が移動可能エリア！
+    const minScreenX = 0;
+    const maxScreenX = CANVAS_WIDTH;
+    const minScreenY = 60; // 上部HUD下
+    const maxScreenY = CANVAS_HEIGHT - 10;
 
     let deltaX = 0;
     let deltaY = 0;
 
     if (inputs.hasMouseMoved && inputs.mouseX !== null && inputs.mouseY !== null) {
-      // マウス操作（目標中心位置へスムーズに追従）
       const targetAnchorX = inputs.mouseX - width / 2;
       const targetAnchorY = inputs.mouseY - height / 2;
       const diffX = targetAnchorX - this.anchorX;
       const diffY = targetAnchorY - this.anchorY;
 
-      deltaX = Math.sign(diffX) * Math.min(Math.abs(diffX), PLAYER_SPEED * 1.5 * dt);
-      deltaY = Math.sign(diffY) * Math.min(Math.abs(diffY), PLAYER_SPEED * 1.5 * dt);
+      deltaX = Math.sign(diffX) * Math.min(Math.abs(diffX), PLAYER_SPEED * 1.6 * dt);
+      deltaY = Math.sign(diffY) * Math.min(Math.abs(diffY), PLAYER_SPEED * 1.6 * dt);
     } else {
-      // キーボード操作（上下左右）
       if (inputs.left) deltaX -= PLAYER_SPEED * dt;
       if (inputs.right) deltaX += PLAYER_SPEED * dt;
       if (inputs.up) deltaY -= PLAYER_SPEED * dt;
       if (inputs.down) deltaY += PLAYER_SPEED * dt;
     }
 
-    // X軸の移動と衝突判定
+    // X軸移動
     if (deltaX !== 0) {
       const nextAnchorX = this.anchorX + deltaX;
       const nextMinX = nextAnchorX + (bounds.minX - this.anchorX);
       const nextMaxX = nextAnchorX + (bounds.maxX - this.anchorX);
 
-      if (nextMinX >= minWallX && nextMaxX <= maxWallX) {
-        let collides = false;
-        const testBaseGx = Math.round(nextAnchorX / BLOCK_SIZE);
-        const testBaseGy = Math.round(this.anchorY / BLOCK_SIZE);
-
-        for (const attached of this.pieces) {
-          for (const c of attached.piece.cells) {
-            const gx = testBaseGx + attached.relGx + c.gx;
-            const gy = testBaseGy + attached.relGy + c.gy;
-            if (wallManager.hasBlock(gx, gy)) {
-              collides = true;
-              break;
-            }
-          }
-          if (collides) break;
-        }
-
-        if (!collides) {
-          this.anchorX = nextAnchorX;
-        }
+      if (nextMinX >= minScreenX && nextMaxX <= maxScreenX) {
+        this.anchorX = nextAnchorX;
       }
     }
 
-    // Y軸の移動と衝突判定（上下移動）
+    // Y軸移動
     if (deltaY !== 0) {
       const nextAnchorY = this.anchorY + deltaY;
       const nextMinY = nextAnchorY + (bounds.minY - this.anchorY);
       const nextMaxY = nextAnchorY + (bounds.maxY - this.anchorY);
 
-      if (nextMinY >= minMovableY && nextMaxY <= maxMovableY) {
-        let collides = false;
-        const testBaseGx = Math.round(this.anchorX / BLOCK_SIZE);
-        const testBaseGy = Math.round(nextAnchorY / BLOCK_SIZE);
-
-        for (const attached of this.pieces) {
-          for (const c of attached.piece.cells) {
-            const gx = testBaseGx + attached.relGx + c.gx;
-            const gy = testBaseGy + attached.relGy + c.gy;
-            if (wallManager.hasBlock(gx, gy)) {
-              collides = true;
-              break;
-            }
-          }
-          if (collides) break;
-        }
-
-        if (!collides) {
-          this.anchorY = nextAnchorY;
-        }
+      if (nextMinY >= minScreenY && nextMaxY <= maxScreenY) {
+        this.anchorY = nextAnchorY;
       }
     }
 
@@ -252,8 +211,8 @@ export class Player {
     }
   }
 
-  // ショット発射処理（塞がり判定＆全方向ビーム）
-  public shootBullets(wallManager: WallManager): PlayerBullet[] {
+  // ショット発射処理（塞がり判定付き全方向ビーム）
+  public shootBullets(): PlayerBullet[] {
     const bullets: PlayerBullet[] = [];
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
@@ -265,7 +224,7 @@ export class Player {
 
     for (const attached of this.pieces) {
       const piece = attached.piece;
-      if (piece.type === 'O') continue; // Oミノは弾が出ない
+      if (piece.type === 'O') continue; // Oブロックは弾が出ない
 
       for (const gun of piece.gunPorts) {
         const sourceGx = baseGx + attached.relGx + gun.cellGx;
@@ -279,12 +238,6 @@ export class Player {
           continue;
         }
 
-        // 壁ブロックで塞がれているか？
-        if (wallManager.hasBlock(targetGx, targetGy)) {
-          continue;
-        }
-
-        // 塞がれていないので発射！
         const bx = (sourceGx + 0.5 + gun.dirX * 0.5) * BLOCK_SIZE;
         const by = (sourceGy + 0.5 + gun.dirY * 0.5) * BLOCK_SIZE;
 
@@ -314,10 +267,10 @@ export class Player {
 
         if (px >= cellX && px < cellX + BLOCK_SIZE && py >= cellY && py < cellY + BLOCK_SIZE) {
           const isDestroyed = piece.hit(1);
-          particles.emitSparks(px, py, piece.color, 10);
+          particles.emitSparks(px, py, piece.color, 12);
 
           if (isDestroyed) {
-            particles.emitExplosion(cellX + BLOCK_SIZE / 2, cellY + BLOCK_SIZE / 2, piece.color, 24, true);
+            particles.emitExplosion(cellX + BLOCK_SIZE / 2, cellY + BLOCK_SIZE / 2, piece.color, 28, true);
             const destroyedType = piece.type;
             this.pieces.splice(i, 1);
 
@@ -335,7 +288,7 @@ export class Player {
     return { hit: false, pieceDestroyed: false };
   }
 
-  public draw(ctx: CanvasRenderingContext2D, wallManager?: WallManager): void {
+  public draw(ctx: CanvasRenderingContext2D): void {
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
 
@@ -354,13 +307,13 @@ export class Player {
         let hasActiveGun = false;
         let activeAngle = 0;
 
-        if (gun && wallManager) {
+        if (gun) {
           const sourceGx = baseGx + attached.relGx + gun.cellGx;
           const sourceGy = baseGy + attached.relGy + gun.cellGy;
           const targetGx = sourceGx + gun.dirX;
           const targetGy = sourceGy + gun.dirY;
 
-          if (!occupiedMap.has(`${targetGx},${targetGy}`) && !wallManager.hasBlock(targetGx, targetGy)) {
+          if (!occupiedMap.has(`${targetGx},${targetGy}`)) {
             hasActiveGun = true;
             activeAngle = gun.angle;
           }
@@ -374,13 +327,13 @@ export class Player {
     const bounds = this.getBoundingBox();
     const thrusterX = (bounds.minX + bounds.maxX) / 2;
     const thrusterY = bounds.maxY;
-    const flameHeight = Math.random() * 8 + 6;
+    const flameHeight = Math.random() * 9 + 6;
 
     ctx.save();
-    ctx.fillStyle = Math.random() > 0.5 ? '#ff3300' : '#ffcc00';
+    ctx.fillStyle = Math.random() > 0.5 ? '#ff2200' : '#ffea00';
     ctx.beginPath();
-    ctx.moveTo(thrusterX - 6, thrusterY);
-    ctx.lineTo(thrusterX + 6, thrusterY);
+    ctx.moveTo(thrusterX - 7, thrusterY);
+    ctx.lineTo(thrusterX + 7, thrusterY);
     ctx.lineTo(thrusterX, thrusterY + flameHeight);
     ctx.closePath();
     ctx.fill();
