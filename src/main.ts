@@ -14,13 +14,6 @@ window.addEventListener('DOMContentLoaded', () => {
   const hudStage = document.getElementById('hud-stage')!;
   const hudPhase = document.getElementById('hud-phase')!;
   const hudScore = document.getElementById('hud-score')!;
-  const stockContainer = document.getElementById('stock-container')!;
-  const stockLabel = document.getElementById('stock-label')!;
-  const stockBlocks = [
-    document.getElementById('stock-1')!,
-    document.getElementById('stock-2')!,
-  ];
-
   const input = new Input(canvas);
   const sound = new Sound();
   const game = new GameManager(sound);
@@ -45,30 +38,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (game.phase === 'TETRIS') {
       hudPhase.className = 'hud-phase phase-tetris';
-      hudPhase.textContent = `ドッキングせよ (${game.remainingPiecesCount}/2)`;
-      stockContainer.style.display = 'flex';
-      stockLabel.textContent = `ACTIVE: [${game.activePieceIndex + 1}] | BLOCKS: ${game.remainingPiecesCount}/2`;
-
-      // 各ブロックの確定状態
-      game.fallingPieces.forEach((p, idx) => {
-        if (stockBlocks[idx]) {
-          if (p.settled) {
-            stockBlocks[idx].className = 'stock-block spent';
-          } else if (idx === game.activePieceIndex) {
-            stockBlocks[idx].className = 'stock-block';
-            stockBlocks[idx].style.background = '#00ffff';
-            stockBlocks[idx].style.borderColor = '#ffffff';
-          } else {
-            stockBlocks[idx].className = 'stock-block';
-            stockBlocks[idx].style.background = '#00ffaa';
-            stockBlocks[idx].style.borderColor = '#66ffcc';
-          }
-        }
-      });
+      hudPhase.textContent = `ドッキングせよ`;
     } else {
       hudPhase.className = 'hud-phase phase-shooting';
       hudPhase.textContent = `WAVE ${game.stage} (${Math.ceil(game.shootingTimeLimit)}s)`;
-      stockContainer.style.display = 'none';
     }
   }
 

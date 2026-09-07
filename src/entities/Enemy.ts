@@ -136,16 +136,16 @@ export class Enemy {
     if (pattern === 'SWEEP_FROM_LEFT') {
       this.x = -this.width - 20;
       this.y = this.formationY;
-      this.vx = 115; // ギャラガ風の落ち着いた速度で横断
+      this.vx = 125; // 落ち着いた速度で横断
     } else if (pattern === 'SWEEP_FROM_RIGHT') {
       this.x = CANVAS_WIDTH + 20;
       this.y = this.formationY;
-      this.vx = -115;
+      this.vx = -125;
     } else if (pattern === 'SURPRISE_FROM_BOTTOM') {
       this.x = this.formationX;
       this.y = CANVAS_HEIGHT + 30;
       this.vx = 0;
-      this.vy = -140; // 急上昇も半分速度にして狙い撃ちしやすく
+      this.vy = -150; // 急上昇
     } else {
       this.x = -100;
       this.y = -100;
