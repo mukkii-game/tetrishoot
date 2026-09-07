@@ -28,7 +28,7 @@ export class ParticleManager {
   private retroExplosions: RetroExplosion[] = [];
 
   // 80年代名作STG（ギャラガ／ムーンクレスタ）の自機爆発パラパラアニメーションを発火
-  public emitRetroExplosion(x: number, y: number, scale = 2.4): void {
+  public emitRetroExplosion(x: number, y: number, scale = 2.4, frameDuration = 0.14): void {
     this.retroExplosions.push({
       x,
       y,
@@ -36,9 +36,37 @@ export class ParticleManager {
       timer: 0,
       frame: 0,
       maxFrames: 4, // 0: 初期破裂, 1: 炎輪拡大, 2: 最大散乱, 3: 消滅余波
-      frameDuration: 0.14, // レトロなパラパラ感のあるコマ送り速度
+      frameDuration, // レトロなパラパラ感のあるコマ送り速度
       isFinished: false,
     });
+  }
+
+  // ★ ユーザー要望：ボスのド迫力ヤラレ爆発！巨大パラパラ爆発が時間差で連続発生！
+  public emitBossExplosion(x: number, y: number, width: number, height: number): void {
+    // 1. 中心部での超巨大レトロ爆発
+    this.emitRetroExplosion(x, y, 4.5, 0.16);
+
+    // 2. 機体の四隅・各部位に時間差で広がる多重誘爆
+    const offsets = [
+      { dx: -width * 0.35, dy: -height * 0.25, delay: 0.08, scale: 3.2 },
+      { dx: width * 0.35, dy: -height * 0.25, delay: 0.15, scale: 3.4 },
+      { dx: -width * 0.25, dy: height * 0.25, delay: 0.22, scale: 3.0 },
+      { dx: width * 0.25, dy: height * 0.25, delay: 0.28, scale: 3.6 },
+      { dx: 0, dy: 0, delay: 0.35, scale: 5.2 }, // 最後のトドメの超特大爆散！
+    ];
+
+    offsets.forEach(off => {
+      window.setTimeout(() => {
+        this.emitRetroExplosion(x + off.dx, y + off.dy, off.scale, 0.13);
+        this.emitExplosion(x + off.dx, y + off.dy, '#ffea00', 30, true);
+        this.emitExplosion(x + off.dx, y + off.dy, '#ff2200', 25, true);
+      }, off.delay * 1000);
+    });
+
+    // 3. 高速散乱する無数のピクセル破片
+    this.emitExplosion(x, y, '#ffffff', 50, true);
+    this.emitExplosion(x, y, '#ff0055', 40, true);
+    this.emitExplosion(x, y, '#00ffff', 40, true);
   }
 
   public emitExplosion(x: number, y: number, color: string, count = 20, big = false): void {

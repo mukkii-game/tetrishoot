@@ -376,12 +376,7 @@ export class Enemy {
     const cx = Math.floor(this.x + this.width / 2);
     const cy = Math.floor(this.y + this.height / 2);
 
-    if (this.flashTime > 0) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(this.x, this.y, this.width, this.height);
-      ctx.restore();
-      return;
-    }
+    const isHitFlashing = this.flashTime > 0;
 
     const f = this.animFrame;
     const isGiant = this.rank === 'GIANT_RED' || this.rank === 'GIANT_YELLOW' || this.rank === 'UFO_MOTHERSHIP';
@@ -392,6 +387,12 @@ export class Enemy {
 
     ctx.translate(cx, cy);
     ctx.scale(s, s);
+
+    if (isHitFlashing) {
+      // 被弾時：四角形ではなく、ボスの機体形状そのものを白色＋発光で点滅させる！
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 12;
+    }
 
     switch (this.rank) {
       case 'GREEN_DRONE': {

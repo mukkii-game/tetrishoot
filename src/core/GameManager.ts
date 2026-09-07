@@ -55,6 +55,8 @@ export class GameManager {
   // ボス出現・撃破管理
   public bossSpawned = false;
   public currentBoss: Enemy | null = null;
+  public bossDying = false;
+  public bossDeathTimer = 0;
 
   // バトル中に時々落ちてくる回転不可ブロック（1ウェーブに1回程度）
   public battlePiece: FallingPieceItem | null = null;
@@ -96,6 +98,8 @@ export class GameManager {
     this.battlePiece = null;
     this.bossSpawned = false;
     this.currentBoss = null;
+    this.bossDying = false;
+    this.bossDeathTimer = 0;
 
     // 自機を下部中央へ再配置（ドッキングしやすくする）
     this.player.resetToBottomCenter();
@@ -119,6 +123,8 @@ export class GameManager {
     this.hasSpawnedBattlePieceThisWave = false;
     this.bossSpawned = false;
     this.currentBoss = null;
+    this.bossDying = false;
+    this.bossDeathTimer = 0;
 
     // ギャラガ＆ムーンクレスタ風 多彩な大編隊をスポーン！
     this.spawnAlienFleet();
@@ -608,6 +614,16 @@ export class GameManager {
   }
 
   private updateShootingPhase(dt: number, input: Input): void {
+    // ★ ボス撃破後の爆発鑑賞ディレイ処理
+    if (this.bossDying) {
+      this.bossDeathTimer += dt;
+      if (this.bossDeathTimer >= 1.2) {
+        this.bossDying = false;
+        this.clearStage();
+        return;
+      }
+    }
+
     this.shootingTimeLimit -= dt;
     this.formationOffsetAngle += dt * 2.4;
 
@@ -715,21 +731,32 @@ export class GameManager {
           const killed = enemy.hit(1);
           if (killed) {
             const isGiant = enemy.rank.startsWith('GIANT') || enemy.rank === 'UFO_MOTHERSHIP';
-            this.sound.playExplosion(isGiant || enemy.isBoss);
-            this.particles.emitExplosion(
-              enemy.x + enemy.width / 2,
-              enemy.y + enemy.height / 2,
-              '#ffaa00',
-              (isGiant || enemy.isBoss) ? 60 : 20,
-              isGiant || enemy.isBoss
-            );
-            this.score += enemy.scoreValue;
 
-            // ★ ボス撃破でウェーブクリア！次のテトリミノフェーズへ移行！
             if (enemy === this.currentBoss || enemy.isBoss) {
+              // ★ ユーザー要望：ボスのド迫力ヤラレ爆発！
+              // 白い四角ではなく、多重巨大パラパラ爆発と轟音を発生させ、爆発をしっかり見せてからクリア！
+              this.sound.playBossExplosion();
+              this.particles.emitBossExplosion(
+                enemy.x + enemy.width / 2,
+                enemy.y + enemy.height / 2,
+                enemy.width,
+                enemy.height
+              );
+              this.score += enemy.scoreValue;
               this.currentBoss = null;
-              this.clearStage();
+              this.bossDying = true;
+              this.bossDeathTimer = 0;
               return;
+            } else {
+              this.sound.playExplosion(isGiant);
+              this.particles.emitExplosion(
+                enemy.x + enemy.width / 2,
+                enemy.y + enemy.height / 2,
+                '#ffaa00',
+                isGiant ? 50 : 20,
+                isGiant
+              );
+              this.score += enemy.scoreValue;
             }
           }
           break;
@@ -745,15 +772,24 @@ export class GameManager {
         const killed = enemy.hit(5);
         this.sound.playExplosion(true);
         if (killed && (enemy === this.currentBoss || enemy.isBoss)) {
+          this.sound.playBossExplosion();
+          this.particles.emitBossExplosion(
+            enemy.x + enemy.width / 2,
+            enemy.y + enemy.height / 2,
+            enemy.width,
+            enemy.height
+          );
+          this.score += enemy.scoreValue;
           this.currentBoss = null;
-          this.clearStage();
+          this.bossDying = true;
+          this.bossDeathTimer = 0;
           return;
         }
       }
     }
 
     // タイムオーバーまたは敵全滅クリア判定
-    if ((this.bossSpawned && !this.currentBoss && this.enemies.length === 0) || this.shootingTimeLimit <= 0) {
+    if (!this.bossDying && (((this.bossSpawned && !this.currentBoss && this.enemies.length === 0) || this.shootingTimeLimit <= 0))) {
       this.clearStage();
     }
   }

@@ -155,6 +155,16 @@ export class Sound {
     noise.start();
   }
 
+  // ★ ボス専用：轟音連続爆発サウンド！
+  public playBossExplosion(): void {
+    this.playExplosion(true);
+    [0.1, 0.22, 0.35].forEach(delay => {
+      window.setTimeout(() => {
+        this.playExplosion(true);
+      }, delay * 1000);
+    });
+  }
+
   // 6. 被弾音
   public playHit(): void {
     if (this.isMuted) return;
