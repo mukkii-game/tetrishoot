@@ -40,6 +40,7 @@ export class Enemy {
   public maxHp: number;
   public scoreValue: number;
   public isDead = false;
+  public isBoss = false;
 
   public formationX: number;
   public formationY: number;
@@ -70,7 +71,9 @@ export class Enemy {
     formationRow: number,
     spawnDelay = 0,
     curveType?: CurvePathType,
-    streamIndex = 0
+    streamIndex = 0,
+    isBoss = false,
+    customHp?: number
   ) {
     this.id = Math.random().toString(36).substring(2, 9);
     this.rank = rank;
@@ -79,6 +82,7 @@ export class Enemy {
     this.curveType = curveType;
     this.streamDelay = streamIndex * 0.11; // 1機ごとの美しい等間隔
     this.streamProgress = -this.streamDelay;
+    this.isBoss = isBoss;
 
     const spacingX = 46;
     const spacingY = 40;
@@ -123,6 +127,9 @@ export class Enemy {
         this.maxHp = 24; // 固いボスUFO！
         this.scoreValue = 5000;
         break;
+    }
+    if (customHp !== undefined) {
+      this.maxHp = customHp;
     }
     this.hp = this.maxHp;
 
@@ -473,12 +480,16 @@ export class Enemy {
       }
     }
 
-    if (isGiant) {
+    if (this.isBoss || (isGiant && this.maxHp > 1)) {
       const hpRatio = Math.max(0, this.hp / this.maxHp);
-      ctx.fillStyle = 'rgba(0,0,0,0.8)';
-      ctx.fillRect(-18, -20, 36, 4);
+      const barWidth = Math.max(36, this.width * 0.6);
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillRect(-barWidth / 2, -this.height / 2 - 12, barWidth, 5);
       ctx.fillStyle = hpRatio > 0.3 ? '#00ff88' : '#ff0033';
-      ctx.fillRect(-18, -20, 36 * hpRatio, 4);
+      ctx.fillRect(-barWidth / 2, -this.height / 2 - 12, barWidth * hpRatio, 5);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-barWidth / 2, -this.height / 2 - 12, barWidth, 5);
     }
 
     ctx.restore();

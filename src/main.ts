@@ -19,7 +19,6 @@ window.addEventListener('DOMContentLoaded', () => {
   const stockBlocks = [
     document.getElementById('stock-1')!,
     document.getElementById('stock-2')!,
-    document.getElementById('stock-3')!,
   ];
 
   const input = new Input(canvas);
@@ -46,9 +45,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (game.phase === 'TETRIS') {
       hudPhase.className = 'hud-phase phase-tetris';
-      hudPhase.textContent = `ドッキングせよ (${game.remainingPiecesCount}/3)`;
+      hudPhase.textContent = `ドッキングせよ (${game.remainingPiecesCount}/2)`;
       stockContainer.style.display = 'flex';
-      stockLabel.textContent = `ACTIVE: [${game.activePieceIndex + 1}] | BLOCKS: ${game.remainingPiecesCount}/3`;
+      stockLabel.textContent = `ACTIVE: [${game.activePieceIndex + 1}] | BLOCKS: ${game.remainingPiecesCount}/2`;
 
       // 各ブロックの確定状態
       game.fallingPieces.forEach((p, idx) => {
@@ -68,7 +67,7 @@ window.addEventListener('DOMContentLoaded', () => {
       });
     } else {
       hudPhase.className = 'hud-phase phase-shooting';
-      hudPhase.textContent = `デストロイ ゼム オール！ (${Math.ceil(game.shootingTimeLimit)}s)`;
+      hudPhase.textContent = `WAVE ${game.stage} (${Math.ceil(game.shootingTimeLimit)}s)`;
       stockContainer.style.display = 'none';
     }
   }

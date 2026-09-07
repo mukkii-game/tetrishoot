@@ -41,16 +41,20 @@ export class GameManager {
   public particles: ParticleManager;
   public sound: Sound;
 
-  // パズルフェーズ：同時に落ちてくる3つのブロック
+  // パズルフェーズ：同時に落ちてくる2つのブロック
   public fallingPieces: FallingPieceItem[] = [];
   public activePieceIndex = 0;
-  public remainingPiecesCount = 3;
+  public remainingPiecesCount = 2;
 
   // シューティングフェーズ：大編隊
   public playerBullets: PlayerBullet[] = [];
   public enemies: Enemy[] = [];
   public formationOffsetAngle = 0;
-  public shootingTimeLimit = 22;
+  public shootingTimeLimit = 48;
+
+  // ボス出現・撃破管理
+  public bossSpawned = false;
+  public currentBoss: Enemy | null = null;
 
   // バトル中に時々落ちてくる回転不可ブロック（1ウェーブに1回程度）
   public battlePiece: FallingPieceItem | null = null;
@@ -61,6 +65,7 @@ export class GameManager {
   private stateTimer = 0;
   private transitionAlpha = 0;
   private transitionText = '';
+  private transitionScale = 1.0;
   private keyRepeatTimer = 0;
 
   constructor(sound: Sound) {
@@ -89,38 +94,44 @@ export class GameManager {
     this.playerBullets = [];
     this.enemies = [];
     this.battlePiece = null;
+    this.bossSpawned = false;
+    this.currentBoss = null;
 
     // 自機を下部中央へ再配置（ドッキングしやすくする）
     this.player.resetToBottomCenter();
 
-    // 1度に3つのブロックをスポーン！
-    this.spawnThreeTetrominoes();
-    this.remainingPiecesCount = 3;
+    // 1度に2つのブロックをスポーン！
+    this.spawnTetrominoes();
+    this.remainingPiecesCount = 2;
 
     this.sound.playStartJingle();
     this.sound.startBGM('tetris');
-    this.showTransitionText('ドッキングせよ');
+    this.showTransitionText('ドッキングせよ', 1.0);
   }
 
   private startShootingPhase(): void {
     this.phase = 'SHOOTING';
     this.fallingPieces = [];
-    this.shootingTimeLimit = 24;
+    this.shootingTimeLimit = 48; // バトル時間を約2倍（48秒）に延長！
     this.formationOffsetAngle = 0;
     this.battlePiece = null;
     this.battlePieceTimer = 0;
     this.hasSpawnedBattlePieceThisWave = false;
+    this.bossSpawned = false;
+    this.currentBoss = null;
 
     // ギャラガ＆ムーンクレスタ風 多彩な大編隊をスポーン！
     this.spawnAlienFleet();
 
     this.sound.playPhaseAlert('shooting');
     this.sound.startBGM('shooting');
-    this.showTransitionText('デストロイ　ゼム　オール！');
+    // デストロイゼムオールのかわりに「WAVE 1」と超巨大表示！
+    this.showTransitionText(`WAVE ${this.stage}`, 1.8);
   }
 
-  private showTransitionText(text: string): void {
+  private showTransitionText(text: string, scale = 1.0): void {
     this.transitionText = text;
+    this.transitionScale = scale;
     this.transitionAlpha = 1.0;
   }
 
@@ -202,16 +213,16 @@ export class GameManager {
   }
 
   // ==========================================
-  // パズルフェーズ（3個同時降下、左右端までフル画面活用）
+  // パズルフェーズ（2個同時降下、左右端までフル画面活用）
   // ==========================================
-  private spawnThreeTetrominoes(): void {
+  private spawnTetrominoes(): void {
     const types: TetrominoType[] = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
     this.fallingPieces = [];
 
-    // 画面全体に分散して3つ降下（左・中央・右）
-    const initialCols = [2, 7, 13];
+    // 画面全体に分散して2つ降下（左寄りと右寄り）
+    const initialCols = [4, 11];
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       const type = types[Math.floor(Math.random() * types.length)];
       const piece = new TetrominoPiece(type);
 
@@ -337,13 +348,13 @@ export class GameManager {
     const unsettled = this.fallingPieces.filter(p => !p.settled);
     if (unsettled.length === 0) return;
 
-    let nextIdx = (this.activePieceIndex + 1) % 3;
-    for (let i = 0; i < 3; i++) {
+    let nextIdx = (this.activePieceIndex + 1) % 2;
+    for (let i = 0; i < 2; i++) {
       if (this.fallingPieces[nextIdx] && !this.fallingPieces[nextIdx].settled) {
         this.activePieceIndex = nextIdx;
         return;
       }
-      nextIdx = (nextIdx + 1) % 3;
+      nextIdx = (nextIdx + 1) % 2;
     }
   }
 
@@ -473,24 +484,52 @@ export class GameManager {
       }
     }
 
-    // 7. 大型艦＆ボス
+    // 7. エスコート大型艦（ボスはバトル後半に威風堂々と単独または護衛と共に出現！）
+    if (this.stage >= 7) {
+      this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 3, 0, 0.4));
+    }
+  }
+
+  private spawnWaveBoss(): void {
+    this.bossSpawned = true;
+    this.sound.playPhaseAlert('shooting');
+    this.showTransitionText(`WARNING: BOSS APPROACHING`, 1.2);
+
+    let bossRank: 'GIANT_YELLOW' | 'GIANT_RED' | 'UFO_MOTHERSHIP' = 'GIANT_YELLOW';
+    let bossHp = 5;
+
     if (this.stage === 10) {
-      // ラスボス超大型UFO母船＋護衛
-      this.enemies.push(new Enemy('UFO_MOTHERSHIP', 'CAROUSEL_CIRCLE', 4, 0, 0.2));
-      this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 1, 1, 0.5));
-      this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 1, 0.5));
-      this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 3, 0, 0.6));
-      this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 5, 0, 0.6));
+      // 最終面ラスボス：最強UFO母船
+      bossRank = 'UFO_MOTHERSHIP';
+      bossHp = 28;
     } else if (this.stage === 5) {
-      // 5面中ボス超大型UFO
-      this.enemies.push(new Enemy('UFO_MOTHERSHIP', 'FORMATION_LOOP', 4, 0, 0.2));
-      this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 1, 0.6));
+      // 5面中ボス：超大型UFO母船
+      bossRank = 'UFO_MOTHERSHIP';
+      bossHp = 18;
+    } else if (this.stage >= 6) {
+      // 6〜9面ボス：超高速頑強ジャイアントレッド
+      bossRank = 'GIANT_RED';
+      bossHp = 10 + (this.stage - 6) * 2;
     } else if (this.stage >= 3) {
-      // 倍サイズ大型旗艦
-      this.enemies.push(new Enemy('GIANT_YELLOW', 'FORMATION_LOOP', 4, 0, 0.2));
-      if (this.stage >= 7) {
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 5, 0, 0.3));
-      }
+      // 3〜4面ボス：ジャイアントレッド
+      bossRank = 'GIANT_RED';
+      bossHp = 7 + this.stage;
+    } else {
+      // 1〜2面ボス：ジャイアントイエロー司令機
+      bossRank = 'GIANT_YELLOW';
+      bossHp = this.stage === 1 ? 5 : 8;
+    }
+
+    const pattern = this.stage === 10 ? 'CAROUSEL_CIRCLE' : 'FORMATION_LOOP';
+    const boss = new Enemy(bossRank, pattern, 4, 0, 0.1, undefined, 0, true, bossHp);
+    boss.scoreValue = 3000 + this.stage * 1000;
+    this.currentBoss = boss;
+    this.enemies.push(boss);
+
+    // 護衛を2機随伴（高ステージ）
+    if (this.stage >= 4) {
+      this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SWEEP_FROM_LEFT', 2, 1, 0.3));
+      this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SWEEP_FROM_RIGHT', 6, 1, 0.3));
     }
   }
 
@@ -579,6 +618,11 @@ export class GameManager {
       }
     }
 
+    // ★ ウェーブ後半または通常敵が減ったらボス出現！（約22秒経過、または敵が残り3機以下）
+    if (!this.bossSpawned && (this.shootingTimeLimit <= 26 || this.enemies.length <= 3)) {
+      this.spawnWaveBoss();
+    }
+
     // プレイヤー弾 vs 敵
     for (let i = this.playerBullets.length - 1; i >= 0; i--) {
       const pb = this.playerBullets[i];
@@ -597,15 +641,22 @@ export class GameManager {
           const killed = enemy.hit(1);
           if (killed) {
             const isGiant = enemy.rank.startsWith('GIANT') || enemy.rank === 'UFO_MOTHERSHIP';
-            this.sound.playExplosion(isGiant);
+            this.sound.playExplosion(isGiant || enemy.isBoss);
             this.particles.emitExplosion(
               enemy.x + enemy.width / 2,
               enemy.y + enemy.height / 2,
               '#ffaa00',
-              isGiant ? 50 : 20,
-              isGiant
+              (isGiant || enemy.isBoss) ? 60 : 20,
+              isGiant || enemy.isBoss
             );
             this.score += enemy.scoreValue;
+
+            // ★ ボス撃破でウェーブクリア！次のテトリミノフェーズへ移行！
+            if (enemy === this.currentBoss || enemy.isBoss) {
+              this.currentBoss = null;
+              this.clearStage();
+              return;
+            }
           }
           break;
         }
@@ -617,13 +668,18 @@ export class GameManager {
       if (enemy.isDead) continue;
       const hitRes = this.player.checkHit(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, this.particles);
       if (hitRes.hit) {
-        enemy.hit(5);
+        const killed = enemy.hit(5);
         this.sound.playExplosion(true);
+        if (killed && (enemy === this.currentBoss || enemy.isBoss)) {
+          this.currentBoss = null;
+          this.clearStage();
+          return;
+        }
       }
     }
 
-    // クリア判定
-    if (this.enemies.length === 0 || this.shootingTimeLimit <= 0) {
+    // タイムオーバーまたは敵全滅クリア判定
+    if ((this.bossSpawned && !this.currentBoss && this.enemies.length === 0) || this.shootingTimeLimit <= 0) {
       this.clearStage();
     }
   }
@@ -704,10 +760,10 @@ export class GameManager {
         drawMoonCrestaText(ctx, 'ドッキングせよ', CANVAS_WIDTH / 2, 115, 34, '#00f0ff');
       }
     } else if (this.phase === 'SHOOTING') {
-      // ★ シューティング時は「デストロイ　ゼム　オール！」を同じピクセルフォントで描画！
+      // ★ シューティング時は「WAVE 1」を大きくピクセルフォントで描画！
       const blink = Math.sin(Date.now() / 220) > -0.5;
       if (blink) {
-        drawMoonCrestaText(ctx, 'デストロイ　ゼム　オール！', CANVAS_WIDTH / 2, 70, 28, '#ff3366');
+        drawMoonCrestaText(ctx, `WAVE ${this.stage}`, CANVAS_WIDTH / 2, 70, 32, '#ff3366');
       }
     }
 
@@ -738,20 +794,50 @@ export class GameManager {
     // 6. パーティクル
     this.particles.draw(ctx);
 
-    // 7. フェーズ切り替えバナー
+    // 7. フェーズ切り替えバナー（WAVE開始時は超巨大サイズで迫力満点！）
     if (this.transitionAlpha > 0) {
       ctx.save();
       ctx.globalAlpha = Math.min(1, this.transitionAlpha);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-      ctx.fillRect(0, CANVAS_HEIGHT / 2 - 45, CANVAS_WIDTH, 90);
+      const isWaveBanner = this.transitionText.startsWith('WAVE');
+      const boxHeight = isWaveBanner ? 130 : 90;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+      ctx.fillRect(0, CANVAS_HEIGHT / 2 - boxHeight / 2, CANVAS_WIDTH, boxHeight);
 
-      ctx.font = '900 28px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = this.phase === 'TETRIS' ? '#00ffaa' : '#ff3366';
-      ctx.shadowColor = ctx.fillStyle;
-      ctx.shadowBlur = 12;
-      ctx.fillText(this.transitionText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      if (isWaveBanner) {
+        // 超特大の迫力アーケードフォント
+        const fontSize = Math.floor(64 * this.transitionScale);
+        ctx.font = `900 ${fontSize}px "Impact", "Arial Black", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // 立体シャドウ
+        ctx.fillStyle = '#440011';
+        ctx.fillText(this.transitionText, CANVAS_WIDTH / 2 + 4, CANVAS_HEIGHT / 2 + 4);
+
+        // ネオンレッド発光
+        const grad = ctx.createLinearGradient(0, CANVAS_HEIGHT / 2 - 35, 0, CANVAS_HEIGHT / 2 + 35);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.3, '#ff3366');
+        grad.addColorStop(1, '#ff0033');
+
+        ctx.fillStyle = grad;
+        ctx.shadowColor = '#ff2255';
+        ctx.shadowBlur = 24;
+        ctx.fillText(this.transitionText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(this.transitionText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      } else {
+        const fontSize = Math.floor(28 * this.transitionScale);
+        ctx.font = `900 ${fontSize}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = this.phase === 'TETRIS' ? '#00ffaa' : '#ff3366';
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 14;
+        ctx.fillText(this.transitionText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      }
       ctx.restore();
     }
 
