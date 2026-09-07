@@ -2,9 +2,10 @@ import { BLOCK_SIZE, BULLET_SPEED, BULLET_WIDTH, CANVAS_HEIGHT, CANVAS_WIDTH, EN
 
 export class PlayerBullet {
   public x: number; // 中心X
-  public y: number; // 先端Y
+  public y: number; // 中心Y
   public vx: number;
   public vy: number;
+  public angle: number;
   public width: number;
   public height: number;
   public color: string;
@@ -13,8 +14,9 @@ export class PlayerBullet {
   constructor(x: number, y: number, angle = -Math.PI / 2, color = '#00ffff') {
     this.x = x;
     this.y = y;
+    this.angle = angle;
     this.width = BULLET_WIDTH;
-    this.height = BLOCK_SIZE * 0.9;
+    this.height = BLOCK_SIZE * 0.95;
     this.vx = Math.cos(angle) * BULLET_SPEED;
     this.vy = Math.sin(angle) * BULLET_SPEED;
     this.color = color;
@@ -24,20 +26,24 @@ export class PlayerBullet {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
-    if (this.y < -50 || this.x < -50 || this.x > CANVAS_WIDTH + 50) {
+    if (this.y < -50 || this.y > CANVAS_HEIGHT + 50 || this.x < -50 || this.x > CANVAS_WIDTH + 50) {
       this.isDead = true;
     }
   }
 
   public draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
+    ctx.translate(this.x, this.y);
+    // 弾の進行方向（デフォルトが真上-PI/2のため、+PI/2してローカル上方向を揃える）
+    ctx.rotate(this.angle + Math.PI / 2);
+
     ctx.fillStyle = this.color;
     ctx.shadowColor = this.color;
     ctx.shadowBlur = 10;
 
-    // ビーム弾（丸みを帯びた長方形カプセル）
-    const left = this.x - this.width / 2;
-    const top = this.y - this.height;
+    // ビーム弾（丸みを帯びた極太カプセル）
+    const left = -this.width / 2;
+    const top = -this.height / 2;
 
     ctx.beginPath();
     ctx.roundRect(left, top, this.width, this.height, 4);
@@ -45,7 +51,7 @@ export class PlayerBullet {
 
     // コアの白いハイライト
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(this.x - this.width * 0.25, top + 2, this.width * 0.5, this.height - 4);
+    ctx.fillRect(-this.width * 0.25, top + 2, this.width * 0.5, this.height - 4);
 
     ctx.restore();
   }

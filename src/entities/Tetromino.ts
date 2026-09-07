@@ -3,8 +3,8 @@ import { BLOCK_SIZE, PIECE_MAX_HP, TETROMINO_COLORS } from '../config';
 export type TetrominoType = 'I' | 'J' | 'L' | 'O' | 'S' | 'T' | 'Z';
 
 export interface GridCoord {
-  gx: number; // グリッドX (相対または絶対)
-  gy: number; // グリッドY
+  gx: number; // 相対グリッドX
+  gy: number; // 相対グリッドY
 }
 
 // 7つのテトリミノの形状定義（4セル）
@@ -32,98 +32,83 @@ export const TETROMINO_SHAPES: Record<TetrominoType, GridCoord[]> = {
   ],
 };
 
+// 銃口：各ミノの端点セルから外側に向かう方向
 export interface GunPort {
-  relX: number; // ミノ中心またはセル相対のピクセルオフセットX
-  relY: number; // オフセットY
-  angleOffset: number; // 発射角度（ラジアン: 0は真上 -PI/2）
+  cellGx: number; // 発射元セルのミノ相対gx
+  cellGy: number; // 発射元セルのミノ相対gy
+  dirX: number;   // 発射方向 (-1: 左, 1: 右, 0: なし)
+  dirY: number;   // 発射方向 (-1: 上, 1: 下, 0: なし)
+  angle: number;  // 弾の進行方向ラジアン (真上: -PI/2)
 }
 
-// 落下中またはドッキングされたテトリミノ
 export class TetrominoPiece {
   public id: string;
   public type: TetrominoType;
   public color: string;
-  public cells: GridCoord[]; // 相対セル座標
+  public cells: GridCoord[];
   public hp: number;
   public maxHp: number;
-  public damageFlashTime = 0; // 被弾時の点滅タイマー
+  public damageFlashTime = 0;
   public gunPorts: GunPort[] = [];
 
   constructor(type: TetrominoType, customHp = PIECE_MAX_HP) {
     this.id = Math.random().toString(36).substring(2, 9);
     this.type = type;
     this.color = TETROMINO_COLORS[type];
-    // 形状のコピー
     this.cells = TETROMINO_SHAPES[type].map(c => ({ ...c }));
     this.maxHp = customHp;
     this.hp = customHp;
-    this.setupGunPorts();
+    this.calculateGunPorts();
   }
 
-  // 銃口の配置（仕様：Oは0発、Tは3箇所、他は2箇所）
-  private setupGunPorts(): void {
+  /**
+   * ミノの端点（入口・出口）を幾何学的に特定し、銃口を算出
+   * - 各セルについて、上下左右に隣り合うセルの数を計算
+   * - 隣接セルが1個だけのセル＝端点（入口／出口）
+   *   → 接続元セルと反対の外側方向へ弾が発射される
+   * - I型: 端点2個（両端から反対方向へ）
+   * - T型: 端点3個（3方向へ）
+   * - L, J, S, Z型: 端点2個（2方向へ）
+   * - O型: 全セル隣接数2（端点0個＝弾が出ない）
+   */
+  public calculateGunPorts(): void {
+    this.gunPorts = [];
     if (this.type === 'O') {
       // Oミノは弾が出ない
-      this.gunPorts = [];
       return;
     }
 
-    // 上端にあるセルの位置を調べる
-    const minYPerX: { [x: number]: number } = {};
+    const cellSet = new Set(this.cells.map(c => `${c.gx},${c.gy}`));
+    const directions = [
+      { dx: 0, dy: -1 }, // 上
+      { dx: 1, dy: 0 },  // 右
+      { dx: 0, dy: 1 },  // 下
+      { dx: -1, dy: 0 }, // 左
+    ];
+
     for (const cell of this.cells) {
-      if (minYPerX[cell.gx] === undefined || cell.gy < minYPerX[cell.gx]) {
-        minYPerX[cell.gx] = cell.gy;
+      const neighbors: { dx: number; dy: number }[] = [];
+      for (const d of directions) {
+        if (cellSet.has(`${cell.gx + d.dx},${cell.gy + d.dy}`)) {
+          neighbors.push(d);
+        }
       }
-    }
 
-    const availableX = Object.keys(minYPerX).map(Number).sort((a, b) => a - b);
+      // 端点セル判定（隣接セルが1つだけ）
+      if (neighbors.length === 1) {
+        const connectedDir = neighbors[0];
+        // 外向き方向 = 接続元と真逆
+        const fireDirX = -connectedDir.dx;
+        const fireDirY = -connectedDir.dy;
+        const angle = Math.atan2(fireDirY, fireDirX);
 
-    if (this.type === 'T') {
-      // Tミノに限り3箇所から弾が出る（3WAYまたは前方ワイド）
-      // 中央、左、右
-      this.gunPorts = [
-        // 中央上（直進）
-        {
-          relX: (1 + 0.5) * BLOCK_SIZE,
-          relY: 0,
-          angleOffset: 0,
-        },
-        // 左（やや左斜め）
-        {
-          relX: (0 + 0.5) * BLOCK_SIZE,
-          relY: 1 * BLOCK_SIZE,
-          angleOffset: -0.12,
-        },
-        // 右（やや右斜め）
-        {
-          relX: (2 + 0.5) * BLOCK_SIZE,
-          relY: 1 * BLOCK_SIZE,
-          angleOffset: 0.12,
-        },
-      ];
-    } else {
-      // その他（I, J, L, S, Z）は2箇所から出る
-      if (availableX.length >= 2) {
-        const leftX = availableX[0];
-        const rightX = availableX[availableX.length - 1];
-        this.gunPorts = [
-          {
-            relX: (leftX + 0.5) * BLOCK_SIZE,
-            relY: minYPerX[leftX] * BLOCK_SIZE,
-            angleOffset: 0,
-          },
-          {
-            relX: (rightX + 0.5) * BLOCK_SIZE,
-            relY: minYPerX[rightX] * BLOCK_SIZE,
-            angleOffset: 0,
-          },
-        ];
-      } else {
-        // セル幅が狭い場合
-        this.gunPorts = [
-          { relX: BLOCK_SIZE * 0.3, relY: 0, angleOffset: 0 },
-          { relX: BLOCK_SIZE * 0.7, relY: 0, angleOffset: 0 },
-        ];
+        this.gunPorts.push({
+          cellGx: cell.gx,
+          cellGy: cell.gy,
+          dirX: fireDirX,
+          dirY: fireDirY,
+          angle,
+        });
       }
     }
   }
@@ -131,18 +116,30 @@ export class TetrominoPiece {
   // 90度時計回りに回転
   public rotate(): void {
     if (this.type === 'O') return;
+
+    // (x, y) -> (-y, x)
     this.cells = this.cells.map(c => ({
-      gx: 3 - c.gy,
+      gx: -c.gy,
       gy: c.gx,
     }));
-    // 最小gx, gyを0に正規化
+
+    // 最小gx, gyが0になるよう正規化
     const minX = Math.min(...this.cells.map(c => c.gx));
     const minY = Math.min(...this.cells.map(c => c.gy));
     this.cells.forEach(c => {
       c.gx -= minX;
       c.gy -= minY;
     });
-    this.setupGunPorts();
+
+    this.calculateGunPorts();
+  }
+
+  // 反時計回り回転（元に戻す時用）
+  public rotateCounter(): void {
+    if (this.type === 'O') return;
+    this.rotate();
+    this.rotate();
+    this.rotate();
   }
 
   public hit(damage = 1): boolean {
@@ -163,7 +160,9 @@ export class TetrominoPiece {
     pixelX: number,
     pixelY: number,
     overrideColor?: string,
-    alpha = 1.0
+    alpha = 1.0,
+    hasGunPort = false,
+    gunAngle?: number
   ): void {
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -172,7 +171,7 @@ export class TetrominoPiece {
     ctx.fillStyle = fill;
     ctx.fillRect(pixelX, pixelY, BLOCK_SIZE, BLOCK_SIZE);
 
-    // テトリスブロック風の光沢ハイライト
+    // テトリスブロック風のハイライト
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -189,10 +188,20 @@ export class TetrominoPiece {
     ctx.lineTo(pixelX + 1, pixelY + BLOCK_SIZE - 1);
     ctx.stroke();
 
-    // 銃口インジケータ（Oミノ以外でシューティング時などに小さく表示）
-    if (this.type !== 'O' && this.gunPorts.length > 0) {
+    // 銃口インジケータ（発射口があるセルの外周にネオンマズルを描画）
+    if (hasGunPort && gunAngle !== undefined) {
+      ctx.save();
+      const cx = pixelX + BLOCK_SIZE / 2;
+      const cy = pixelY + BLOCK_SIZE / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate(gunAngle);
+
       ctx.fillStyle = '#ffea00';
-      ctx.fillRect(pixelX + BLOCK_SIZE / 2 - 2, pixelY, 4, 3);
+      ctx.shadowColor = '#ffea00';
+      ctx.shadowBlur = 6;
+      // セルの外側エッジにマズルを配置
+      ctx.fillRect(BLOCK_SIZE / 2 - 3, -4, 4, 8);
+      ctx.restore();
     }
 
     ctx.restore();

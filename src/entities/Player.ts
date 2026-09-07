@@ -1,4 +1,4 @@
-import { BLOCK_SIZE, CANVAS_WIDTH, LEFT_WALL_COL, PLAYER_INITIAL_Y, PLAYER_SPEED, RIGHT_WALL_COL } from '../config';
+import { BLOCK_SIZE, CANVAS_HEIGHT, CANVAS_WIDTH, LEFT_WALL_COL, PLAYER_INITIAL_Y, PLAYER_SPEED, RIGHT_WALL_COL } from '../config';
 import { ParticleManager } from '../effects/Particle';
 import { PlayerBullet } from './Bullet';
 import { TetrominoPiece, TetrominoType } from './Tetromino';
@@ -6,8 +6,8 @@ import { WallManager } from './Wall';
 
 export interface AttachedPiece {
   piece: TetrominoPiece;
-  relGx: number; // 自機アンカーセル(0,0)に対する相対グリッドX
-  relGy: number; // 自機アンカーセル(0,0)に対する相対グリッドY
+  relGx: number; // 自機アンカーに対する相対グリッドX
+  relGy: number; // 自機アンカーに対する相対グリッドY
 }
 
 export class Player {
@@ -23,7 +23,7 @@ export class Player {
     this.initInitialPiece();
   }
 
-  // 初期の自機：Oミノ（正方形2x2）
+  // 初期の自機：Oミノ（正方形2x2、端点なし＝弾なし）
   public initInitialPiece(): void {
     this.pieces = [];
     const oPiece = new TetrominoPiece('O');
@@ -35,10 +35,10 @@ export class Player {
   }
 
   // 占有しているすべての絶対グリッド座標を返す
-  public getOccupiedCells(): { gx: number; gy: number; piece: TetrominoPiece; pieceRelX: number; pieceRelY: number }[] {
+  public getOccupiedCells(): { gx: number; gy: number; piece: TetrominoPiece }[] {
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
-    const cells: { gx: number; gy: number; piece: TetrominoPiece; pieceRelX: number; pieceRelY: number }[] = [];
+    const cells: { gx: number; gy: number; piece: TetrominoPiece }[] = [];
 
     for (const attached of this.pieces) {
       for (const c of attached.piece.cells) {
@@ -46,15 +46,13 @@ export class Player {
           gx: baseGx + attached.relGx + c.gx,
           gy: baseGy + attached.relGy + c.gy,
           piece: attached.piece,
-          pieceRelX: (attached.relGx + c.gx) * BLOCK_SIZE,
-          pieceRelY: (attached.relGy + c.gy) * BLOCK_SIZE,
         });
       }
     }
     return cells;
   }
 
-  // 自機の左右バウンディングボックス（ピクセル単位）
+  // 自機のバウンディングボックス（ピクセル単位）
   public getBoundingBox(): { minX: number; maxX: number; minY: number; maxY: number } {
     let minRelGx = 999;
     let maxRelGx = -999;
@@ -80,17 +78,14 @@ export class Player {
     };
   }
 
-  // 落下中のミノが自機とドッキング可能か判定して結合
+  // 落下中のミノ（fallGx, fallGy）が自機と接触しているか判定し、結合確定
   public tryDock(
     fallingPiece: TetrominoPiece,
-    fallPx: number,
-    fallPy: number
+    fallGx: number,
+    fallGy: number
   ): { docked: boolean; piece?: TetrominoPiece } {
     const playerBaseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const playerBaseGy = Math.round(this.anchorY / BLOCK_SIZE);
-
-    const fallGx = Math.round(fallPx / BLOCK_SIZE);
-    const fallGy = Math.round(fallPy / BLOCK_SIZE);
 
     // 落下ミノの各セルのグリッド絶対座標
     const fallingAbsoluteCells = fallingPiece.cells.map(c => ({
@@ -98,14 +93,12 @@ export class Player {
       gy: fallGy + c.gy,
     }));
 
-    // 自機の各セルの絶対グリッド座標
     const myCells = this.getOccupiedCells();
 
-    // 重なりがあるかチェック
+    // すでに重なっている場合は結合不可
     for (const fc of fallingAbsoluteCells) {
       for (const mc of myCells) {
         if (fc.gx === mc.gx && fc.gy === mc.gy) {
-          // すでに重なっている場合は結合不可（スナップのズレ）
           return { docked: false };
         }
       }
@@ -149,42 +142,56 @@ export class Player {
     return { docked: false };
   }
 
-  // 移動処理（壁コリジョン考慮）
+  // 移動処理（シューティングタイム用：上下左右に移動可能！）
   public updateMovement(
     dt: number,
-    inputs: { left: boolean; right: boolean; mouseX: number | null; hasMouseMoved: boolean },
+    inputs: {
+      left: boolean;
+      right: boolean;
+      up: boolean;
+      down: boolean;
+      mouseX: number | null;
+      mouseY: number | null;
+      hasMouseMoved: boolean;
+    },
     wallManager: WallManager
   ): void {
     const bounds = this.getBoundingBox();
     const width = bounds.maxX - bounds.minX;
+    const height = bounds.maxY - bounds.minY;
+
     const minWallX = (LEFT_WALL_COL + 1) * BLOCK_SIZE;
     const maxWallX = RIGHT_WALL_COL * BLOCK_SIZE;
+    const minMovableY = 80; // HUDの下
+    const maxMovableY = CANVAS_HEIGHT - 20;
 
-    let moveDelta = 0;
+    let deltaX = 0;
+    let deltaY = 0;
 
-    if (inputs.hasMouseMoved && inputs.mouseX !== null) {
-      // マウス操作：中心位置に追従
+    if (inputs.hasMouseMoved && inputs.mouseX !== null && inputs.mouseY !== null) {
+      // マウス操作（目標中心位置へスムーズに追従）
       const targetAnchorX = inputs.mouseX - width / 2;
-      const diff = targetAnchorX - this.anchorX;
-      moveDelta = Math.sign(diff) * Math.min(Math.abs(diff), PLAYER_SPEED * 1.5 * dt);
+      const targetAnchorY = inputs.mouseY - height / 2;
+      const diffX = targetAnchorX - this.anchorX;
+      const diffY = targetAnchorY - this.anchorY;
+
+      deltaX = Math.sign(diffX) * Math.min(Math.abs(diffX), PLAYER_SPEED * 1.5 * dt);
+      deltaY = Math.sign(diffY) * Math.min(Math.abs(diffY), PLAYER_SPEED * 1.5 * dt);
     } else {
-      // キーボード操作
-      if (inputs.left) {
-        moveDelta -= PLAYER_SPEED * dt;
-      }
-      if (inputs.right) {
-        moveDelta += PLAYER_SPEED * dt;
-      }
+      // キーボード操作（上下左右）
+      if (inputs.left) deltaX -= PLAYER_SPEED * dt;
+      if (inputs.right) deltaX += PLAYER_SPEED * dt;
+      if (inputs.up) deltaY -= PLAYER_SPEED * dt;
+      if (inputs.down) deltaY += PLAYER_SPEED * dt;
     }
 
-    if (moveDelta !== 0) {
-      const nextAnchorX = this.anchorX + moveDelta;
+    // X軸の移動と衝突判定
+    if (deltaX !== 0) {
+      const nextAnchorX = this.anchorX + deltaX;
       const nextMinX = nextAnchorX + (bounds.minX - this.anchorX);
       const nextMaxX = nextAnchorX + (bounds.maxX - this.anchorX);
 
-      // 画面左右端の壁判定
       if (nextMinX >= minWallX && nextMaxX <= maxWallX) {
-        // 壁防壁との詳細衝突判定
         let collides = false;
         const testBaseGx = Math.round(nextAnchorX / BLOCK_SIZE);
         const testBaseGy = Math.round(this.anchorY / BLOCK_SIZE);
@@ -207,41 +214,88 @@ export class Player {
       }
     }
 
+    // Y軸の移動と衝突判定（上下移動）
+    if (deltaY !== 0) {
+      const nextAnchorY = this.anchorY + deltaY;
+      const nextMinY = nextAnchorY + (bounds.minY - this.anchorY);
+      const nextMaxY = nextAnchorY + (bounds.maxY - this.anchorY);
+
+      if (nextMinY >= minMovableY && nextMaxY <= maxMovableY) {
+        let collides = false;
+        const testBaseGx = Math.round(this.anchorX / BLOCK_SIZE);
+        const testBaseGy = Math.round(nextAnchorY / BLOCK_SIZE);
+
+        for (const attached of this.pieces) {
+          for (const c of attached.piece.cells) {
+            const gx = testBaseGx + attached.relGx + c.gx;
+            const gy = testBaseGy + attached.relGy + c.gy;
+            if (wallManager.hasBlock(gx, gy)) {
+              collides = true;
+              break;
+            }
+          }
+          if (collides) break;
+        }
+
+        if (!collides) {
+          this.anchorY = nextAnchorY;
+        }
+      }
+    }
+
     if (this.fireCooldown > 0) {
       this.fireCooldown -= dt;
     }
 
-    // パーツ更新
     for (const attached of this.pieces) {
       attached.piece.update(dt);
     }
   }
 
-  // ショット発射処理
-  public shootBullets(): PlayerBullet[] {
+  // ショット発射処理（塞がり判定＆全方向ビーム）
+  public shootBullets(wallManager: WallManager): PlayerBullet[] {
     const bullets: PlayerBullet[] = [];
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
+
+    const occupiedMap = new Set<string>();
+    for (const cell of this.getOccupiedCells()) {
+      occupiedMap.add(`${cell.gx},${cell.gy}`);
+    }
 
     for (const attached of this.pieces) {
       const piece = attached.piece;
       if (piece.type === 'O') continue; // Oミノは弾が出ない
 
-      const piecePx = (baseGx + attached.relGx) * BLOCK_SIZE;
-      const piecePy = (baseGy + attached.relGy) * BLOCK_SIZE;
-
       for (const gun of piece.gunPorts) {
-        const bx = piecePx + gun.relX;
-        const by = piecePy + gun.relY;
-        const angle = -Math.PI / 2 + gun.angleOffset;
-        bullets.push(new PlayerBullet(bx, by, angle, piece.color));
+        const sourceGx = baseGx + attached.relGx + gun.cellGx;
+        const sourceGy = baseGy + attached.relGy + gun.cellGy;
+
+        const targetGx = sourceGx + gun.dirX;
+        const targetGy = sourceGy + gun.dirY;
+
+        // 【塞がり判定】隣が自機の別のブロックで塞がれているか？
+        if (occupiedMap.has(`${targetGx},${targetGy}`)) {
+          continue;
+        }
+
+        // 壁ブロックで塞がれているか？
+        if (wallManager.hasBlock(targetGx, targetGy)) {
+          continue;
+        }
+
+        // 塞がれていないので発射！
+        const bx = (sourceGx + 0.5 + gun.dirX * 0.5) * BLOCK_SIZE;
+        const by = (sourceGy + 0.5 + gun.dirY * 0.5) * BLOCK_SIZE;
+
+        bullets.push(new PlayerBullet(bx, by, gun.angle, piece.color));
       }
     }
 
     return bullets;
   }
 
-  // 被弾判定：(px, py) が自機のどのパーツに当たったかを判定
+  // 被弾判定
   public checkHit(
     px: number,
     py: number,
@@ -259,7 +313,6 @@ export class Player {
         const cellY = (baseGy + attached.relGy + cell.gy) * BLOCK_SIZE;
 
         if (px >= cellX && px < cellX + BLOCK_SIZE && py >= cellY && py < cellY + BLOCK_SIZE) {
-          // パーツにヒット！
           const isDestroyed = piece.hit(1);
           particles.emitSparks(px, py, piece.color, 10);
 
@@ -282,20 +335,42 @@ export class Player {
     return { hit: false, pieceDestroyed: false };
   }
 
-  public draw(ctx: CanvasRenderingContext2D): void {
+  public draw(ctx: CanvasRenderingContext2D, wallManager?: WallManager): void {
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
+
+    const occupiedMap = new Set<string>();
+    for (const cell of this.getOccupiedCells()) {
+      occupiedMap.add(`${cell.gx},${cell.gy}`);
+    }
 
     for (const attached of this.pieces) {
       const piece = attached.piece;
       for (const cell of piece.cells) {
         const px = (baseGx + attached.relGx + cell.gx) * BLOCK_SIZE;
         const py = (baseGy + attached.relGy + cell.gy) * BLOCK_SIZE;
-        piece.drawCell(ctx, px, py);
+
+        const gun = piece.gunPorts.find(g => g.cellGx === cell.gx && g.cellGy === cell.gy);
+        let hasActiveGun = false;
+        let activeAngle = 0;
+
+        if (gun && wallManager) {
+          const sourceGx = baseGx + attached.relGx + gun.cellGx;
+          const sourceGy = baseGy + attached.relGy + gun.cellGy;
+          const targetGx = sourceGx + gun.dirX;
+          const targetGy = sourceGy + gun.dirY;
+
+          if (!occupiedMap.has(`${targetGx},${targetGy}`) && !wallManager.hasBlock(targetGx, targetGy)) {
+            hasActiveGun = true;
+            activeAngle = gun.angle;
+          }
+        }
+
+        piece.drawCell(ctx, px, py, undefined, 1.0, hasActiveGun, activeAngle);
       }
     }
 
-    // ギャラガ風スラスター噴射アニメーション（底部）
+    // スラスター炎
     const bounds = this.getBoundingBox();
     const thrusterX = (bounds.minX + bounds.maxX) / 2;
     const thrusterY = bounds.maxY;

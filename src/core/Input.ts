@@ -1,4 +1,4 @@
-// ユーザー入力の管理（キーボード＆マウス）
+// ユーザー入力の管理（テトリス操作用 JustPressed / Continuous 対応）
 export class Input {
   public left = false;
   public right = false;
@@ -6,7 +6,13 @@ export class Input {
   public down = false;
   public shoot = false;
   public mutePressed = false;
-  
+
+  // 単発押し判定（テトリスの回転や1マス移動用）
+  public justLeft = false;
+  public justRight = false;
+  public justRotate = false;
+  public justDrop = false;
+
   public mouseX: number | null = null;
   public mouseY: number | null = null;
   public isMouseDown = false;
@@ -21,26 +27,36 @@ export class Input {
 
   private setupListeners(): void {
     window.addEventListener('keydown', (e) => {
+      // 画面スクロール防止
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+        e.preventDefault();
+      }
+
       switch (e.code) {
         case 'ArrowLeft':
         case 'KeyA':
+          if (!this.left) this.justLeft = true;
           this.left = true;
           this.hasMouseMoved = false;
           break;
         case 'ArrowRight':
         case 'KeyD':
+          if (!this.right) this.justRight = true;
           this.right = true;
           this.hasMouseMoved = false;
           break;
         case 'ArrowUp':
         case 'KeyW':
+          if (!this.up) this.justRotate = true;
           this.up = true;
           break;
         case 'ArrowDown':
         case 'KeyS':
+          if (!this.down) this.justDrop = true;
           this.down = true;
           break;
         case 'Space':
+          if (!this.shoot) this.justRotate = true; // テトリスタイム時はSpaceでも回転
           this.shoot = true;
           break;
         case 'KeyM':
@@ -86,6 +102,7 @@ export class Input {
       if (e.button === 0) {
         this.isMouseDown = true;
         this.shoot = true;
+        this.justRotate = true;
       }
     });
 
@@ -104,5 +121,9 @@ export class Input {
 
   public resetPerFrame(): void {
     this.mutePressed = false;
+    this.justLeft = false;
+    this.justRight = false;
+    this.justRotate = false;
+    this.justDrop = false;
   }
 }
