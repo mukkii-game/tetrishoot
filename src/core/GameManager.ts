@@ -58,6 +58,10 @@ export class GameManager {
   public bossDying = false;
   public bossDeathTimer = 0;
 
+  // 80年代アーケード風ゲームフィール：画面揺れ（シェイク）＆ヒットストップ
+  public screenShake = 0;
+  public hitStopTimer = 0;
+
   // バトル中に時々落ちてくる回転不可ブロック（1ウェーブに1回程度）
   public battlePiece: FallingPieceItem | null = null;
   private battlePieceTimer = 0;
@@ -203,9 +207,19 @@ export class GameManager {
   }
 
   private updatePlaying(dt: number, input: Input): void {
+    if (this.screenShake > 0) {
+      this.screenShake = Math.max(0, this.screenShake - dt * 14);
+    }
+
     if (this.phase === 'TETRIS') {
       this.updateTetrisPhase(dt, input);
     } else {
+      // 80年代アーケード快感演出：マイクロ・ヒットストップ（1〜2フレームの物理停止で弾の重み・衝撃を演出）
+      if (this.hitStopTimer > 0) {
+        this.hitStopTimer -= dt;
+        return;
+      }
+
       this.player.updateMovement(dt, input);
       this.updateShootingPhase(dt, input);
     }
@@ -455,27 +469,35 @@ export class GameManager {
 
       case 3:
         // 【WAVE 3：下からの奇襲特化面！（下向きビーム大活躍）】（ザコ2倍：計26機！）
-        // 画面下からグングン噴き上がる敵が多数！上からの8の字部隊と挟み撃ち！
+        // 画面下からグングン噴き上がる敵が連続編隊で連なって突入！上からの8の字部隊と挟み撃ち！
         for (let k = 0; k < 12; k++) {
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 2 + (k % 5), 1, 0.3, 'FIGURE_EIGHT', k));
         }
-        for (let i = 0; i < 14; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 7) * 2, 2, 1.2 + i * 0.25));
+        // 下からの連隊（7機×2列が順序よく連なって噴水のように上昇！）
+        for (let i = 0; i < 7; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 4) * 2, 2, 1.2 + i * 0.14));
+        }
+        for (let i = 0; i < 7; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 2 + (i % 4) * 2, 2, 2.4 + i * 0.14));
         }
         break;
 
       case 4:
         // 【WAVE 4：横からの低空・中空横断スイープ特化面！（左右ビーム大活躍）】（ザコ2倍：計28機＋大型艦！）
-        // 左右から次々と横切る高速スイープ編隊！左右に砲台を付けたくなる！
+        // 左右から次々と横切る高速スイープ編隊！等間隔に連なって画面を横断！
         for (let k = 0; k < 12; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
+        // 左からの連隊（8機が隙間なく連なって突進）
         for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_LEFT', 2, i % 2, 0.8 + i * 0.35));
-          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_RIGHT', 7, (i + 1) % 2, 1.0 + i * 0.35));
+          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_LEFT', 2, 0, 0.8 + i * 0.13));
         }
-        this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 3, 0, 2.5));
-        this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 6, 0, 2.8));
+        // 右からの連隊（8機が隙間なく連なって突進）
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_RIGHT', 7, 1, 1.8 + i * 0.13));
+        }
+        this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 3, 0, 3.0));
+        this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 6, 0, 3.4));
         break;
 
       case 5:
@@ -485,23 +507,29 @@ export class GameManager {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.3, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.3, 'INFINITY_DIVE_RIGHT', k));
         }
+        // 下からの連隊（8機が連なって急上昇）
         for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 6) * 2, 2, 1.6 + i * 0.3));
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 6) * 2, 2, 1.6 + i * 0.14));
         }
         break;
 
       case 6:
         // 【WAVE 6：四方包囲網（左右横断＋下噴出のハイブリッド！）】（ザコ2倍：計34機！）
-        // 左右からのスイープと下からの上昇が同時に押し寄せる！
+        // 左右からのスイープと下からの上昇が連隊となって押し寄せる！
         for (let k = 0; k < 12; k++) {
           this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 0.2, 'FIGURE_EIGHT', k));
         }
+        // 下からの連隊（10機連続噴出）
         for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 7) * 2, 2, 0.9 + i * 0.22));
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 7) * 2, 2, 0.9 + i * 0.13));
         }
+        // 左スイープ連隊（6機）
         for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 1.4 + i * 0.4));
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 1.6 + i * 0.4));
+          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 1.8 + i * 0.16));
+        }
+        // 右スイープ連隊（6機）
+        for (let i = 0; i < 6; i++) {
+          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 2.6 + i * 0.16));
         }
         break;
 
@@ -521,15 +549,17 @@ export class GameManager {
 
       case 8:
         // 【WAVE 8：怒涛の下噴出ストーム（地獄の噴水編隊）】（ザコ2倍：計38機！）
-        // 下から大量のエイリアンが次々と高速噴出！
+        // 下から大量のエイリアンが次々と高速噴出連隊！
         for (let k = 0; k < 16; k++) {
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 1 + (k % 7), 2, 0.2, 'S_CURVE_RIGHT_TO_LEFT', k));
         }
+        // 噴水のように連なる16機
         for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.7 + i * 0.18));
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.7 + i * 0.12));
         }
+        // 左スイープ連隊
         for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 0, 1.8 + i * 0.4));
+          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 0, 2.2 + i * 0.15));
         }
         break;
 
@@ -540,11 +570,12 @@ export class GameManager {
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 5), 3, 0.2, 'INFINITY_DIVE_RIGHT', k));
         }
         for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SURPRISE_FROM_BOTTOM', 1 + (i % 7) * 2, 2, 0.9 + i * 0.18));
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SURPRISE_FROM_BOTTOM', 1 + (i % 7) * 2, 2, 0.9 + i * 0.12));
         }
+        // 左右から同時に連なって横断
         for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 1.4 + i * 0.3));
-          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_RIGHT', 7, 0, 1.4 + i * 0.3));
+          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 1.6 + i * 0.14));
+          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_RIGHT', 7, 0, 1.6 + i * 0.14));
         }
         break;
 
@@ -557,11 +588,11 @@ export class GameManager {
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 3, 0.1, 'INFINITY_DIVE_RIGHT', k));
         }
         for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.7 + i * 0.15));
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.7 + i * 0.11));
         }
         for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 1, 0, 1.2 + i * 0.3));
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 1.2 + i * 0.3));
+          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 1, 0, 1.4 + i * 0.13));
+          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 1.4 + i * 0.13));
         }
         this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 2, 0, 0.4));
         this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 4, 0, 0.4));
@@ -702,7 +733,10 @@ export class GameManager {
 
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      e.update(dt, this.formationOffsetAngle, this.player.anchorX, this.player.anchorY, canDive);
+      const justDived = e.update(dt, this.formationOffsetAngle, this.player.anchorX, this.player.anchorY, canDive);
+      if (justDived) {
+        this.sound.playDiveSiren();
+      }
       if (e.isDead) {
         this.enemies.splice(i, 1);
       }
@@ -746,6 +780,8 @@ export class GameManager {
               this.currentBoss = null;
               this.bossDying = true;
               this.bossDeathTimer = 0;
+              this.hitStopTimer = 0.08;
+              this.screenShake = 14;
               return;
             } else {
               this.sound.playExplosion(isGiant);
@@ -757,7 +793,13 @@ export class GameManager {
                 isGiant
               );
               this.score += enemy.scoreValue;
+              this.hitStopTimer = isGiant ? 0.05 : 0.025; // マイクロヒットストップ
+              this.screenShake = Math.max(this.screenShake, isGiant ? 6 : 2.5);
             }
+          } else {
+            // 被弾時（ボス等）：手応えのあるマイクロヒットストップと軽い振動
+            this.hitStopTimer = 0.025;
+            this.screenShake = Math.max(this.screenShake, 3);
           }
           break;
         }
@@ -771,6 +813,8 @@ export class GameManager {
       if (hitRes.hit) {
         const killed = enemy.hit(5);
         this.sound.playExplosion(true);
+        this.screenShake = 12;
+        this.hitStopTimer = 0.05;
         if (killed && (enemy === this.currentBoss || enemy.isBoss)) {
           this.sound.playBossExplosion();
           this.particles.emitBossExplosion(
@@ -783,6 +827,8 @@ export class GameManager {
           this.currentBoss = null;
           this.bossDying = true;
           this.bossDeathTimer = 0;
+          this.hitStopTimer = 0.08;
+          this.screenShake = 16;
           return;
         }
       }
@@ -816,6 +862,13 @@ export class GameManager {
   // ==========================================
   public draw(ctx: CanvasRenderingContext2D): void {
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    ctx.save();
+    if (this.screenShake > 0) {
+      const shakeX = (Math.random() - 0.5) * this.screenShake;
+      const shakeY = (Math.random() - 0.5) * this.screenShake;
+      ctx.translate(shakeX, shakeY);
+    }
 
     // 1. 豪華な渦巻き銀河・星雲・多層スターフィールド
     this.starfield.draw(ctx);
@@ -853,10 +906,10 @@ export class GameManager {
         }
       }
 
-      // ★ ムーンクレスタ完全再現：「ドッキングせよ」をシアン色ピクセルで描画！
+      // ★ ムーンクレスタ完全再現：「ドッキングせよ！」をシアン色ピクセルで描画！
       const blink = Math.sin(Date.now() / 200) > -0.7;
       if (blink) {
-        drawMoonCrestaText(ctx, 'ドッキングせよ', CANVAS_WIDTH / 2, 115, 34, '#00f0ff');
+        drawMoonCrestaText(ctx, 'ドッキングせよ！', CANVAS_WIDTH / 2, 115, 36, '#00f0ff');
       }
     } else if (this.phase === 'SHOOTING') {
       // ★ シューティング時は「WAVE 1」を大きくピクセルフォントで描画！
@@ -1028,6 +1081,8 @@ export class GameManager {
       }
       ctx.restore();
     }
+
+    ctx.restore(); // screenShakeのctx.save()に対応
   }
 
   // かっこいいタイトルロゴ描画（超大型 Galaxtris ＋ 差をつけたリズミカルなカタカナ：ギャラクトリス）

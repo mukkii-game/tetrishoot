@@ -163,18 +163,34 @@ export class Enemy {
     playerX: number,
     playerY: number,
     canDive: boolean
-  ): void {
+  ): boolean {
+    let justStartedDive = false;
     this.timeAlive += dt;
     this.patternTimer += dt;
     if (this.flashTime > 0) this.flashTime -= dt;
 
-    this.animTimer += dt;
+    if (this.patternTimer < 0) {
+      // 出現待機中は初期画面外位置に留める
+      if (this.pattern === 'SWEEP_FROM_LEFT') {
+        this.x = -this.width - 20;
+        this.y = this.formationY;
+      } else if (this.pattern === 'SWEEP_FROM_RIGHT') {
+        this.x = CANVAS_WIDTH + 20;
+        this.y = this.formationY;
+      } else if (this.pattern === 'SURPRISE_FROM_BOTTOM') {
+        this.x = this.formationX;
+        this.y = CANVAS_HEIGHT + 30;
+      } else {
+        this.x = -100;
+        this.y = -100;
+      }
+      return false;
+    }
+
     if (this.animTimer >= 0.22) {
       this.animTimer = 0;
       this.animFrame = 1 - this.animFrame;
     }
-
-    if (this.patternTimer < 0) return;
 
     switch (this.pattern) {
       // ★ ギャプラス＆ギャラガ完全再現：曲線で連なって流れる美しい大編隊！
@@ -185,7 +201,7 @@ export class Enemy {
         if (t < 0) {
           this.x = -100;
           this.y = -100;
-          return;
+          return false;
         }
 
         const pos = this.computeCurvePosition(t, this.curveType || 'FIGURE_EIGHT');
@@ -271,6 +287,7 @@ export class Enemy {
           this.diveAngle = -Math.PI / 2;
           this.diveTargetX = playerX;
           this.diveTargetY = playerY;
+          justStartedDive = true;
         }
         break;
       }
@@ -312,6 +329,8 @@ export class Enemy {
         break;
       }
     }
+
+    return justStartedDive;
   }
 
   // 美しい曲線のパラメトリック座標計算
