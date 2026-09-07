@@ -213,6 +213,32 @@ export class Sound {
     osc.stop(now + 0.29);
   }
 
+  // 6.6. ムーンクレスタ名物・メテオ・急襲アラート（ピヨピヨピヨピヨ！と高速変調する電子警告音）
+  public playMeteorSiren(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    for (let i = 0; i < 4; i++) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const st = now + i * 0.06;
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(1200, st);
+      osc.frequency.exponentialRampToValueAtTime(300, st + 0.05);
+
+      gain.gain.setValueAtTime(0.08, st);
+      gain.gain.exponentialRampToValueAtTime(0.005, st + 0.05);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(st);
+      osc.stop(st + 0.055);
+    }
+  }
+
   // 7. フェーズアラート
   public playPhaseAlert(phase: 'tetris' | 'shooting'): void {
     if (phase === 'tetris') {

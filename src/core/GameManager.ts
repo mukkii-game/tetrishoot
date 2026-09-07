@@ -120,7 +120,7 @@ export class GameManager {
   private startShootingPhase(): void {
     this.phase = 'SHOOTING';
     this.fallingPieces = [];
-    this.shootingTimeLimit = 48; // バトル時間を約2倍（48秒）に延長！
+    this.shootingTimeLimit = 65; // バトル時間をさらに延長（ザコ2倍＋高耐久ボス戦に充分な時間）
     this.formationOffsetAngle = 0;
     this.battlePiece = null;
     this.battlePieceTimer = 0;
@@ -443,160 +443,157 @@ export class GameManager {
 
     switch (this.stage) {
       case 1:
-        // 【WAVE 1：ギャラガ導入編】（ザコ2倍：計22機！）
-        // 左からのS字カーブと8の字ループ。軌道が美しく、倒すのが気持ちいい基本面！
-        for (let k = 0; k < 12; k++) {
+        // 【WAVE 1：ギャラガ導入編】（ザコ44機！）
+        // 美しいS字カーブと8の字ループ。軌道が流麗で、連射でなぎ倒す基本面！
+        for (let k = 0; k < 24; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
-        for (let k = 0; k < 10; k++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 3 + (k % 4), 1, 1.2, 'FIGURE_EIGHT', k));
+        for (let k = 0; k < 20; k++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 1.2, 'FIGURE_EIGHT', k));
         }
         break;
 
       case 2:
-        // 【WAVE 2：左右クロスストリーム】（ザコ2倍：計40機！）
-        // 左と右から時間差で優雅に交差して降下！
-        for (let k = 0; k < 14; k++) {
+        // 【WAVE 2：左右クロスストリーム ＆ ジグザグ急降下】（ザコ56機！）
+        // 左右から交差して降下する大編隊＋電光石火のジグザグ急降下奇襲！
+        for (let k = 0; k < 20; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
-        for (let k = 0; k < 14; k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 5 + (k % 4), 2, 0.6, 'S_CURVE_RIGHT_TO_LEFT', k));
+        for (let k = 0; k < 20; k++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 5 + (k % 4), 2, 0.5, 'S_CURVE_RIGHT_TO_LEFT', k));
         }
-        for (let k = 0; k < 12; k++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 1.4, 'FIGURE_EIGHT', k));
+        for (let i = 0; i < 16; i++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'ZIGZAG_DIVE', 1 + (i % 7), 1, 1.4 + i * 0.14));
         }
         break;
 
       case 3:
-        // 【WAVE 3：下からの奇襲特化面！（下向きビーム大活躍）】（ザコ2倍：計26機！）
-        // 画面下からグングン噴き上がる敵が連続編隊で連なって突入！上からの8の字部隊と挟み撃ち！
-        for (let k = 0; k < 12; k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 2 + (k % 5), 1, 0.3, 'FIGURE_EIGHT', k));
+        // 【WAVE 3：下からの噴水地獄 ＆ 8の字挟み撃ち】（ザコ52機！）
+        // 画面下から猛烈な勢いで噴き上がる噴水ストリーム！下向きビーム大活躍！
+        for (let k = 0; k < 20; k++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 2 + (k % 5), 1, 0.2, 'FIGURE_EIGHT', k));
         }
-        // 下からの連隊（7機×2列が順序よく連なって噴水のように上昇！）
-        for (let i = 0; i < 7; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 4) * 2, 2, 1.2 + i * 0.14));
+        // 下からの連隊（16機×2列が噴水のように連続噴出）
+        for (let i = 0; i < 16; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 4) * 2, 2, 1.0 + i * 0.12));
         }
-        for (let i = 0; i < 7; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 2 + (i % 4) * 2, 2, 2.4 + i * 0.14));
+        for (let i = 0; i < 16; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 2 + (i % 4) * 2, 2, 2.2 + i * 0.12));
         }
         break;
 
       case 4:
-        // 【WAVE 4：横からの低空・中空横断スイープ特化面！（左右ビーム大活躍）】（ザコ2倍：計28機＋大型艦！）
-        // 左右から次々と横切る高速スイープ編隊！等間隔に連なって画面を横断！
-        for (let k = 0; k < 12; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k));
+        // 【WAVE 4：ムーンクレスタ名物・激震メテオゾーン！】（ザコ56機！）
+        // 天頂から大量の硬い隕石メテオが燃えながら高速乱舞落下！左右横断部隊と挟撃！
+        for (let i = 0; i < 28; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.4 + i * 0.12));
         }
-        // 左からの連隊（8機が隙間なく連なって突進）
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_LEFT', 2, 0, 0.8 + i * 0.13));
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_LEFT', 2, 0, 1.6 + i * 0.12));
+          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_RIGHT', 7, 1, 2.4 + i * 0.12));
         }
-        // 右からの連隊（8機が隙間なく連なって突進）
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_RIGHT', 7, 1, 1.8 + i * 0.13));
-        }
-        this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 3, 0, 3.0));
-        this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 6, 0, 3.4));
         break;
 
       case 5:
-        // 【WAVE 5：中ボス迎撃 ＆ インフィニティ急降下乱舞！】（ザコ2倍：計28機！）
-        // 宙返りダブルインフィニティ部隊が左右から急降下！
-        for (let k = 0; k < 10; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.3, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.3, 'INFINITY_DIVE_RIGHT', k));
+        // 【WAVE 5：中ボス前哨戦 ＆ 左右X字クロススプリット大交差】（ザコ60機！）
+        // 左右上空から対角線に超高速で交差突進する怒涛のスプリット部隊＋インフィニティ宙返り！
+        for (let k = 0; k < 18; k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.2, 'INFINITY_DIVE_LEFT', k));
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.2, 'INFINITY_DIVE_RIGHT', k));
         }
-        // 下からの連隊（8機が連なって急上昇）
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 6) * 2, 2, 1.6 + i * 0.14));
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'CROSS_SPLIT', 1, 0, 1.2 + i * 0.13));
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'CROSS_SPLIT', 7, 0, 1.2 + i * 0.13));
         }
         break;
 
       case 6:
-        // 【WAVE 6：四方包囲網（左右横断＋下噴出のハイブリッド！）】（ザコ2倍：計34機！）
-        // 左右からのスイープと下からの上昇が連隊となって押し寄せる！
-        for (let k = 0; k < 12; k++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 0.2, 'FIGURE_EIGHT', k));
+        // 【WAVE 6：四方包囲網（左右横断＋下噴出＋メテオのトリプル猛攻）】（ザコ64機！）
+        // 上からメテオ、下から噴出、左右から大型艦スイープが同時に押し寄せる！
+        for (let i = 0; i < 20; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.4 + i * 0.13));
         }
-        // 下からの連隊（10機連続噴出）
-        for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 7) * 2, 2, 0.9 + i * 0.13));
+        for (let i = 0; i < 20; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 7) * 2, 2, 1.0 + i * 0.11));
         }
-        // 左スイープ連隊（6機）
-        for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 1.8 + i * 0.16));
-        }
-        // 右スイープ連隊（6機）
-        for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 2.6 + i * 0.16));
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 2.0 + i * 0.15));
+          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 2.8 + i * 0.15));
         }
         break;
 
       case 7:
-        // 【WAVE 7：急降下インフィニティ超乱舞 ＆ 左右高速挟み撃ち】（ザコ2倍：計36機＋エスコート艦！）
-        for (let k = 0; k < 12; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 3, 0.2, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 3, 0.2, 'INFINITY_DIVE_RIGHT', k));
+        // 【WAVE 7：カミソリ急降下ジグザグストーム ＆ インフィニティ大乱舞】（ザコ68機！）
+        // 左右に激しく身をよじりながら切り込むジグザグ編隊の大群！
+        for (let k = 0; k < 20; k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 3, 0.15, 'INFINITY_DIVE_LEFT', k));
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 3, 0.15, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let k = 0; k < 12; k++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 1.2, 'FIGURE_EIGHT', k));
+        for (let i = 0; i < 24; i++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'ZIGZAG_DIVE', 1 + (i % 8), 1, 1.0 + i * 0.11));
         }
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 2, 0, 0.5));
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 4, 0, 0.5));
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 6, 0, 0.5));
+        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 2, 0, 0.4));
+        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 4, 0, 0.4));
+        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 6, 0, 0.4));
+        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 3, 0, 0.6));
         break;
 
       case 8:
-        // 【WAVE 8：怒涛の下噴出ストーム（地獄の噴水編隊）】（ザコ2倍：計38機！）
-        // 下から大量のエイリアンが次々と高速噴出連隊！
-        for (let k = 0; k < 16; k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 1 + (k % 7), 2, 0.2, 'S_CURVE_RIGHT_TO_LEFT', k));
+        // 【WAVE 8：流星雨メテオシャワー ＆ 地獄の噴水編隊】（ザコ76機！）
+        // 上空からは怒涛のメテオ群、下からは息つく暇もない噴水エイリアン！
+        for (let i = 0; i < 30; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.3 + i * 0.1));
         }
-        // 噴水のように連なる16機
+        for (let i = 0; i < 30; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.8 + i * 0.1));
+        }
         for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.7 + i * 0.12));
-        }
-        // 左スイープ連隊
-        for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 0, 2.2 + i * 0.15));
+          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 0, 2.2 + i * 0.12));
         }
         break;
 
       case 9:
-        // 【WAVE 9：全方位総攻撃前夜（全パターン同時展開）】（ザコ2倍：計46機！）
-        for (let k = 0; k < 14; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 6), 3, 0.2, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 5), 3, 0.2, 'INFINITY_DIVE_RIGHT', k));
+        // 【WAVE 9：全方位総攻撃前夜（全パターン同時展開・フルキャスト）】（ザコ86機！）
+        // メテオ、ジグザグ、スプリット、左右スイープ、下噴出の全方位同時波状攻撃！
+        for (let k = 0; k < 20; k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 6), 3, 0.15, 'INFINITY_DIVE_LEFT', k));
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 5), 3, 0.15, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SURPRISE_FROM_BOTTOM', 1 + (i % 7) * 2, 2, 0.9 + i * 0.12));
+        for (let i = 0; i < 20; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.5 + i * 0.11));
         }
-        // 左右から同時に連なって横断
-        for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 1.6 + i * 0.14));
-          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_RIGHT', 7, 0, 1.6 + i * 0.14));
+        for (let i = 0; i < 20; i++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'ZIGZAG_DIVE', 1 + (i % 8), 2, 1.0 + i * 0.11));
+        }
+        for (let i = 0; i < 13; i++) {
+          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 1.8 + i * 0.12));
+          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_RIGHT', 7, 0, 1.8 + i * 0.12));
         }
         break;
 
       case 10:
       default:
-        // 【WAVE 10：最終決戦・怒涛のギャラクティク・カタストロフィ！】（ザコ2倍：計56機！）
-        // 上・下・左・右から息つく暇もない怒涛の猛攻！
-        for (let k = 0; k < 16; k++) {
+        // 【WAVE 10：最終決戦・怒涛のギャラクティク・カタストロフィ！】（ザコ100機超え！）
+        // 上・下・左・右から息つく暇もない怒涛の総力戦！
+        for (let k = 0; k < 24; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 3, 0.1, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 3, 0.1, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.7 + i * 0.11));
+        for (let i = 0; i < 24; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.3 + i * 0.09));
         }
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 1, 0, 1.4 + i * 0.13));
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 1.4 + i * 0.13));
+        for (let i = 0; i < 24; i++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.6 + i * 0.09));
+        }
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 1, 0, 1.4 + i * 0.11));
+          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 1.4 + i * 0.11));
         }
         this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 2, 0, 0.4));
         this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 4, 0, 0.4));
         this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 6, 0, 0.4));
+        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 3, 0, 0.5));
+        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 5, 0, 0.5));
         break;
     }
   }
@@ -610,25 +607,25 @@ export class GameManager {
     let bossHp = 5;
 
     if (this.stage === 10) {
-      // 最終面ラスボス：最強UFO母船（HP2倍：56）
+      // 最終面ラスボス：最強UFO母船（HPさらに倍：112！）
       bossRank = 'UFO_MOTHERSHIP';
-      bossHp = 56;
+      bossHp = 112;
     } else if (this.stage === 5) {
-      // 5面中ボス：超大型UFO母船（HP2倍：36）
+      // 5面中ボス：超大型UFO母船（HPさらに倍：72！）
       bossRank = 'UFO_MOTHERSHIP';
-      bossHp = 36;
+      bossHp = 72;
     } else if (this.stage >= 6) {
-      // 6〜9面ボス：超高速頑強ジャイアントレッド（HP2倍：20〜26）
+      // 6〜9面ボス：超高速頑強ジャイアントレッド（HPさらに倍：40〜52！）
       bossRank = 'GIANT_RED';
-      bossHp = (10 + (this.stage - 6) * 2) * 2;
+      bossHp = (10 + (this.stage - 6) * 2) * 4;
     } else if (this.stage >= 3) {
-      // 3〜4面ボス：ジャイアントレッド（HP2倍：16〜22）
+      // 3〜4面ボス：ジャイアントレッド（HPさらに倍：32〜44！）
       bossRank = 'GIANT_RED';
-      bossHp = (7 + this.stage) * 2;
+      bossHp = (7 + this.stage) * 4;
     } else {
-      // 1〜2面ボス：ジャイアントイエロー司令機（HP2倍：10〜16）
+      // 1〜2面ボス：ジャイアントイエロー司令機（HPさらに倍：20〜32！）
       bossRank = 'GIANT_YELLOW';
-      bossHp = this.stage === 1 ? 10 : 16;
+      bossHp = this.stage === 1 ? 20 : 32;
     }
 
     const pattern = this.stage === 10 ? 'CAROUSEL_CIRCLE' : 'FORMATION_LOOP';
@@ -649,9 +646,12 @@ export class GameManager {
     if (this.bossDying) {
       this.bossDeathTimer += dt;
       if (this.bossDeathTimer >= 1.2) {
-        this.bossDying = false;
-        this.clearStage();
-        return;
+        // ★ ユーザー要望：落下中ブロックがある場合はそれが落ちきる（または合体する）までクリアにさせない！
+        if (!this.battlePiece || this.battlePiece.settled) {
+          this.bossDying = false;
+          this.clearStage();
+          return;
+        }
       }
     }
 
@@ -742,8 +742,8 @@ export class GameManager {
       }
     }
 
-    // ★ ウェーブ後半または通常敵が減ったらボス出現！（約22秒経過、または敵が残り3機以下）
-    if (!this.bossSpawned && (this.shootingTimeLimit <= 26 || this.enemies.length <= 3)) {
+    // ★ ウェーブ後半または通常敵が減ったらボス出現！（約35秒経過、または敵が残り5機以下）
+    if (!this.bossSpawned && (this.shootingTimeLimit <= 30 || this.enemies.length <= 5)) {
       this.spawnWaveBoss();
     }
 
@@ -834,8 +834,12 @@ export class GameManager {
       }
     }
 
-    // タイムオーバーまたは敵全滅クリア判定
-    if (!this.bossDying && (((this.bossSpawned && !this.currentBoss && this.enemies.length === 0) || this.shootingTimeLimit <= 0))) {
+    // タイムオーバーまたは敵全滅クリア判定（落下ブロックがある場合は落ちきるまで待つ）
+    if (
+      !this.bossDying &&
+      (!this.battlePiece || this.battlePiece.settled) &&
+      ((this.bossSpawned && !this.currentBoss && this.enemies.length === 0) || this.shootingTimeLimit <= 0)
+    ) {
       this.clearStage();
     }
   }

@@ -6,7 +6,8 @@ export type AlienRank =
   | 'YELLOW_COMMANDER' // 小型イエロー
   | 'GIANT_RED'        // 倍サイズ大型レッド
   | 'GIANT_YELLOW'     // 倍サイズ大型イエロー
-  | 'UFO_MOTHERSHIP';  // 超大型ボスUFO
+  | 'UFO_MOTHERSHIP'   // 超大型ボスUFO
+  | 'METEOR_ROCK';     // ★ ムーンクレスタ名物：隕石メテオ（硬くて回転しながら急降下！）
 
 export type CurvePathType =
   | 'FIGURE_EIGHT'         // ギャラガ8の字ループ
@@ -24,7 +25,10 @@ export type FlightPattern =
   | 'CAROUSEL_CIRCLE'
   | 'IN_FORMATION'
   | 'KAMIKAZE_DIVE'
-  | 'RETURNING';
+  | 'RETURNING'
+  | 'METEOR_FALL'         // ★ ムーンクレスタ風：隕石・メテオ群（上から高速降下）
+  | 'ZIGZAG_DIVE'         // ★ ムーンクレスタ風：カミソリ急降下（電光石火の左右切り返し）
+  | 'CROSS_SPLIT';        // ★ 左右斜め上から中央交差突入
 
 export class Enemy {
   public id: string;
@@ -127,6 +131,12 @@ export class Enemy {
         this.maxHp = 24; // 固いボスUFO！
         this.scoreValue = 5000;
         break;
+      case 'METEOR_ROCK':
+        this.width = 42;
+        this.height = 42;
+        this.maxHp = 3; // 隕石は頑丈（3発）
+        this.scoreValue = 300;
+        break;
     }
     if (this.isBoss) {
       // ユーザー要望：ボスの大きさを2倍に巨大化！
@@ -151,6 +161,21 @@ export class Enemy {
       this.y = CANVAS_HEIGHT + 30;
       this.vx = 0;
       this.vy = -150; // 急上昇
+    } else if (pattern === 'METEOR_FALL') {
+      this.x = this.formationX;
+      this.y = -60;
+      this.vx = (Math.random() - 0.5) * 40;
+      this.vy = 210; // ムーンクレスタ名物：超高速隕石落下！
+    } else if (pattern === 'ZIGZAG_DIVE') {
+      this.x = this.formationX;
+      this.y = -50;
+      this.vx = 180;
+      this.vy = 120;
+    } else if (pattern === 'CROSS_SPLIT') {
+      this.x = formationCol < 4 ? -40 : CANVAS_WIDTH + 40;
+      this.y = -40;
+      this.vx = formationCol < 4 ? 140 : -140;
+      this.vy = 130;
     } else {
       this.x = -100;
       this.y = -100;
@@ -180,6 +205,15 @@ export class Enemy {
       } else if (this.pattern === 'SURPRISE_FROM_BOTTOM') {
         this.x = this.formationX;
         this.y = CANVAS_HEIGHT + 30;
+      } else if (this.pattern === 'METEOR_FALL') {
+        this.x = this.formationX;
+        this.y = -60;
+      } else if (this.pattern === 'ZIGZAG_DIVE') {
+        this.x = this.formationX;
+        this.y = -50;
+      } else if (this.pattern === 'CROSS_SPLIT') {
+        this.x = this.formationX < CANVAS_WIDTH / 2 ? -40 : CANVAS_WIDTH + 40;
+        this.y = -40;
       } else {
         this.x = -100;
         this.y = -100;
@@ -325,6 +359,40 @@ export class Enemy {
         } else {
           this.x += (dx / dist) * 180 * dt;
           this.y += (dy / dist) * 180 * dt;
+        }
+        break;
+      }
+
+      // ★ ムーンクレスタ名物：隕石・メテオ群（上から高速降下して底を抜けたら上に戻る）
+      case 'METEOR_FALL': {
+        this.y += this.vy * dt;
+        this.x += Math.sin(this.timeAlive * 5) * 45 * dt;
+        if (this.y > CANVAS_HEIGHT + 30) {
+          this.y = -60;
+          this.x = this.formationX + (Math.random() - 0.5) * 60;
+        }
+        break;
+      }
+
+      // ★ ムーンクレスタ名物：カミソリ急降下（電光石火の左右切り返しジグザグ）
+      case 'ZIGZAG_DIVE': {
+        this.y += this.vy * dt;
+        // 高速な三角波的左右往復
+        const zig = Math.sin(this.timeAlive * 4.5);
+        this.x += zig * this.vx * dt;
+        if (this.y > CANVAS_HEIGHT + 30) {
+          this.y = -50;
+          this.x = this.formationX;
+        }
+        break;
+      }
+
+      // ★ 左右斜め上から中央に突入して交差するスプリット
+      case 'CROSS_SPLIT': {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        if (this.y > CANVAS_HEIGHT + 30 || this.x < -60 || this.x > CANVAS_WIDTH + 60) {
+          this.pattern = 'FORMATION_LOOP';
         }
         break;
       }
@@ -504,6 +572,25 @@ export class Enemy {
 
         ctx.fillStyle = '#ffaa00';
         ctx.fillRect(-11, 10, 22, 4);
+        break;
+      }
+
+      // ★ ムーンクレスタ名物：隕石メテオ（不揃いな岩石ピクセル＆回転炎）
+      case 'METEOR_ROCK': {
+        // 回転しながら飛ぶ岩石
+        ctx.rotate(this.timeAlive * 6);
+        ctx.fillStyle = '#8b5a2b';
+        ctx.fillRect(-9, -9, 18, 18);
+        ctx.fillStyle = '#cd853f';
+        ctx.fillRect(-7, -7, 14, 14);
+        ctx.fillStyle = '#d2691e';
+        ctx.fillRect(-4, -4, 8, 8);
+        // 大気圏突入の燃える火花
+        ctx.fillStyle = f === 0 ? '#ff3300' : '#ffea00';
+        ctx.fillRect(-11, -3, 3, 6);
+        ctx.fillRect(8, -3, 3, 6);
+        ctx.fillRect(-3, -11, 6, 3);
+        ctx.fillRect(-3, 8, 6, 3);
         break;
       }
     }
