@@ -4,19 +4,27 @@ export type AlienRank =
   | 'GREEN_DRONE'      // 小型グリーン
   | 'RED_GUARD'        // 小型レッド
   | 'YELLOW_COMMANDER' // 小型イエロー
-  | 'GIANT_RED'        // ★倍サイズ大型レッド（56px）
-  | 'GIANT_YELLOW'     // ★倍サイズ大型イエロー（64px）
-  | 'UFO_MOTHERSHIP';  // ★超大型ボスUFO（90px）
+  | 'GIANT_RED'        // 倍サイズ大型レッド
+  | 'GIANT_YELLOW'     // 倍サイズ大型イエロー
+  | 'UFO_MOTHERSHIP';  // 超大型ボスUFO
+
+export type CurvePathType =
+  | 'FIGURE_EIGHT'         // ギャラガ8の字ループ
+  | 'S_CURVE_LEFT_TO_RIGHT'// 左から右へのS字蛇行
+  | 'S_CURVE_RIGHT_TO_LEFT'// 右から左へのS字蛇行
+  | 'INFINITY_DIVE_LEFT'   // 左からの宙返り急降下
+  | 'INFINITY_DIVE_RIGHT';  // 右からの宙返り急降下
 
 export type FlightPattern =
-  | 'FORMATION_LOOP'      // ギャラガ風宙返り入場 → 整列
-  | 'SWEEP_FROM_LEFT'     // 画面左から横断進入
-  | 'SWEEP_FROM_RIGHT'    // 画面右から横断進入
-  | 'SURPRISE_FROM_BOTTOM'// 画面下から急上昇突き上げ！
-  | 'CAROUSEL_CIRCLE'     // 画面中央大車輪旋回
-  | 'IN_FORMATION'        // 隊列波打ち待機
-  | 'KAMIKAZE_DIVE'       // ムーンクレスタ風宙返り急降下体当たり！
-  | 'RETURNING';          // 上空隊列復帰
+  | 'STREAM_CURVE'        // ★ ギャプラス風・曲線を描いて連なる大編隊！
+  | 'FORMATION_LOOP'
+  | 'SWEEP_FROM_LEFT'
+  | 'SWEEP_FROM_RIGHT'
+  | 'SURPRISE_FROM_BOTTOM'
+  | 'CAROUSEL_CIRCLE'
+  | 'IN_FORMATION'
+  | 'KAMIKAZE_DIVE'
+  | 'RETURNING';
 
 export class Enemy {
   public id: string;
@@ -33,9 +41,13 @@ export class Enemy {
   public scoreValue: number;
   public isDead = false;
 
-  // 隊列座標
   public formationX: number;
   public formationY: number;
+
+  // ストリーム曲線編隊パラメータ
+  public curveType?: CurvePathType;
+  public streamDelay = 0; // 連隊内の順番ディレイ (0.12秒刻み)
+  public streamProgress = 0;
 
   private animFrame = 0;
   private animTimer = 0;
@@ -43,10 +55,9 @@ export class Enemy {
   private patternTimer = 0;
   private flashTime = 0;
 
-  // 旋回・アタック軌道パラメータ
   private circleCenterX = CANVAS_WIDTH / 2;
-  private circleCenterY = CANVAS_HEIGHT * 0.4;
-  private circleRadius = 140;
+  private circleCenterY = CANVAS_HEIGHT * 0.38;
+  private circleRadius = 145;
   private circleAngle = 0;
   private diveAngle = 0;
   private diveTargetX = CANVAS_WIDTH / 2;
@@ -58,98 +69,65 @@ export class Enemy {
     formationCol: number,
     formationRow: number,
     spawnDelay = 0,
-    customStartX?: number,
-    customStartY?: number
+    curveType?: CurvePathType,
+    streamIndex = 0
   ) {
     this.id = Math.random().toString(36).substring(2, 9);
     this.rank = rank;
     this.pattern = pattern;
     this.patternTimer = -spawnDelay;
+    this.curveType = curveType;
+    this.streamDelay = streamIndex * 0.11; // 1機ごとの美しい等間隔
+    this.streamProgress = -this.streamDelay;
 
-    // 隊列スロット位置（画面全体に美しく配置）
-    const spacingX = 42;
-    const spacingY = 36;
+    const spacingX = 46;
+    const spacingY = 40;
     this.formationX = CANVAS_WIDTH / 2 + (formationCol - 4.5) * spacingX;
-    this.formationY = 70 + formationRow * spacingY;
+    this.formationY = 65 + formationRow * spacingY;
 
-    // サイズ・HP・スコア設定（倍サイズも実装！）
+    // 敵サイズ（一回り大きく迫力満点！）
     switch (rank) {
       case 'GREEN_DRONE':
-        this.width = 24;
-        this.height = 22;
+        this.width = 34;
+        this.height = 30;
         this.maxHp = 1;
         this.scoreValue = 100;
         break;
       case 'RED_GUARD':
-        this.width = 26;
-        this.height = 24;
+        this.width = 38;
+        this.height = 34;
         this.maxHp = 2;
         this.scoreValue = 200;
         break;
       case 'YELLOW_COMMANDER':
-        this.width = 30;
-        this.height = 26;
+        this.width = 44;
+        this.height = 38;
         this.maxHp = 3;
         this.scoreValue = 400;
         break;
-      case 'GIANT_RED': // ★倍サイズ大型レッド
-        this.width = 54;
-        this.height = 50;
+      case 'GIANT_RED':
+        this.width = 72;
+        this.height = 66;
         this.maxHp = 8;
         this.scoreValue = 1200;
         break;
-      case 'GIANT_YELLOW': // ★倍サイズ大型イエロー旗艦
-        this.width = 64;
-        this.height = 56;
+      case 'GIANT_YELLOW':
+        this.width = 84;
+        this.height = 74;
         this.maxHp = 12;
         this.scoreValue = 1800;
         break;
-      case 'UFO_MOTHERSHIP': // ★超大型ボスUFO
-        this.width = 92;
-        this.height = 58;
+      case 'UFO_MOTHERSHIP':
+        this.width = 124;
+        this.height = 78;
         this.maxHp = 35;
         this.scoreValue = 5000;
         break;
     }
     this.hp = this.maxHp;
 
-    // 出現初期位置のバリエーション
-    if (customStartX !== undefined && customStartY !== undefined) {
-      this.x = customStartX;
-      this.y = customStartY;
-    } else {
-      switch (pattern) {
-        case 'SWEEP_FROM_LEFT':
-          this.x = -this.width - 20;
-          this.y = 120 + formationRow * 40;
-          this.vx = 220;
-          this.vy = 40;
-          break;
-        case 'SWEEP_FROM_RIGHT':
-          this.x = CANVAS_WIDTH + 20;
-          this.y = 120 + formationRow * 40;
-          this.vx = -220;
-          this.vy = 40;
-          break;
-        case 'SURPRISE_FROM_BOTTOM':
-          // 画面下から急上昇！
-          this.x = this.formationX;
-          this.y = CANVAS_HEIGHT + 30;
-          this.vy = -340;
-          this.vx = (Math.random() - 0.5) * 80;
-          break;
-        case 'CAROUSEL_CIRCLE':
-          this.circleAngle = (formationCol / 10) * Math.PI * 2;
-          this.x = this.circleCenterX + Math.cos(this.circleAngle) * this.circleRadius;
-          this.y = this.circleCenterY + Math.sin(this.circleAngle) * this.circleRadius;
-          break;
-        default:
-          // 上空左右からループ進入
-          this.x = formationCol < 5 ? -30 : CANVAS_WIDTH + 30;
-          this.y = -40;
-          break;
-      }
-    }
+    this.x = -100;
+    this.y = -100;
   }
 
   public update(
@@ -163,18 +141,37 @@ export class Enemy {
     this.patternTimer += dt;
     if (this.flashTime > 0) this.flashTime -= dt;
 
-    // 2フレームアニメーション
     this.animTimer += dt;
     if (this.animTimer >= 0.22) {
       this.animTimer = 0;
       this.animFrame = 1 - this.animFrame;
     }
 
-    // スポーン待機中
     if (this.patternTimer < 0) return;
 
     switch (this.pattern) {
-      // 1. ギャラガ風宙返り入場
+      // ★ ギャプラス＆ギャラガ完全再現：曲線で連なって流れる美しい大編隊！
+      case 'STREAM_CURVE': {
+        this.streamProgress += dt * 0.95; // 進行速度
+        const t = this.streamProgress;
+
+        if (t < 0) {
+          this.x = -100;
+          this.y = -100;
+          return;
+        }
+
+        const pos = this.computeCurvePosition(t, this.curveType || 'FIGURE_EIGHT');
+        this.x = pos.x;
+        this.y = pos.y;
+
+        // 曲線飛行が完了したら隊列へ合流！
+        if (t >= 4.2) {
+          this.pattern = 'FORMATION_LOOP';
+        }
+        break;
+      }
+
       case 'FORMATION_LOOP': {
         const dx = this.formationX - this.x;
         const dy = this.formationY - this.y;
@@ -186,14 +183,13 @@ export class Enemy {
           this.pattern = 'IN_FORMATION';
           this.patternTimer = Math.random() * 3;
         } else {
-          const speed = 240;
+          const speed = 250;
           this.x += (dx / dist) * speed * dt;
           this.y += (dy / dist) * speed * dt;
         }
         break;
       }
 
-      // 2. 画面左端からの横断編隊
       case 'SWEEP_FROM_LEFT': {
         this.x += this.vx * dt;
         this.y += Math.sin(this.timeAlive * 5) * 110 * dt;
@@ -203,7 +199,6 @@ export class Enemy {
         break;
       }
 
-      // 3. 画面右端からの横断編隊
       case 'SWEEP_FROM_RIGHT': {
         this.x += this.vx * dt;
         this.y += Math.sin(this.timeAlive * 5) * 110 * dt;
@@ -213,18 +208,15 @@ export class Enemy {
         break;
       }
 
-      // 4. 画面下からの急上昇サプライズ突進！
       case 'SURPRISE_FROM_BOTTOM': {
         this.x += this.vx * dt;
         this.y += this.vy * dt;
-        // 上空まで突き抜けたら隊列へ
         if (this.y < 90) {
           this.pattern = 'FORMATION_LOOP';
         }
         break;
       }
 
-      // 5. 大車輪カルーセル旋回
       case 'CAROUSEL_CIRCLE': {
         this.circleAngle += 2.2 * dt;
         this.x = this.circleCenterX + Math.cos(this.circleAngle) * this.circleRadius;
@@ -239,14 +231,13 @@ export class Enemy {
         break;
       }
 
-      // 6. 隊列待機（ゆらゆら波打ち）
       case 'IN_FORMATION': {
         const waveX = Math.sin(formationOffsetAngle) * 22;
         const waveY = Math.cos(formationOffsetAngle * 2) * 6;
         this.x = this.formationX + waveX;
         this.y = this.formationY + waveY;
 
-        // 隊列から離脱してムーンクレスタ風体当たりダイブ！
+        // 隊列から離脱して体当たり急降下！
         if (canDive && this.patternTimer > 3.0 + Math.random() * 4.0) {
           this.pattern = 'KAMIKAZE_DIVE';
           this.patternTimer = 0;
@@ -257,15 +248,12 @@ export class Enemy {
         break;
       }
 
-      // 7. ムーンクレスタ風 宙返り急降下体当たり突進（弾なし・体当たりのみ！）
       case 'KAMIKAZE_DIVE': {
         if (this.patternTimer < 0.6) {
-          // 宙返り旋回ループ
           this.diveAngle += 10.0 * dt;
           this.x += Math.cos(this.diveAngle) * 160 * dt;
           this.y += Math.sin(this.diveAngle) * 160 * dt;
         } else {
-          // 自機へ向かって超高速ダイブ！
           const dx = this.diveTargetX - this.x;
           const dy = (this.diveTargetY + 60) - this.y;
           const dist = Math.hypot(dx, dy) || 1;
@@ -273,7 +261,6 @@ export class Enemy {
           this.x += (dx / dist) * speed * dt;
           this.y += Math.max(120, (dy / dist) * speed) * dt;
 
-          // 画面下へ抜けたら上空から隊列復帰
           if (this.y > CANVAS_HEIGHT + 30) {
             this.y = -40;
             this.x = this.formationX;
@@ -283,7 +270,6 @@ export class Enemy {
         break;
       }
 
-      // 8. 隊列復帰
       case 'RETURNING': {
         const dx = this.formationX - this.x;
         const dy = this.formationY - this.y;
@@ -301,6 +287,51 @@ export class Enemy {
     }
   }
 
+  // 美しい曲線のパラメトリック座標計算
+  private computeCurvePosition(t: number, path: CurvePathType): { x: number; y: number } {
+    const cx = CANVAS_WIDTH / 2;
+
+    switch (path) {
+      // 1. ギャラガ8の字ループ（リサジューインフィニティ）
+      case 'FIGURE_EIGHT': {
+        const angle = t * Math.PI * 1.35;
+        const x = cx + Math.sin(angle) * 190;
+        const y = 220 + Math.sin(angle * 2) * 110;
+        return { x: x - this.width / 2, y: y - this.height / 2 };
+      }
+
+      // 2. 左から優雅なS字蛇行で画面を渡る
+      case 'S_CURVE_LEFT_TO_RIGHT': {
+        const progressX = (t / 4.0) * (CANVAS_WIDTH + 140) - 70;
+        const y = 80 + Math.sin(t * 3.2) * 130 + t * 45;
+        return { x: progressX - this.width / 2, y: y - this.height / 2 };
+      }
+
+      // 3. 右から優雅なS字蛇行で画面を渡る
+      case 'S_CURVE_RIGHT_TO_LEFT': {
+        const progressX = CANVAS_WIDTH + 70 - (t / 4.0) * (CANVAS_WIDTH + 140);
+        const y = 80 + Math.cos(t * 3.2) * 130 + t * 45;
+        return { x: progressX - this.width / 2, y: y - this.height / 2 };
+      }
+
+      // 4. 左からのダイナミック宙返りループ
+      case 'INFINITY_DIVE_LEFT': {
+        const angle = t * 2.8;
+        const x = cx - 90 + Math.cos(angle) * 130;
+        const y = 140 + Math.sin(angle) * 130 + t * 65;
+        return { x: x - this.width / 2, y: y - this.height / 2 };
+      }
+
+      // 5. 右からのダイナミック宙返りループ
+      case 'INFINITY_DIVE_RIGHT': {
+        const angle = -t * 2.8;
+        const x = cx + 90 + Math.cos(angle) * 130;
+        const y = 140 + Math.sin(angle) * 130 + t * 65;
+        return { x: x - this.width / 2, y: y - this.height / 2 };
+      }
+    }
+  }
+
   public hit(damage = 1): boolean {
     this.hp -= damage;
     this.flashTime = 0.12;
@@ -311,9 +342,8 @@ export class Enemy {
     return false;
   }
 
-  // 往年の原色ピクセルアート描画（倍サイズも忠実にスケーリング！）
   public draw(ctx: CanvasRenderingContext2D): void {
-    if (this.y < -60 || this.y > CANVAS_HEIGHT + 60) return;
+    if (this.y < -70 || this.y > CANVAS_HEIGHT + 70) return;
 
     ctx.save();
     const cx = Math.floor(this.x + this.width / 2);
@@ -326,16 +356,15 @@ export class Enemy {
       return;
     }
 
-    const f = this.animFrame; // 0 or 1
+    const f = this.animFrame;
     const isGiant = this.rank === 'GIANT_RED' || this.rank === 'GIANT_YELLOW' || this.rank === 'UFO_MOTHERSHIP';
-    const s = isGiant ? 2.0 : 1.0; // 倍率スケール
+    const s = isGiant ? 2.8 : 1.4;
 
     ctx.translate(cx, cy);
     ctx.scale(s, s);
 
     switch (this.rank) {
       case 'GREEN_DRONE': {
-        // グリーンエイリアン
         ctx.fillStyle = '#ffff00';
         ctx.fillRect(-7, -10, 3, 4);
         ctx.fillRect(4, -10, 3, 4);
@@ -359,7 +388,6 @@ export class Enemy {
 
       case 'RED_GUARD':
       case 'GIANT_RED': {
-        // レッドガード（倍サイズGIANT_REDも同じ美しいピクセル比率！）
         ctx.fillStyle = '#ff1133';
         if (f === 0) {
           ctx.fillRect(-13, -6, 6, 10);
@@ -386,7 +414,6 @@ export class Enemy {
 
       case 'YELLOW_COMMANDER':
       case 'GIANT_YELLOW': {
-        // イエロー旗艦（倍サイズGIANT_YELLOW対応）
         ctx.fillStyle = '#ffea00';
         ctx.fillRect(-14, -12, 5, 8);
         ctx.fillRect(9, -12, 5, 8);
@@ -410,7 +437,6 @@ export class Enemy {
       }
 
       case 'UFO_MOTHERSHIP': {
-        // 超大型クラシックUFO母船
         ctx.fillStyle = '#00ffff';
         ctx.fillRect(-12, -14, 24, 7);
         ctx.fillStyle = '#ffffff';
@@ -432,7 +458,6 @@ export class Enemy {
       }
     }
 
-    // 大型機のHPバー
     if (isGiant) {
       const hpRatio = Math.max(0, this.hp / this.maxHp);
       ctx.fillStyle = 'rgba(0,0,0,0.8)';

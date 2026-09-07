@@ -12,6 +12,7 @@ import { PlayerBullet } from '../entities/Bullet';
 import { Enemy } from '../entities/Enemy';
 import { Player } from '../entities/Player';
 import { TetrominoPiece, TetrominoType } from '../entities/Tetromino';
+import { drawMoonCrestaText } from '../utils/RetroFont';
 import { Input } from './Input';
 import { Sound } from './Sound';
 import { Starfield } from './Starfield';
@@ -87,7 +88,7 @@ export class GameManager {
 
     this.sound.playStartJingle();
     this.sound.startBGM('tetris');
-    this.showTransitionText(`STAGE ${this.stage}: PUZZLE TIME`);
+    this.showTransitionText('ドッキングせよ');
   }
 
   private startShootingPhase(): void {
@@ -378,67 +379,68 @@ export class GameManager {
   }
 
   // ==========================================
-  // シューティングフェーズ：多彩な編隊＆倍サイズ＆体当たりのみ
+  // シューティングフェーズ：ギャプラス風 曲線で連なる美しい大編隊！
   // ==========================================
   private spawnAlienFleet(): void {
     this.enemies = [];
 
-    // 10面：超大型UFO母船 ＋ 倍サイズ艦隊
-    if (this.stage === 10) {
-      // 超大型UFO母船（中央）
-      this.enemies.push(new Enemy('UFO_MOTHERSHIP', 'CAROUSEL_CIRCLE', 4, 0, 0.2));
-      // 倍サイズ大型イエロー×2
-      this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 1, 0.5));
-      this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 1, 0.5));
-      // 倍サイズ大型レッド×4
-      for (let c = 0; c < 4; c++) {
-        this.enemies.push(new Enemy('GIANT_RED', 'SURPRISE_FROM_BOTTOM', 2 + c * 2, 2, 0.8 + c * 0.2));
-      }
-      return;
+    // ★ ギャプラス＆ギャラガ名物：長く美しい曲線大連隊！
+    // 1. S字蛇行ストリーム（左から8機が連なって流れる！）
+    for (let k = 0; k < 8; k++) {
+      this.enemies.push(
+        new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k)
+      );
     }
 
-    // 5面：中ボス（超大型UFO母船）＋ 護衛編隊
-    if (this.stage === 5) {
+    // 2. S字蛇行ストリーム（右から8機が連なって流れる！）
+    for (let k = 0; k < 8; k++) {
+      this.enemies.push(
+        new Enemy('RED_GUARD', 'STREAM_CURVE', 5 + (k % 4), 2, 0.6, 'S_CURVE_RIGHT_TO_LEFT', k)
+      );
+    }
+
+    // 3. ギャラガ名物・8の字ループ大連隊（8機が美しい∞を描いて流れる！）
+    for (let k = 0; k < 8; k++) {
+      this.enemies.push(
+        new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 6), 1, 1.2, 'FIGURE_EIGHT', k)
+      );
+    }
+
+    // 4. 左右交差ダブルインフィニティ急降下連隊（ステージ2以降）
+    if (this.stage >= 2) {
+      for (let k = 0; k < 6; k++) {
+        this.enemies.push(
+          new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + k, 3, 1.8, 'INFINITY_DIVE_LEFT', k)
+        );
+        this.enemies.push(
+          new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + k, 3, 1.8, 'INFINITY_DIVE_RIGHT', k)
+        );
+      }
+    }
+
+    // 5. 大型艦＆ボス
+    if (this.stage === 10) {
+      // ラスボス超大型UFO母船
+      this.enemies.push(new Enemy('UFO_MOTHERSHIP', 'CAROUSEL_CIRCLE', 4, 0, 0.2));
+      this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 1, 0.5));
+      this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 1, 0.5));
+    } else if (this.stage === 5) {
+      // 5面中ボス超大型UFO
       this.enemies.push(new Enemy('UFO_MOTHERSHIP', 'FORMATION_LOOP', 4, 0, 0.2));
       this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 1, 0.6));
-      this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_RIGHT', 6, 1, 0.6));
     } else {
-      // 通常ステージ：倍サイズ大型機を含む多彩な編隊
-      // 倍サイズ大型旗艦（ステージ3以降は2機）
+      // 倍サイズ大型旗艦
       this.enemies.push(new Enemy('GIANT_YELLOW', 'FORMATION_LOOP', 4, 0, 0.2));
-      if (this.stage >= 4) {
+      if (this.stage >= 3) {
         this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 5, 0, 0.3));
       }
     }
 
-    // 左右・下からの奇襲編隊バリエーション！
-    // 1. 左端から横断してくる編隊
-    for (let i = 0; i < 3; i++) {
-      this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_LEFT', 1 + i, 1, 0.4 + i * 0.15));
-    }
-
-    // 2. 右端から横断してくる編隊
-    for (let i = 0; i < 3; i++) {
-      this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_RIGHT', 6 + i, 1, 0.5 + i * 0.15));
-    }
-
-    // 3. 画面下から急上昇してくるサプライズ編隊！（ステージ2以降）
-    if (this.stage >= 2) {
+    // 6. 画面下からの急上昇サプライズ編隊！（ステージ3以降）
+    if (this.stage >= 3) {
       for (let i = 0; i < 3; i++) {
-        this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 3 + i * 2, 2, 0.9 + i * 0.2));
+        this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 3 + i * 2, 2, 2.5 + i * 0.2));
       }
-    }
-
-    // 4. 大車輪カルーセル旋回編隊（ステージ4以降）
-    if (this.stage >= 4) {
-      for (let i = 0; i < 4; i++) {
-        this.enemies.push(new Enemy('GREEN_DRONE', 'CAROUSEL_CIRCLE', i * 2, 3, 1.2 + i * 0.15));
-      }
-    }
-
-    // 5. 基本のグリーンエイリアン編隊
-    for (let col = 1; col <= 8; col += 2) {
-      this.enemies.push(new Enemy('GREEN_DRONE', 'FORMATION_LOOP', col, 3, 1.4 + col * 0.08));
     }
   }
 
@@ -595,6 +597,12 @@ export class GameManager {
           ctx.fillText(`[${item.index + 1}]`, item.gx * BLOCK_SIZE, item.gy * BLOCK_SIZE - 4);
           ctx.restore();
         }
+      }
+
+      // ★ ムーンクレスタ完全再現：「レバーとボタンで　ドッキングせよ」をシアン色ピクセルで描画！
+      const blink = Math.sin(Date.now() / 200) > -0.7;
+      if (blink) {
+        drawMoonCrestaText(ctx, 'レバーとボタンで　ドッキングせよ', CANVAS_WIDTH / 2, 115, 2, '#00f0ff');
       }
     }
 
