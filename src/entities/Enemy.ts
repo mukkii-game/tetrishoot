@@ -96,38 +96,53 @@ export class Enemy {
       case 'RED_GUARD':
         this.width = 38;
         this.height = 34;
-        this.maxHp = 2;
+        this.maxHp = 1;
         this.scoreValue = 200;
         break;
       case 'YELLOW_COMMANDER':
         this.width = 44;
         this.height = 38;
-        this.maxHp = 3;
+        this.maxHp = 1;
         this.scoreValue = 400;
         break;
       case 'GIANT_RED':
         this.width = 72;
         this.height = 66;
-        this.maxHp = 8;
-        this.scoreValue = 1200;
+        this.maxHp = 1;
+        this.scoreValue = 800;
         break;
       case 'GIANT_YELLOW':
         this.width = 84;
         this.height = 74;
-        this.maxHp = 12;
-        this.scoreValue = 1800;
+        this.maxHp = 1;
+        this.scoreValue = 1200;
         break;
       case 'UFO_MOTHERSHIP':
         this.width = 124;
         this.height = 78;
-        this.maxHp = 35;
+        this.maxHp = 24; // 固いボスUFO！
         this.scoreValue = 5000;
         break;
     }
     this.hp = this.maxHp;
 
-    this.x = -100;
-    this.y = -100;
+    if (pattern === 'SWEEP_FROM_LEFT') {
+      this.x = -this.width - 20;
+      this.y = this.formationY;
+      this.vx = 115; // ギャラガ風の落ち着いた速度で横断
+    } else if (pattern === 'SWEEP_FROM_RIGHT') {
+      this.x = CANVAS_WIDTH + 20;
+      this.y = this.formationY;
+      this.vx = -115;
+    } else if (pattern === 'SURPRISE_FROM_BOTTOM') {
+      this.x = this.formationX;
+      this.y = CANVAS_HEIGHT + 30;
+      this.vx = 0;
+      this.vy = -140; // 急上昇も半分速度にして狙い撃ちしやすく
+    } else {
+      this.x = -100;
+      this.y = -100;
+    }
   }
 
   public update(
@@ -152,7 +167,7 @@ export class Enemy {
     switch (this.pattern) {
       // ★ ギャプラス＆ギャラガ完全再現：曲線で連なって流れる美しい大編隊！
       case 'STREAM_CURVE': {
-        this.streamProgress += dt * 0.95; // 進行速度
+        this.streamProgress += dt * 0.55; // 進行速度（ギャラガ風の落ち着いた流麗なスピード）
         const t = this.streamProgress;
 
         if (t < 0) {
@@ -183,7 +198,7 @@ export class Enemy {
           this.pattern = 'IN_FORMATION';
           this.patternTimer = Math.random() * 3;
         } else {
-          const speed = 250;
+          const speed = 140; // 落ち着いた隊列復帰速度
           this.x += (dx / dist) * speed * dt;
           this.y += (dy / dist) * speed * dt;
         }
@@ -192,7 +207,7 @@ export class Enemy {
 
       case 'SWEEP_FROM_LEFT': {
         this.x += this.vx * dt;
-        this.y += Math.sin(this.timeAlive * 5) * 110 * dt;
+        this.y += Math.sin(this.timeAlive * 3) * 60 * dt;
         if (this.x > CANVAS_WIDTH + 30) {
           this.pattern = 'FORMATION_LOOP';
         }
@@ -201,7 +216,7 @@ export class Enemy {
 
       case 'SWEEP_FROM_RIGHT': {
         this.x += this.vx * dt;
-        this.y += Math.sin(this.timeAlive * 5) * 110 * dt;
+        this.y += Math.sin(this.timeAlive * 3) * 60 * dt;
         if (this.x < -this.width - 30) {
           this.pattern = 'FORMATION_LOOP';
         }
@@ -218,11 +233,11 @@ export class Enemy {
       }
 
       case 'CAROUSEL_CIRCLE': {
-        this.circleAngle += 2.2 * dt;
+        this.circleAngle += 1.3 * dt;
         this.x = this.circleCenterX + Math.cos(this.circleAngle) * this.circleRadius;
         this.y = this.circleCenterY + Math.sin(this.circleAngle) * this.circleRadius;
 
-        if (this.patternTimer > 5.0) {
+        if (this.patternTimer > 6.0) {
           this.pattern = 'KAMIKAZE_DIVE';
           this.diveTargetX = playerX;
           this.diveTargetY = playerY;
@@ -250,16 +265,16 @@ export class Enemy {
 
       case 'KAMIKAZE_DIVE': {
         if (this.patternTimer < 0.6) {
-          this.diveAngle += 10.0 * dt;
-          this.x += Math.cos(this.diveAngle) * 160 * dt;
-          this.y += Math.sin(this.diveAngle) * 160 * dt;
+          this.diveAngle += 6.0 * dt;
+          this.x += Math.cos(this.diveAngle) * 90 * dt;
+          this.y += Math.sin(this.diveAngle) * 90 * dt;
         } else {
           const dx = this.diveTargetX - this.x;
           const dy = (this.diveTargetY + 60) - this.y;
           const dist = Math.hypot(dx, dy) || 1;
-          const speed = 250 + (this.rank.startsWith('GIANT') ? 60 : 30);
+          const speed = 150 + (this.rank.startsWith('GIANT') ? 30 : 15);
           this.x += (dx / dist) * speed * dt;
-          this.y += Math.max(120, (dy / dist) * speed) * dt;
+          this.y += Math.max(70, (dy / dist) * speed) * dt;
 
           if (this.y > CANVAS_HEIGHT + 30) {
             this.y = -40;

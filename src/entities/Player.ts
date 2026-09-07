@@ -22,6 +22,12 @@ export class Player {
     this.initInitialPiece();
   }
 
+  // ドッキングフェーズ開始時に自機を下部中央へ移動
+  public resetToBottomCenter(): void {
+    this.anchorX = Math.floor(CANVAS_WIDTH / 2 - BLOCK_SIZE);
+    this.anchorY = PLAYER_INITIAL_Y;
+  }
+
   // 初期の自機：Oミノ（正方形2x2、端点なし＝弾なし、肉壁コア）
   public initInitialPiece(): void {
     this.pieces = [];
@@ -211,8 +217,8 @@ export class Player {
     }
   }
 
-  // ショット発射処理（塞がり判定付き全方向ビーム）
-  public shootBullets(): PlayerBullet[] {
+  // ショット発射処理（1つの銃口につき画面内最大2発制限：ギャラガ・ムーンクレスタ仕様）
+  public shootBullets(existingBullets: PlayerBullet[] = []): PlayerBullet[] {
     const bullets: PlayerBullet[] = [];
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
@@ -222,11 +228,21 @@ export class Player {
       occupiedMap.add(`${cell.gx},${cell.gy}`);
     }
 
-    for (const attached of this.pieces) {
+    // 各銃口IDごとの画面内弾数を集計
+    const bulletCountPerGun: Record<string, number> = {};
+    for (const b of existingBullets) {
+      if (!b.isDead && b.gunId) {
+        bulletCountPerGun[b.gunId] = (bulletCountPerGun[b.gunId] || 0) + 1;
+      }
+    }
+
+    for (let pieceIdx = 0; pieceIdx < this.pieces.length; pieceIdx++) {
+      const attached = this.pieces[pieceIdx];
       const piece = attached.piece;
       if (piece.type === 'O') continue; // Oブロックは弾が出ない
 
-      for (const gun of piece.gunPorts) {
+      for (let portIdx = 0; portIdx < piece.gunPorts.length; portIdx++) {
+        const gun = piece.gunPorts[portIdx];
         const sourceGx = baseGx + attached.relGx + gun.cellGx;
         const sourceGy = baseGy + attached.relGy + gun.cellGy;
 
@@ -238,10 +254,20 @@ export class Player {
           continue;
         }
 
+        // 銃口固有のID（パーツインデックス＋銃口インデックス）
+        const gunId = `p${pieceIdx}_g${portIdx}`;
+        const currentCount = bulletCountPerGun[gunId] || 0;
+
+        // 画面内2発制限（2発存在している銃口からは新規発射しない）
+        if (currentCount >= 2) {
+          continue;
+        }
+
         const bx = (sourceGx + 0.5 + gun.dirX * 0.5) * BLOCK_SIZE;
         const by = (sourceGy + 0.5 + gun.dirY * 0.5) * BLOCK_SIZE;
 
-        bullets.push(new PlayerBullet(bx, by, gun.angle, piece.color));
+        bullets.push(new PlayerBullet(bx, by, gun.angle, piece.color, gunId));
+        bulletCountPerGun[gunId] = currentCount + 1;
       }
     }
 

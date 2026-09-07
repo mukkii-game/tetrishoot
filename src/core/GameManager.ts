@@ -52,6 +52,11 @@ export class GameManager {
   public formationOffsetAngle = 0;
   public shootingTimeLimit = 22;
 
+  // バトル中に時々落ちてくる回転不可ブロック（1ウェーブに1回程度）
+  public battlePiece: FallingPieceItem | null = null;
+  private battlePieceTimer = 0;
+  private hasSpawnedBattlePieceThisWave = false;
+
   private stateTimer = 0;
   private transitionAlpha = 0;
   private transitionText = '';
@@ -81,6 +86,10 @@ export class GameManager {
     this.phase = 'TETRIS';
     this.playerBullets = [];
     this.enemies = [];
+    this.battlePiece = null;
+
+    // 自機を下部中央へ再配置（ドッキングしやすくする）
+    this.player.resetToBottomCenter();
 
     // 1度に3つのブロックをスポーン！
     this.spawnThreeTetrominoes();
@@ -96,6 +105,9 @@ export class GameManager {
     this.fallingPieces = [];
     this.shootingTimeLimit = 24;
     this.formationOffsetAngle = 0;
+    this.battlePiece = null;
+    this.battlePieceTimer = 0;
+    this.hasSpawnedBattlePieceThisWave = false;
 
     // ギャラガ＆ムーンクレスタ風 多彩な大編隊をスポーン！
     this.spawnAlienFleet();
@@ -113,6 +125,18 @@ export class GameManager {
   public update(dt: number, input: Input): void {
     if (input.mutePressed) {
       this.sound.toggleMute();
+    }
+
+    // ESCキーでいつでもタイトル画面に戻る
+    if (input.justEscape && (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR')) {
+      this.sound.stopBGM();
+      this.state = 'TITLE';
+      this.fallingPieces = [];
+      this.battlePiece = null;
+      this.enemies = [];
+      this.playerBullets = [];
+      input.resetPerFrame();
+      return;
     }
 
     this.starfield.update(dt, this.phase === 'SHOOTING' ? 2.4 : 1.2);
@@ -379,67 +403,88 @@ export class GameManager {
   }
 
   // ==========================================
-  // シューティングフェーズ：ギャプラス風 曲線で連なる美しい大編隊！
+  // シューティングフェーズ：ギャラガ＆ギャプラス＆ムーンクレスタ風の多彩なレベルデザイン！
   // ==========================================
   private spawnAlienFleet(): void {
     this.enemies = [];
 
-    // ★ ギャプラス＆ギャラガ名物：長く美しい曲線大連隊！
-    // 1. S字蛇行ストリーム（左から8機が連なって流れる！）
-    for (let k = 0; k < 8; k++) {
+    // ステージごとの段階的レベルデザイン
+    // 序盤（1〜2面）：倒しやすく気持ちいい、流麗なS字・8の字ループ
+    // 中盤（3〜6面）：横からの優雅な合流、下からの上昇が加わり、全方位の武装が欲しくなる
+    // 終盤（7〜10面）：左右・下・上からの怒涛の波状攻撃と巨大ボス
+
+    // 1. S字蛇行ストリーム（左から流れる、ギャラガ隊）
+    const leftStreamCount = Math.min(8, 5 + this.stage);
+    for (let k = 0; k < leftStreamCount; k++) {
       this.enemies.push(
         new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k)
       );
     }
 
-    // 2. S字蛇行ストリーム（右から8機が連なって流れる！）
-    for (let k = 0; k < 8; k++) {
-      this.enemies.push(
-        new Enemy('RED_GUARD', 'STREAM_CURVE', 5 + (k % 4), 2, 0.6, 'S_CURVE_RIGHT_TO_LEFT', k)
-      );
-    }
-
-    // 3. ギャラガ名物・8の字ループ大連隊（8機が美しい∞を描いて流れる！）
-    for (let k = 0; k < 8; k++) {
-      this.enemies.push(
-        new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 6), 1, 1.2, 'FIGURE_EIGHT', k)
-      );
-    }
-
-    // 4. 左右交差ダブルインフィニティ急降下連隊（ステージ2以降）
+    // 2. S字蛇行ストリーム（右から流れる）
     if (this.stage >= 2) {
-      for (let k = 0; k < 6; k++) {
+      const rightStreamCount = Math.min(8, 4 + this.stage);
+      for (let k = 0; k < rightStreamCount; k++) {
         this.enemies.push(
-          new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + k, 3, 1.8, 'INFINITY_DIVE_LEFT', k)
-        );
-        this.enemies.push(
-          new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + k, 3, 1.8, 'INFINITY_DIVE_RIGHT', k)
+          new Enemy('RED_GUARD', 'STREAM_CURVE', 5 + (k % 4), 2, 0.8, 'S_CURVE_RIGHT_TO_LEFT', k)
         );
       }
     }
 
-    // 5. 大型艦＆ボス
+    // 3. ギャラガ名物・8の字ループ連隊（美しい∞を描いて流れる！）
+    const loopCount = this.stage === 1 ? 4 : 6;
+    for (let k = 0; k < loopCount; k++) {
+      this.enemies.push(
+        new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 6), 1, 1.4, 'FIGURE_EIGHT', k)
+      );
+    }
+
+    // 4. 左右交差ダブルインフィニティ急降下連隊（ステージ3以降）
+    if (this.stage >= 3) {
+      const crossCount = Math.min(5, 2 + this.stage);
+      for (let k = 0; k < crossCount; k++) {
+        this.enemies.push(
+          new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + k, 3, 2.0, 'INFINITY_DIVE_LEFT', k)
+        );
+        this.enemies.push(
+          new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + k, 3, 2.0, 'INFINITY_DIVE_RIGHT', k)
+        );
+      }
+    }
+
+    // 5. 左右からの横断スイープ隊（ステージ4以降：左右への迎撃ブロックが真価を発揮）
+    if (this.stage >= 4) {
+      this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 0, 1.0));
+      if (this.stage >= 6) {
+        this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_RIGHT', 7, 0, 1.5));
+      }
+    }
+
+    // 6. 画面下からの急上昇サプライズ編隊！（ステージ2以降徐々に増加：下向きビームが重要に）
+    if (this.stage >= 2) {
+      const bottomCount = Math.min(5, 1 + Math.floor(this.stage / 2));
+      for (let i = 0; i < bottomCount; i++) {
+        this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 2 + i * 2, 2, 2.8 + i * 0.3));
+      }
+    }
+
+    // 7. 大型艦＆ボス
     if (this.stage === 10) {
-      // ラスボス超大型UFO母船
+      // ラスボス超大型UFO母船＋護衛
       this.enemies.push(new Enemy('UFO_MOTHERSHIP', 'CAROUSEL_CIRCLE', 4, 0, 0.2));
-      this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 1, 0.5));
+      this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 1, 1, 0.5));
       this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 1, 0.5));
+      this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 3, 0, 0.6));
+      this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 5, 0, 0.6));
     } else if (this.stage === 5) {
       // 5面中ボス超大型UFO
       this.enemies.push(new Enemy('UFO_MOTHERSHIP', 'FORMATION_LOOP', 4, 0, 0.2));
       this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 1, 0.6));
-    } else {
+    } else if (this.stage >= 3) {
       // 倍サイズ大型旗艦
       this.enemies.push(new Enemy('GIANT_YELLOW', 'FORMATION_LOOP', 4, 0, 0.2));
-      if (this.stage >= 3) {
+      if (this.stage >= 7) {
         this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 5, 0, 0.3));
-      }
-    }
-
-    // 6. 画面下からの急上昇サプライズ編隊！（ステージ3以降）
-    if (this.stage >= 3) {
-      for (let i = 0; i < 3; i++) {
-        this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 3 + i * 2, 2, 2.5 + i * 0.2));
       }
     }
   }
@@ -448,9 +493,58 @@ export class GameManager {
     this.shootingTimeLimit -= dt;
     this.formationOffsetAngle += dt * 2.4;
 
-    // 自機ショット（ムーンクレスタ風ピシューン！）
+    // バトル中のブロック降下管理（1ウェーブに1回程度、約7〜9秒経過時に上から降下）
+    this.battlePieceTimer += dt;
+    if (!this.hasSpawnedBattlePieceThisWave && this.battlePieceTimer >= 8.0 && !this.battlePiece) {
+      const types: TetrominoType[] = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      const piece = new TetrominoPiece(type);
+      const r = Math.floor(Math.random() * 4);
+      for (let k = 0; k < r; k++) piece.rotate();
+
+      // ランダムな列から降下開始
+      const spawnCol = 2 + Math.floor(Math.random() * (GRID_COLS - 5));
+      this.battlePiece = {
+        index: 99,
+        piece,
+        gx: spawnCol,
+        gy: -2,
+        fallTimer: 0,
+        settled: false,
+      };
+      this.hasSpawnedBattlePieceThisWave = true;
+    }
+
+    // バトル中落下ブロックの更新（回転不可、一定速度で落下。プレイヤーが自機を動かして接触ドッキング）
+    if (this.battlePiece && !this.battlePiece.settled) {
+      this.battlePiece.fallTimer += dt;
+      // 0.45秒ごとに1マス下降
+      if (this.battlePiece.fallTimer >= 0.45) {
+        this.battlePiece.fallTimer = 0;
+        this.battlePiece.gy += 1;
+
+        // 自機との接触即ドッキング判定
+        if (this.checkInstantDock(this.battlePiece)) {
+          this.battlePiece = null;
+        } else if (this.battlePiece.gy >= GRID_ROWS - 1) {
+          // 底に着いたら粉砕消滅
+          const px = (this.battlePiece.gx + 1) * BLOCK_SIZE;
+          const py = (this.battlePiece.gy + 1) * BLOCK_SIZE;
+          this.sound.playExplosion(false);
+          this.particles.emitExplosion(px, py, this.battlePiece.piece.color, 12);
+          this.battlePiece = null;
+        }
+      } else {
+        // 落下インターバル中も自機との接触判定
+        if (this.checkInstantDock(this.battlePiece)) {
+          this.battlePiece = null;
+        }
+      }
+    }
+
+    // 自機ショット（ムーンクレスタ風ピシューン！ 押しっぱなし連射＋各銃口2発制限）
     if ((input.shoot || input.isMouseDown) && this.player.fireCooldown <= 0) {
-      const newBullets = this.player.shootBullets();
+      const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
         this.sound.playShoot();
@@ -602,19 +696,28 @@ export class GameManager {
       // ★ ムーンクレスタ完全再現：「ドッキングせよ」をシアン色ピクセルで描画！
       const blink = Math.sin(Date.now() / 200) > -0.7;
       if (blink) {
-        drawMoonCrestaText(ctx, 'ドッキングせよ', CANVAS_WIDTH / 2, 115, 2.5, '#00f0ff');
+        drawMoonCrestaText(ctx, 'ドッキングせよ', CANVAS_WIDTH / 2, 115, 34, '#00f0ff');
       }
     } else if (this.phase === 'SHOOTING') {
       // ★ シューティング時は「デストロイ　ゼム　オール！」を同じピクセルフォントで描画！
       const blink = Math.sin(Date.now() / 220) > -0.5;
       if (blink) {
-        drawMoonCrestaText(ctx, 'デストロイ　ゼム　オール！', CANVAS_WIDTH / 2, 70, 2, '#ff3366');
+        drawMoonCrestaText(ctx, 'デストロイ　ゼム　オール！', CANVAS_WIDTH / 2, 70, 28, '#ff3366');
       }
     }
 
     // 3. 自機
     if (!this.player.isDead) {
       this.player.draw(ctx);
+    }
+
+    // ★ バトル中の落下ブロック描画（回転不可・自機を動かしてドッキング！）
+    if (this.phase === 'SHOOTING' && this.battlePiece && !this.battlePiece.settled) {
+      for (const cell of this.battlePiece.piece.cells) {
+        const px = (this.battlePiece.gx + cell.gx) * BLOCK_SIZE;
+        const py = (this.battlePiece.gy + cell.gy) * BLOCK_SIZE;
+        this.battlePiece.piece.drawCell(ctx, px, py);
+      }
     }
 
     // 4. プレイヤー極太弾
@@ -657,38 +760,21 @@ export class GameManager {
       ctx.fillStyle = 'rgba(2, 4, 8, 0.92)';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-      // 1. かっこいいメインロゴ
-      this.drawCoolTitleLogo(ctx, CANVAS_WIDTH / 2, 175);
+      // 1. 凝ったメインロゴ（Galaxtris ＋ ギャラクトリス）
+      this.drawCoolTitleLogo(ctx, CANVAS_WIDTH / 2, 210);
 
-      // 2. 超シンプルで分かりやすい説明文
+      // 2. 超シンプルで簡潔な説明文
       ctx.textAlign = 'center';
-      ctx.font = 'bold 15px "Courier New", monospace';
+      ctx.font = 'bold 15px "DotGothic16", "Courier New", monospace';
       ctx.fillStyle = '#00ffcc';
       ctx.shadowColor = '#00ffcc';
       ctx.shadowBlur = 8;
-      ctx.fillText('〜 ドッキングせよ！ そして デストロイ ゼム オール！ 〜', CANVAS_WIDTH / 2, 280);
+      ctx.fillText('ブロックを合体して全方位ビームでエイリアンを撃破せよ！', CANVAS_WIDTH / 2, 390);
 
-      ctx.font = '13px "Segoe UI", sans-serif';
-      ctx.fillStyle = '#c9d1d9';
+      ctx.font = '13px "DotGothic16", sans-serif';
+      ctx.fillStyle = '#8b949e';
       ctx.shadowBlur = 0;
-      const lines = [
-        '【ドッキングせよ】',
-        '落ちてくるブロックを自機に合体！ 3つ落とし終わるとバトル突入！',
-        '',
-        '【デストロイ ゼム オール！】',
-        '合体したブロックの先端から極太ビーム斉射！',
-        '全方位（上下左右）から襲来する大編隊エイリアンを撃破せよ！',
-      ];
-      lines.forEach((line, idx) => {
-        if (line.startsWith('【')) {
-          ctx.fillStyle = line.includes('ドッキング') ? '#00ffaa' : '#ff3366';
-          ctx.font = 'bold 14px "Segoe UI", sans-serif';
-        } else {
-          ctx.fillStyle = '#d0d7de';
-          ctx.font = '13px "Segoe UI", sans-serif';
-        }
-        ctx.fillText(line, CANVAS_WIDTH / 2, 325 + idx * 24);
-      });
+      ctx.fillText('ESCキーでいつでもタイトルに戻れます', CANVAS_WIDTH / 2, 430);
 
       // 3. スタートプロンプト
       const blink = Math.sin(Date.now() / 250) > 0;
@@ -754,52 +840,72 @@ export class GameManager {
     }
   }
 
-  // かっこいいタイトルロゴ描画
+  // かっこいいタイトルロゴ描画（Galaxtris ＋ カタカナ：ギャラクトリス）
   private drawCoolTitleLogo(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
     ctx.save();
     ctx.textAlign = 'center';
 
-    // 英語サブロゴ
-    ctx.font = '900 20px "Impact", "Arial Black", sans-serif';
-    const subGrad = ctx.createLinearGradient(cx - 140, 0, cx + 140, 0);
-    subGrad.addColorStop(0, '#ffcc00');
-    subGrad.addColorStop(0.5, '#ffffff');
-    subGrad.addColorStop(1, '#ff8800');
-    ctx.fillStyle = subGrad;
-    ctx.shadowColor = '#ffaa00';
-    ctx.shadowBlur = 10;
-    ctx.fillText('⚡ T E T R I S H O O T ⚡', cx, cy - 44);
+    // 1. 上部アクセント装飾
+    ctx.font = 'bold 12px "Courier New", monospace';
+    ctx.fillStyle = '#00ffff';
+    ctx.shadowColor = '#00ffff';
+    ctx.shadowBlur = 6;
+    ctx.fillText('★ RETRO ARCADE FUSION ★', cx, cy - 65);
 
-    // 日本語メインロゴ
-    const jpText = 'テトリシュー';
-    ctx.font = '900 56px "Hiragino Kaku Gothic ProN", "Meiryo", "Arial Black", sans-serif';
+    // 2. 英語メインロゴ「Galaxtris」（重厚で凝ったグラデーション＋立体シャドウ）
+    const engText = 'Galaxtris';
+    ctx.font = '900 64px "Impact", "Arial Black", sans-serif';
 
-    ctx.fillStyle = '#100030';
-    ctx.fillText(jpText, cx + 4, cy + 6);
-    ctx.fillStyle = '#440066';
-    ctx.fillText(jpText, cx + 3, cy + 4);
-    ctx.fillStyle = '#aa0077';
-    ctx.fillText(jpText, cx + 2, cy + 2);
+    // 立体深度ドロップシャドウ
+    ctx.fillStyle = '#0a0020';
+    ctx.fillText(engText, cx + 6, cy + 6);
+    ctx.fillStyle = '#220044';
+    ctx.fillText(engText, cx + 4, cy + 4);
+    ctx.fillStyle = '#660055';
+    ctx.fillText(engText, cx + 2, cy + 2);
 
-    const mainGrad = ctx.createLinearGradient(cx, cy - 40, cx, cy + 10);
+    // 鮮やかなネオンギャラクシーグラデーション
+    const mainGrad = ctx.createLinearGradient(cx, cy - 50, cx, cy + 15);
     mainGrad.addColorStop(0, '#00ffff');
-    mainGrad.addColorStop(0.45, '#ffffff');
-    mainGrad.addColorStop(0.55, '#ff88cc');
-    mainGrad.addColorStop(1, '#ff0066');
+    mainGrad.addColorStop(0.3, '#ffffff');
+    mainGrad.addColorStop(0.55, '#ff77aa');
+    mainGrad.addColorStop(0.8, '#ff0055');
+    mainGrad.addColorStop(1, '#990044');
 
     ctx.fillStyle = mainGrad;
     ctx.shadowColor = '#00ffff';
-    ctx.shadowBlur = 18;
-    ctx.fillText(jpText, cx, cy);
+    ctx.shadowBlur = 20;
+    ctx.fillText(engText, cx, cy);
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeText(jpText, cx, cy);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.8;
+    ctx.strokeText(engText, cx, cy);
 
+    // 3. 下にカタカナで「ギャラクトリス」を添える
+    const jpText = 'ギャラクトリス';
+    ctx.font = 'bold 22px "DotGothic16", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
+    ctx.letterSpacing = '4px';
+
+    // カタカナの影
+    ctx.fillStyle = '#001122';
+    ctx.fillText(jpText, cx + 2, cy + 48);
+
+    // カタカナ本体（ゴールドイエローの鮮明なネオン発光）
+    const jpGrad = ctx.createLinearGradient(cx - 100, 0, cx + 100, 0);
+    jpGrad.addColorStop(0, '#ffcc00');
+    jpGrad.addColorStop(0.5, '#ffffff');
+    jpGrad.addColorStop(1, '#ffaa00');
+
+    ctx.fillStyle = jpGrad;
+    ctx.shadowColor = '#ffcc00';
+    ctx.shadowBlur = 12;
+    ctx.fillText(jpText, cx, cy + 46);
+
+    ctx.letterSpacing = '0px';
     ctx.restore();
   }
 
-  // 画面下に往年のNAMCO風「MUKKII」作者ロゴを描画
+  // 画面下に往年のNAMCO風「MUKKII」作者ロゴを描画（細くクッキリ読みやすく！）
   private drawNamcoStyleMukkiiLogo(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
     ctx.save();
     ctx.textAlign = 'center';
@@ -811,17 +917,15 @@ export class GameManager {
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
+    // 白いフチ（細く2.5pxにして文字の隙間を潰さない）
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 9;
+    ctx.lineWidth = 4;
     ctx.strokeText(logoText, cx, cy);
 
-    ctx.strokeStyle = namcoRed;
-    ctx.lineWidth = 7;
-    ctx.strokeText(logoText, cx, cy);
-
+    // 赤い文字本体
     ctx.fillStyle = namcoRed;
-    ctx.shadowColor = 'rgba(230, 0, 18, 0.6)';
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(230, 0, 18, 0.5)';
+    ctx.shadowBlur = 6;
     ctx.fillText(logoText, cx, cy);
 
     ctx.font = 'bold 11px "Courier New", monospace';

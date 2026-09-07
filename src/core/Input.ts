@@ -6,6 +6,8 @@ export class Input {
   public down = false;
   public shoot = false;
   public mutePressed = false;
+  public escape = false;
+  public justEscape = false;
 
   // 単発押し判定
   public justLeft = false;
@@ -78,6 +80,10 @@ export class Input {
         case 'KeyM':
           this.mutePressed = true;
           break;
+        case 'Escape':
+          if (!this.escape) this.justEscape = true;
+          this.escape = true;
+          break;
       }
     });
 
@@ -101,6 +107,9 @@ export class Input {
           break;
         case 'Space':
           this.shoot = false;
+          break;
+        case 'Escape':
+          this.escape = false;
           break;
       }
     });
@@ -137,6 +146,7 @@ export class Input {
 
   public resetPerFrame(): void {
     this.mutePressed = false;
+    this.justEscape = false;
     this.justLeft = false;
     this.justRight = false;
     this.justRotate = false;

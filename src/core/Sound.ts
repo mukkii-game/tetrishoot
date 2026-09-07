@@ -65,39 +65,9 @@ export class Sound {
     });
   }
 
-  // 2. ムーンクレスタ風 ゲームオーバージングル（哀愁の下降アルペジオ: ピロリロ…ポロロン…）
+  // 2. ゲームオーバー（ユーザー要望により無音に）
   public playGameOver(): void {
-    if (this.isMuted) return;
     this.stopBGM();
-    this.initContext();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    // 短調の下降フレーズ
-    const notes = [
-      880, 783.99, 698.46, 587.33,
-      523.25, 440, 392, 329.63, 293.66, 220
-    ];
-
-    notes.forEach((freq, idx) => {
-      const osc = this.ctx!.createOscillator();
-      const gain = this.ctx!.createGain();
-      const startTime = now + idx * 0.1;
-      const isLast = idx === notes.length - 1;
-      const dur = isLast ? 0.6 : 0.09;
-
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(freq, startTime);
-
-      gain.gain.setValueAtTime(0.2, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
-
-      osc.connect(gain);
-      gain.connect(this.ctx!.destination);
-
-      osc.start(startTime);
-      osc.stop(startTime + dur + 0.02);
-    });
   }
 
   // 3. ムーンクレスタ風 ショット音（ピシューン！と響く矩形波レーザー）

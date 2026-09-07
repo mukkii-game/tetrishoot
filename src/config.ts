@@ -16,7 +16,7 @@ export const PLAYER_SPEED = 380; // 上下左右移動速度
 // 弾パラメータ
 export const BULLET_SPEED = 650;
 export const BULLET_WIDTH = BLOCK_SIZE * 0.85; // 極太弾
-export const PLAYER_FIRE_INTERVAL = 0.18; // テンポ良い連射間隔
+export const PLAYER_FIRE_INTERVAL = 0.12; // 押しっぱなし連射の快適なトリガー間隔
 
 // 耐久度
 export const PIECE_MAX_HP = 2; // パーツ耐久（体当たり2回で破壊）
