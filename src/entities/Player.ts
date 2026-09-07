@@ -302,6 +302,11 @@ export class Player {
 
             if (this.pieces.length === 0) {
               this.isDead = true;
+              // 80年代アーケード風パラパラ爆発アニメーション発火！
+              const bounds = this.getBoundingBox();
+              const centerX = (bounds.minX + bounds.maxX) / 2 || px;
+              const centerY = (bounds.minY + bounds.maxY) / 2 || py;
+              particles.emitRetroExplosion(centerX, centerY, 2.8);
             }
             return { hit: true, pieceDestroyed: true, pieceType: destroyedType };
           }

@@ -57,6 +57,7 @@ export class GameManager {
   private battlePieceTimer = 0;
   private hasSpawnedBattlePieceThisWave = false;
 
+  private deathDelay = 0; // 自機爆発アニメーション用ディレイ
   private stateTimer = 0;
   private transitionAlpha = 0;
   private transitionText = '';
@@ -72,6 +73,7 @@ export class GameManager {
   public startNewGame(): void {
     this.stage = 1;
     this.score = 0;
+    this.deathDelay = 0;
     this.player = new Player();
     this.particles.clear();
     this.state = 'PLAYING';
@@ -192,7 +194,10 @@ export class GameManager {
     }
 
     if (this.player.isDead) {
-      this.triggerGameOver();
+      this.deathDelay += dt;
+      if (this.deathDelay >= 0.65) {
+        this.triggerGameOver();
+      }
     }
   }
 
@@ -840,68 +845,135 @@ export class GameManager {
     }
   }
 
-  // かっこいいタイトルロゴ描画（Galaxtris ＋ カタカナ：ギャラクトリス）
+  // かっこいいタイトルロゴ描画（超大型 Galaxtris ＋ 差をつけたリズミカルなカタカナ：ギャラクトリス）
   private drawCoolTitleLogo(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
     ctx.save();
-    ctx.textAlign = 'center';
 
     // 1. 上部アクセント装飾
+    ctx.textAlign = 'center';
     ctx.font = 'bold 12px "Courier New", monospace';
     ctx.fillStyle = '#00ffff';
     ctx.shadowColor = '#00ffff';
     ctx.shadowBlur = 6;
-    ctx.fillText('★ RETRO ARCADE FUSION ★', cx, cy - 65);
+    ctx.fillText('★ RETRO ARCADE FUSION ★', cx, cy - 82);
 
-    // 2. 英語メインロゴ「Galaxtris」（重厚で凝ったグラデーション＋立体シャドウ）
-    const engText = 'Galaxtris';
-    ctx.font = '900 64px "Impact", "Arial Black", sans-serif';
+    // 2. 超ド級メインロゴ「Galaxtris」（一文字ずつサイズに差をつけてダイナミックなアーケードロゴ感を演出！）
+    const engLetters = [
+      { char: 'G', size: 84, yOffset: -2 },
+      { char: 'a', size: 70, yOffset: 2 },
+      { char: 'l', size: 78, yOffset: -1 },
+      { char: 'a', size: 68, yOffset: 2 },
+      { char: 'x', size: 74, yOffset: 0 },
+      { char: 't', size: 70, yOffset: 1 },
+      { char: 'r', size: 66, yOffset: 2 },
+      { char: 'i', size: 64, yOffset: 3 },
+      { char: 's', size: 72, yOffset: 0 },
+    ];
 
-    // 立体深度ドロップシャドウ
-    ctx.fillStyle = '#0a0020';
-    ctx.fillText(engText, cx + 6, cy + 6);
-    ctx.fillStyle = '#220044';
-    ctx.fillText(engText, cx + 4, cy + 4);
-    ctx.fillStyle = '#660055';
-    ctx.fillText(engText, cx + 2, cy + 2);
+    // 全体の横幅を計測して中央揃え
+    ctx.textBaseline = 'middle';
+    let totalEngWidth = 0;
+    const letterWidths: number[] = [];
+    for (const item of engLetters) {
+      ctx.font = `900 ${item.size}px "Impact", "Arial Black", sans-serif`;
+      const w = ctx.measureText(item.char).width + 2;
+      letterWidths.push(w);
+      totalEngWidth += w;
+    }
 
-    // 鮮やかなネオンギャラクシーグラデーション
-    const mainGrad = ctx.createLinearGradient(cx, cy - 50, cx, cy + 15);
-    mainGrad.addColorStop(0, '#00ffff');
-    mainGrad.addColorStop(0.3, '#ffffff');
-    mainGrad.addColorStop(0.55, '#ff77aa');
-    mainGrad.addColorStop(0.8, '#ff0055');
-    mainGrad.addColorStop(1, '#990044');
+    let startX = cx - totalEngWidth / 2;
 
-    ctx.fillStyle = mainGrad;
-    ctx.shadowColor = '#00ffff';
-    ctx.shadowBlur = 20;
-    ctx.fillText(engText, cx, cy);
+    for (let i = 0; i < engLetters.length; i++) {
+      const item = engLetters[i];
+      const w = letterWidths[i];
+      const lx = startX + w / 2;
+      const ly = cy - 10 + item.yOffset;
 
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.8;
-    ctx.strokeText(engText, cx, cy);
+      ctx.font = `900 ${item.size}px "Impact", "Arial Black", sans-serif`;
+      ctx.textAlign = 'center';
 
-    // 3. 下にカタカナで「ギャラクトリス」を添える
-    const jpText = 'ギャラクトリス';
-    ctx.font = 'bold 22px "DotGothic16", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
-    ctx.letterSpacing = '4px';
+      // 多重立体ドロップシャドウ
+      ctx.fillStyle = '#0a0020';
+      ctx.fillText(item.char, lx + 6, ly + 7);
+      ctx.fillStyle = '#220044';
+      ctx.fillText(item.char, lx + 4, ly + 5);
+      ctx.fillStyle = '#660055';
+      ctx.fillText(item.char, lx + 2, ly + 2);
 
-    // カタカナの影
-    ctx.fillStyle = '#001122';
-    ctx.fillText(jpText, cx + 2, cy + 48);
+      // 鮮烈なネオンギャラクシーグラデーション
+      const grad = ctx.createLinearGradient(lx, ly - item.size / 2, lx, ly + item.size / 2);
+      grad.addColorStop(0, '#00ffff');
+      grad.addColorStop(0.3, '#ffffff');
+      grad.addColorStop(0.55, '#ff77aa');
+      grad.addColorStop(0.8, '#ff0055');
+      grad.addColorStop(1, '#880044');
 
-    // カタカナ本体（ゴールドイエローの鮮明なネオン発光）
-    const jpGrad = ctx.createLinearGradient(cx - 100, 0, cx + 100, 0);
-    jpGrad.addColorStop(0, '#ffcc00');
-    jpGrad.addColorStop(0.5, '#ffffff');
-    jpGrad.addColorStop(1, '#ffaa00');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 18;
+      ctx.fillText(item.char, lx, ly);
 
-    ctx.fillStyle = jpGrad;
-    ctx.shadowColor = '#ffcc00';
-    ctx.shadowBlur = 12;
-    ctx.fillText(jpText, cx, cy + 46);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.8;
+      ctx.strokeText(item.char, lx, ly);
 
-    ctx.letterSpacing = '0px';
+      startX += w;
+    }
+
+    // 3. 下にカタカナで「ギャラクトリス」（だんだんサイズに差をつけたロゴらしいデザイン！）
+    const jpChars = [
+      { char: 'ギ', size: 38, yOff: -2 },
+      { char: 'ャ', size: 30, yOff: 1 },
+      { char: 'ラ', size: 34, yOff: -1 },
+      { char: 'ク', size: 32, yOff: 0 },
+      { char: 'ト', size: 30, yOff: 1 },
+      { char: 'リ', size: 28, yOff: 2 },
+      { char: 'ス', size: 32, yOff: 0 },
+    ];
+
+    let totalJpWidth = 0;
+    const jpWidths: number[] = [];
+    for (const item of jpChars) {
+      ctx.font = `bold ${item.size}px "DotGothic16", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif`;
+      const w = ctx.measureText(item.char).width + 6;
+      jpWidths.push(w);
+      totalJpWidth += w;
+    }
+
+    let startJpX = cx - totalJpWidth / 2;
+    const jpBaseY = cy + 54;
+
+    for (let i = 0; i < jpChars.length; i++) {
+      const item = jpChars[i];
+      const w = jpWidths[i];
+      const jx = startJpX + w / 2;
+      const jy = jpBaseY + item.yOff;
+
+      ctx.font = `bold ${item.size}px "DotGothic16", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif`;
+      ctx.textAlign = 'center';
+
+      // 影
+      ctx.fillStyle = '#001122';
+      ctx.fillText(item.char, jx + 2, jy + 3);
+
+      // ゴールドイエローの鮮明なネオン発光
+      const jpGrad = ctx.createLinearGradient(jx, jy - item.size / 2, jx, jy + item.size / 2);
+      jpGrad.addColorStop(0, '#ffea00');
+      jpGrad.addColorStop(0.5, '#ffffff');
+      jpGrad.addColorStop(1, '#ff8800');
+
+      ctx.fillStyle = jpGrad;
+      ctx.shadowColor = '#ffcc00';
+      ctx.shadowBlur = 12;
+      ctx.fillText(item.char, jx, jy);
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.0;
+      ctx.strokeText(item.char, jx, jy);
+
+      startJpX += w;
+    }
+
     ctx.restore();
   }
 
