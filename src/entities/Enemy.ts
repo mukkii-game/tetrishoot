@@ -128,6 +128,11 @@ export class Enemy {
         this.scoreValue = 5000;
         break;
     }
+    if (this.isBoss) {
+      // ユーザー要望：ボスの大きさを2倍に巨大化！
+      this.width *= 2;
+      this.height *= 2;
+    }
     if (customHp !== undefined) {
       this.maxHp = customHp;
     }
@@ -380,7 +385,10 @@ export class Enemy {
 
     const f = this.animFrame;
     const isGiant = this.rank === 'GIANT_RED' || this.rank === 'GIANT_YELLOW' || this.rank === 'UFO_MOTHERSHIP';
-    const s = isGiant ? 2.8 : 1.4;
+    let s = isGiant ? 2.8 : 1.4;
+    if (this.isBoss) {
+      s *= 2.0; // ボスの表示サイズを2倍に！
+    }
 
     ctx.translate(cx, cy);
     ctx.scale(s, s);
