@@ -78,6 +78,7 @@ export class GameManager {
   // 80年代アーケード風ゲームフィール：画面揺れ（シェイク）＆ヒットストップ
   public screenShake = 0;
   public hitStopTimer = 0;
+  public terrainHitCooldown = 0;
 
   // バトル中に時々落ちてくる回転不可ブロック（要望⑤により一時休止）
   public battlePiece: FallingPieceItem | null = null;
@@ -320,7 +321,18 @@ export class GameManager {
     for (const item of this.fallingPieces) {
       if (item.settled) continue;
 
-      // 左右・下への緩やかなドリフト
+      item.fallTimer += dt;
+
+      // ユーザー要望：落ちてくるブロックも多少の加速減速をする（宇宙船プローブのような浮遊・加減速ダイナミクス）
+      // 縦速度：32px/s〜58px/s で緩やかに周期変動（加速・減速のうねり）
+      const targetVy = 44 + Math.sin(item.fallTimer * 2.2) * 16;
+      // 横速度：左右にゆったりスウィングしながら漂う
+      const targetVx = (item.vx >= 0 ? 1 : -1) * (32 + Math.cos(item.fallTimer * 1.6) * 14);
+
+      item.vx = targetVx;
+      item.vy = targetVy;
+
+      // 移動適用
       item.x += item.vx * dt;
       item.y += item.vy * dt;
 
@@ -411,15 +423,16 @@ export class GameManager {
       case 1:
         // 【WAVE 1：ギャラガ＆ムーンクレスタ導入編】（ザコ44機！）
         // 美しいS字カーブ、そしてムーンクレスタ名物・不規則に揺れ撃つと2つに分裂するSPLITTING_EYE！
+        // 序盤の退屈な空き時間を解消し、切れ目なく敵が次々押し寄せるメリハリ構成に最適化
         for (let k = 0; k < 18; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k));
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.05, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
         for (let k = 0; k < 16; k++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 1.2, 'FIGURE_EIGHT', k));
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 0.45, 'FIGURE_EIGHT', k));
         }
-        // ★ ムーンクレスタ分裂敵
+        // ★ ムーンクレスタ分裂敵（間髪入れずに降下）
         for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 1.5 + i * 0.4));
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 0.8 + i * 0.25));
         }
         break;
 
@@ -648,20 +661,56 @@ export class GameManager {
     this.terrain.update(dt, this.phase === 'SHOOTING' ? 140 : 60);
 
     // 要望②：自機 vs 地形の衝突判定（狭窄洞窟でパーツ破損・Oミノ破壊でゲームオーバー）
-    if (this.terrain.enabled && !this.player.isDead) {
-      const occupied = this.player.getOccupiedCells();
-      for (const cell of occupied) {
-        const cx = cell.gx * BLOCK_SIZE;
-        const cy = cell.gy * BLOCK_SIZE;
-        if (this.terrain.isRectColliding(cx, cy, BLOCK_SIZE, BLOCK_SIZE)) {
-          const hitRes = this.player.checkHit(cx + BLOCK_SIZE / 2, cy + BLOCK_SIZE / 2, this.particles);
-          this.sound.playExplosion(false);
-          this.screenShake = 10;
-          if (hitRes.detachedPieces && hitRes.detachedPieces.length > 0) {
-            this.spawnDetachedFloatingPieces(hitRes.detachedPieces);
+    if (this.terrainHitCooldown > 0) {
+      this.terrainHitCooldown -= dt;
+    }
+
+    if (this.terrain.enabled && !this.player.isDead && this.terrainHitCooldown <= 0) {
+      // コア（Oミノ）以外の外装パーツから優先して衝突判定（外装が壁に当たって削れる）
+      const nonCorePieces = this.player.pieces.filter(p => p.piece.type !== 'O');
+      const targetPieces = nonCorePieces.length > 0 ? nonCorePieces : this.player.pieces;
+
+      let collided = false;
+      for (const attached of targetPieces) {
+        for (const cell of attached.piece.cells) {
+          const cx = this.player.anchorX + (attached.relGx + cell.gx) * BLOCK_SIZE;
+          const cy = this.player.anchorY + (attached.relGy + cell.gy) * BLOCK_SIZE;
+
+          if (this.terrain.isRectColliding(cx, cy, BLOCK_SIZE, BLOCK_SIZE)) {
+            const hitRes = this.player.checkHit(cx + BLOCK_SIZE / 2, cy + BLOCK_SIZE / 2, this.particles);
+            this.sound.playExplosion(false);
+            this.screenShake = 12;
+            this.terrainHitCooldown = 0.35; // 0.35秒の無敵・クールダウンで連続即死を完全防止
+
+            // 壁から弾き返される物理バウンス
+            if (this.terrain.direction === 'UP') {
+              // 左右の壁から中央側へ押し戻す
+              if (cx < CANVAS_WIDTH / 2) {
+                this.player.vx = Math.max(this.player.vx, 180);
+                this.player.anchorX += 8;
+              } else {
+                this.player.vx = Math.min(this.player.vx, -180);
+                this.player.anchorX -= 8;
+              }
+            } else {
+              // 上下の壁から中央側へ押し戻す
+              if (cy < CANVAS_HEIGHT / 2) {
+                this.player.vy = Math.max(this.player.vy, 180);
+                this.player.anchorY += 8;
+              } else {
+                this.player.vy = Math.min(this.player.vy, -180);
+                this.player.anchorY -= 8;
+              }
+            }
+
+            if (hitRes.detachedPieces && hitRes.detachedPieces.length > 0) {
+              this.spawnDetachedFloatingPieces(hitRes.detachedPieces);
+            }
+            collided = true;
+            break;
           }
-          break;
         }
+        if (collided) break;
       }
     }
 
@@ -747,8 +796,8 @@ export class GameManager {
       }
     }
 
-    // ★ ウェーブ後半または通常敵が減ったらボス出現！（約35秒経過、または敵が残り5機以下）
-    if (!this.bossSpawned && (this.shootingTimeLimit <= 30 || this.enemies.length <= 5)) {
+    // ★ ウェーブ後半または通常敵が減ったらボス出現！（中だるみをなくし、テンポよくボス戦へ突入）
+    if (!this.bossSpawned && (this.shootingTimeLimit <= 32 || this.enemies.length <= 6)) {
       this.spawnWaveBoss();
     }
 

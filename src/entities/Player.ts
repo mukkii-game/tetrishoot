@@ -199,13 +199,19 @@ export class Player {
     const minScreenY = 60; // 上部HUD下
     const maxScreenY = CANVAS_HEIGHT - 10;
 
-    const ACCEL = 980; // 加速度 (px/s^2)
-    const MAX_SPEED = PLAYER_SPEED * 1.25; // 最高速
-    const FRICTION = 0.88; // 毎フレームの摩擦減速係数（離した時のスーッと流れる慣性ドリフト感）
+    const ACCEL = 1400; // 俊敏な立ち上がり加速度
+    const MAX_SPEED = PLAYER_SPEED * 1.35; // スピード感のある最高速
+    const FRICTION = 0.92; // 離した時の自然で滑らかなスーッと流れる慣性ドリフト
 
     let inputAx = 0;
     let inputAy = 0;
 
+    if (inputs.left) inputAx -= ACCEL;
+    if (inputs.right) inputAx += ACCEL;
+    if (inputs.up) inputAy -= ACCEL;
+    if (inputs.down) inputAy += ACCEL;
+
+    // マウス操作時はマウス位置へ向かって滑らかに追従加速
     if (inputs.hasMouseMoved && inputs.mouseX !== null && inputs.mouseY !== null) {
       const targetAnchorX = inputs.mouseX - width / 2;
       const targetAnchorY = inputs.mouseY - height / 2;
@@ -213,29 +219,24 @@ export class Player {
       const diffY = targetAnchorY - this.anchorY;
       const dist = Math.hypot(diffX, diffY);
 
-      if (dist > 5) {
-        inputAx = (diffX / dist) * ACCEL * 1.2;
-        inputAy = (diffY / dist) * ACCEL * 1.2;
+      if (dist > 6) {
+        inputAx = (diffX / dist) * ACCEL * 1.3;
+        inputAy = (diffY / dist) * ACCEL * 1.3;
       }
-    } else {
-      if (inputs.left) inputAx -= ACCEL;
-      if (inputs.right) inputAx += ACCEL;
-      if (inputs.up) inputAy -= ACCEL;
-      if (inputs.down) inputAy += ACCEL;
     }
 
     // 加速度適用
     this.vx += inputAx * dt;
     this.vy += inputAy * dt;
 
-    // 入力がない軸は摩擦減衰（エクセリオン風）
+    // 入力がない軸は滑らかな指数減衰
     if (inputAx === 0) {
       this.vx *= Math.pow(FRICTION, dt * 60);
-      if (Math.abs(this.vx) < 3) this.vx = 0;
+      if (Math.abs(this.vx) < 1.0) this.vx = 0;
     }
     if (inputAy === 0) {
       this.vy *= Math.pow(FRICTION, dt * 60);
-      if (Math.abs(this.vy) < 3) this.vy = 0;
+      if (Math.abs(this.vy) < 1.0) this.vy = 0;
     }
 
     // 速度制限
@@ -246,24 +247,28 @@ export class Player {
       this.vy *= scale;
     }
 
-    // 位置更新
-    const nextAnchorX = this.anchorX + this.vx * dt;
-    const nextMinX = nextAnchorX + (bounds.minX - this.anchorX);
-    const nextMaxX = nextAnchorX + (bounds.maxX - this.anchorX);
+    // 位置更新（浮動小数点で滑らかに更新）
+    this.anchorX += this.vx * dt;
+    this.anchorY += this.vy * dt;
 
-    if (nextMinX >= minScreenX && nextMaxX <= maxScreenX) {
-      this.anchorX = nextAnchorX;
-    } else {
-      this.vx = 0; // 壁衝突で速度リセット
+    // 画面外境界クランプ（滑らかな当たり）
+    const minAnchorX = minScreenX - (bounds.minX - this.anchorX);
+    const maxAnchorX = maxScreenX - (bounds.maxX - this.anchorX);
+    if (this.anchorX < minAnchorX) {
+      this.anchorX = minAnchorX;
+      this.vx = 0;
+    } else if (this.anchorX > maxAnchorX) {
+      this.anchorX = maxAnchorX;
+      this.vx = 0;
     }
 
-    const nextAnchorY = this.anchorY + this.vy * dt;
-    const nextMinY = nextAnchorY + (bounds.minY - this.anchorY);
-    const nextMaxY = nextAnchorY + (bounds.maxY - this.anchorY);
-
-    if (nextMinY >= minScreenY && nextMaxY <= maxScreenY) {
-      this.anchorY = nextAnchorY;
-    } else {
+    const minAnchorY = minScreenY - (bounds.minY - this.anchorY);
+    const maxAnchorY = maxScreenY - (bounds.maxY - this.anchorY);
+    if (this.anchorY < minAnchorY) {
+      this.anchorY = minAnchorY;
+      this.vy = 0;
+    } else if (this.anchorY > maxAnchorY) {
+      this.anchorY = maxAnchorY;
       this.vy = 0;
     }
 
@@ -322,8 +327,9 @@ export class Player {
           continue;
         }
 
-        const bx = (sourceGx + 0.5 + gun.dirX * 0.5) * BLOCK_SIZE;
-        const by = (sourceGy + 0.5 + gun.dirY * 0.5) * BLOCK_SIZE;
+        // 自機の滑らかな浮動小数点座標から直接弾を発射（カクつきゼロ）
+        const bx = this.anchorX + (attached.relGx + gun.cellGx + 0.5 + gun.dirX * 0.5) * BLOCK_SIZE;
+        const by = this.anchorY + (attached.relGy + gun.cellGy + 0.5 + gun.dirY * 0.5) * BLOCK_SIZE;
 
         bullets.push(new PlayerBullet(bx, by, gun.angle, piece.color, gunId));
         bulletCountPerGun[gunId] = currentCount + 1;
@@ -353,37 +359,37 @@ export class Player {
       return set;
     });
 
-    // ピース間の隣接グラフを構築
     const n = this.pieces.length;
+    // ピース間の隣接グラフを構築
     const adj: number[][] = Array.from({ length: n }, () => []);
 
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
-        let isNeighbor = false;
-        for (const coordStr of pieceCells[i]) {
-          const [gx, gy] = coordStr.split(',').map(Number);
+        let connected = false;
+        for (const c1 of pieceCells[i]) {
+          const [x1, y1] = c1.split(',').map(Number);
           const neighbors = [
-            `${gx + 1},${gy}`,
-            `${gx - 1},${gy}`,
-            `${gx},${gy + 1}`,
-            `${gx},${gy - 1}`,
+            `${x1 + 1},${y1}`,
+            `${x1 - 1},${y1}`,
+            `${x1},${y1 + 1}`,
+            `${x1},${y1 - 1}`,
           ];
           for (const nb of neighbors) {
             if (pieceCells[j].has(nb)) {
-              isNeighbor = true;
+              connected = true;
               break;
             }
           }
-          if (isNeighbor) break;
+          if (connected) break;
         }
-        if (isNeighbor) {
+        if (connected) {
           adj[i].push(j);
           adj[j].push(i);
         }
       }
     }
 
-    // BFSでコアから到達可能なピースをマーク
+    // BFSでコアから到達可能なピースを探索
     const visited = new Set<number>();
     const queue = [coreIndex];
     visited.add(coreIndex);
@@ -420,16 +426,13 @@ export class Player {
     py: number,
     particles: ParticleManager
   ): { hit: boolean; pieceDestroyed: boolean; pieceType?: TetrominoType; detachedPieces?: AttachedPiece[] } {
-    const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
-    const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
-
     for (let i = this.pieces.length - 1; i >= 0; i--) {
       const attached = this.pieces[i];
       const piece = attached.piece;
 
       for (const cell of piece.cells) {
-        const cellX = (baseGx + attached.relGx + cell.gx) * BLOCK_SIZE;
-        const cellY = (baseGy + attached.relGy + cell.gy) * BLOCK_SIZE;
+        const cellX = this.anchorX + (attached.relGx + cell.gx) * BLOCK_SIZE;
+        const cellY = this.anchorY + (attached.relGy + cell.gy) * BLOCK_SIZE;
 
         if (px >= cellX && px < cellX + BLOCK_SIZE && py >= cellY && py < cellY + BLOCK_SIZE) {
           const isDestroyed = piece.hit(1);
@@ -483,8 +486,9 @@ export class Player {
     for (const attached of this.pieces) {
       const piece = attached.piece;
       for (const cell of piece.cells) {
-        const px = (baseGx + attached.relGx + cell.gx) * BLOCK_SIZE;
-        const py = (baseGy + attached.relGy + cell.gy) * BLOCK_SIZE;
+        // サブピクセル描画：Math.roundで30pxグリッドに丸めず、浮動小数点位置で完全に滑らかに描画
+        const px = this.anchorX + (attached.relGx + cell.gx) * BLOCK_SIZE;
+        const py = this.anchorY + (attached.relGy + cell.gy) * BLOCK_SIZE;
 
         const gun = piece.gunPorts.find(g => g.cellGx === cell.gx && g.cellGy === cell.gy);
         let hasActiveGun = false;

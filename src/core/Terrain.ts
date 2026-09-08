@@ -1,4 +1,4 @@
-﻿import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../config';
+import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../config';
 
 export type ScrollDirection = 'UP' | 'RIGHT';
 
@@ -16,16 +16,23 @@ export class TerrainManager {
     this.direction = direction;
     this.enabled = enabled;
     this.scrollOffset = 0;
+    this.elapsedTime = 0;
     this.seed = Math.random() * 1000;
   }
+
+  public elapsedTime = 0;
 
   public update(dt: number, speed: number): void {
     if (!this.enabled) return;
     this.scrollOffset += speed * dt;
+    this.elapsedTime += dt;
   }
 
   public getWallThickness(screenCoord: number): { w1: number; w2: number } {
     if (!this.enabled) return { w1: 0, w2: 0 };
+
+    // ステージ開始直後は洞窟の入口として壁が徐々に迫るようにテーパー（開始即死を完全防止）
+    const introFactor = Math.min(1.0, this.elapsedTime / 3.0);
 
     const worldCoord = screenCoord + this.scrollOffset;
     const s = this.seed;
@@ -41,14 +48,14 @@ export class TerrainManager {
     const rawVal2 = Math.max(0, (m1 + m2 + m3 + 0.3) / 1.8);
 
     if (this.direction === 'UP') {
-      const maxReach = 140;
-      const w1 = Math.floor(rawVal1 * maxReach);
-      const w2 = Math.floor(rawVal2 * maxReach);
+      const maxReach = 120;
+      const w1 = Math.floor(rawVal1 * maxReach * introFactor);
+      const w2 = Math.floor(rawVal2 * maxReach * introFactor);
       return { w1, w2 };
     } else {
-      const maxReach = 200;
-      const w1 = Math.floor(rawVal1 * maxReach);
-      const w2 = Math.floor(rawVal2 * maxReach);
+      const maxReach = 160;
+      const w1 = Math.floor(rawVal1 * maxReach * introFactor);
+      const w2 = Math.floor(rawVal2 * maxReach * introFactor);
       return { w1, w2 };
     }
   }

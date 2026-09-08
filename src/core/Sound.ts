@@ -122,43 +122,73 @@ export class Sound {
     });
   }
 
-  // 5. 往年のアーケード爆発音（バリバリッとした重厚ホワイトノイズ）
+  // 5. 往年のアーケード爆発音（ナムコ・タイトー風：鋭いFMピッチベンド＋クラッシュノイズの痛快な炸裂音）
   public playExplosion(big = false): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
 
-    const dur = big ? 0.42 : 0.22;
+    const now = this.ctx.currentTime;
+    const dur = big ? 0.48 : 0.26;
+
+    // --- レイヤー1: 80年代アーケード特有の「ドギュゥゥン！」FM下降ピッチ音 ---
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = big ? 'sawtooth' : 'square';
+
+    const startFreq = big ? 280 : 420;
+    const endFreq = big ? 40 : 60;
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur * 0.7);
+
+    oscGain.gain.setValueAtTime(big ? 0.32 : 0.22, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + dur * 0.75);
+
+    osc.connect(oscGain);
+    oscGain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + dur * 0.8);
+
+    // --- レイヤー2: 粒立ちの荒いパンチの効いた爆発クラッシュノイズ ---
     const bufferSize = Math.floor(this.ctx.sampleRate * dur);
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
+      // 80年代レトロノイズジェネレータ風（粗い量子化ビットクラッシュ調）
+      const raw = Math.random() * 2 - 1;
+      const stepped = Math.round(raw * 4) / 4;
+      data[i] = stepped * Math.exp(-i / (bufferSize * (big ? 0.35 : 0.25)));
     }
 
     const noise = this.ctx.createBufferSource();
     noise.buffer = buffer;
 
+    // バンドパス＋ローパスでナムコ・ムーンクレスタ風の「バギュッ」という歯切れの良さを実現
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(big ? 500 : 800, this.ctx.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + dur);
+    filter.frequency.setValueAtTime(big ? 900 : 1400, now);
+    filter.frequency.exponentialRampToValueAtTime(60, now + dur);
 
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(big ? 0.35 : 0.22, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.setValueAtTime(big ? 0.38 : 0.28, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
     noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.ctx.destination);
+    filter.connect(noiseGain);
+    noiseGain.connect(this.ctx.destination);
 
-    noise.start();
+    noise.start(now);
+  }
+
+  // ザコ敵撃破時の小気味良いポップ音（ギャラガ/ゼビウス風）
+  public playEnemyPop(): void {
+    this.playExplosion(false);
   }
 
   // ★ ボス専用：轟音連続爆発サウンド！
   public playBossExplosion(): void {
     this.playExplosion(true);
-    [0.1, 0.22, 0.35].forEach(delay => {
+    [0.08, 0.18, 0.30, 0.44].forEach(delay => {
       window.setTimeout(() => {
         this.playExplosion(true);
       }, delay * 1000);
