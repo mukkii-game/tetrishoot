@@ -1249,6 +1249,10 @@ export class GameManager {
     ctx.shadowBlur = 0;
     ctx.fillText('© 2026 MUKKII ALL RIGHTS RESERVED', cx, cy + 24);
 
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#556677';
+    ctx.fillText('VER 2.5 (METEOR & WAVE OVERHAUL)', cx, cy + 38);
+
     ctx.restore();
   }
 }
