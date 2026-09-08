@@ -2,8 +2,6 @@ import {
   BLOCK_SIZE,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
-  GRID_COLS,
-  GRID_ROWS,
   MAX_STAGES,
   PLAYER_FIRE_INTERVAL,
 } from '../config';
@@ -16,18 +14,33 @@ import { drawMoonCrestaText } from '../utils/RetroFont';
 import { Input } from './Input';
 import { Sound } from './Sound';
 import { Starfield } from './Starfield';
+import { TerrainManager } from './Terrain';
 
 export type GameState = 'TITLE' | 'PLAYING' | 'STAGE_CLEAR' | 'GAMEOVER' | 'VICTORY';
 export type GamePhase = 'TETRIS' | 'SHOOTING';
 
-// 落ちてくるブロックの状態
+// 落ちてくるブロックの状態（ドッキング用：自律浮遊＋弾ヒットで回転）
 export interface FallingPieceItem {
   index: number;
   piece: TetrominoPiece;
+  x: number; // ピクセル座標X（滑らかな自律ドリフト）
+  y: number; // ピクセル座標Y
+  vx: number; // ドリフト速度X
+  vy: number; // 降下速度Y
   gx: number;
   gy: number;
   fallTimer: number;
   settled: boolean;
+}
+
+// 切断されて浮遊・落下中のパーツ（再回収可能）
+export interface DetachedFloatingPiece {
+  piece: TetrominoPiece;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  lifeTime: number;
 }
 
 export class GameManager {
@@ -40,6 +53,10 @@ export class GameManager {
   public starfield: Starfield;
   public particles: ParticleManager;
   public sound: Sound;
+  public terrain: TerrainManager;
+
+  // 切断されて落下中のパーツ（再回収可能）
+  public detachedPieces: DetachedFloatingPiece[] = [];
 
   // パズルフェーズ：落ちてくるブロック（1つずつ集中してドッキング）
   public fallingPieces: FallingPieceItem[] = [];
@@ -62,23 +79,21 @@ export class GameManager {
   public screenShake = 0;
   public hitStopTimer = 0;
 
-  // バトル中に時々落ちてくる回転不可ブロック（1ウェーブに1回程度）
+  // バトル中に時々落ちてくる回転不可ブロック（要望⑤により一時休止）
   public battlePiece: FallingPieceItem | null = null;
-  private battlePieceTimer = 0;
-  private hasSpawnedBattlePieceThisWave = false;
 
   private deathDelay = 0; // 自機爆発アニメーション用ディレイ
   private stateTimer = 0;
   private transitionAlpha = 0;
   private transitionText = '';
   private transitionScale = 1.0;
-  private keyRepeatTimer = 0;
 
   constructor(sound: Sound) {
     this.sound = sound;
     this.player = new Player();
     this.starfield = new Starfield();
     this.particles = new ParticleManager();
+    this.terrain = new TerrainManager();
   }
 
   public startNewGame(): void {
@@ -87,6 +102,7 @@ export class GameManager {
     this.deathDelay = 0;
     this.player = new Player();
     this.particles.clear();
+    this.detachedPieces = [];
     this.state = 'PLAYING';
     this.sound.playStartJingle(); // ムーンクレスタ風 開始ファンファーレ！
     this.startTetrisPhase();
@@ -104,6 +120,11 @@ export class GameManager {
     this.currentBoss = null;
     this.bossDying = false;
     this.bossDeathTimer = 0;
+    this.detachedPieces = [];
+
+    // パズルフェーズでは地形オフ、上スクロール
+    this.starfield.direction = 'UP';
+    this.terrain.reset('UP', false);
 
     // 自機を下部中央へ再配置（ドッキングしやすくする）
     this.player.resetToBottomCenter();
@@ -122,20 +143,27 @@ export class GameManager {
     this.fallingPieces = [];
     this.shootingTimeLimit = 65; // バトル時間をさらに延長（ザコ2倍＋高耐久ボス戦に充分な時間）
     this.formationOffsetAngle = 0;
-    this.battlePiece = null;
-    this.battlePieceTimer = 0;
-    this.hasSpawnedBattlePieceThisWave = false;
+    this.battlePiece = null; // 要望⑤：シューティング時のミノ落下は一旦休止
     this.bossSpawned = false;
     this.currentBoss = null;
     this.bossDying = false;
     this.bossDeathTimer = 0;
+
+    // 要望②：Wave 3, 6等は「右スクロール面」！それ以外は「上スクロール面」
+    const isRightScroll = this.stage === 3 || this.stage === 6;
+    const direction = isRightScroll ? 'RIGHT' : 'UP';
+    this.starfield.direction = direction;
+
+    // 地形有効化（グラディウス・サラマンダー風の狭窄洞窟）
+    // Wave 2以降、あるいは全ウェーブで地形を適用
+    const enableTerrain = this.stage >= 2;
+    this.terrain.reset(direction, enableTerrain);
 
     // ギャラガ＆ムーンクレスタ風 多彩な大編隊をスポーン！
     this.spawnAlienFleet();
 
     this.sound.playPhaseAlert('shooting');
     this.sound.startBGM('shooting');
-    // デストロイゼムオールのかわりに「WAVE 1」と超巨大表示！
     this.showTransitionText(`WAVE ${this.stage}`, 1.8);
   }
 
@@ -239,18 +267,25 @@ export class GameManager {
     const types: TetrominoType[] = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
     this.fallingPieces = [];
 
-    // 中央付近（列7）から降下
+    // 画面上部から緩やかに斜めドリフト降下
     const type = types[Math.floor(Math.random() * types.length)];
     const piece = new TetrominoPiece(type);
 
     const r = Math.floor(Math.random() * 4);
     for (let k = 0; k < r; k++) piece.rotate();
 
+    const startX = CANVAS_WIDTH / 2 - BLOCK_SIZE;
+    const startY = 40;
+
     this.fallingPieces.push({
       index: 0,
       piece,
-      gx: 7,
-      gy: 0,
+      x: startX,
+      y: startY,
+      vx: (Math.random() > 0.5 ? 1 : -1) * 35, // 緩やかな左右ドリフト
+      vy: 42, // ゆっくり降下
+      gx: Math.round(startX / BLOCK_SIZE),
+      gy: Math.round(startY / BLOCK_SIZE),
       fallTimer: 0,
       settled: false,
     });
@@ -259,178 +294,109 @@ export class GameManager {
   }
 
   private updateTetrisPhase(dt: number, input: Input): void {
-    // 操作ブロックの切り替え
-    if (input.selectedPieceIndex !== null) {
-      if (this.fallingPieces[input.selectedPieceIndex] && !this.fallingPieces[input.selectedPieceIndex].settled) {
-        this.activePieceIndex = input.selectedPieceIndex;
-      }
-    } else if (input.justTab) {
-      this.cycleActivePiece();
-    }
+    // 1. 自機の操作（エクセリオン風慣性移動）
+    this.player.updateMovement(dt, input);
 
-    // マウスクリックでのブロック選択
-    if (input.hasMouseMoved && input.isMouseDown && input.mouseX !== null) {
-      const mgx = Math.floor(input.mouseX / BLOCK_SIZE);
-      for (const item of this.fallingPieces) {
-        if (!item.settled) {
-          for (const cell of item.piece.cells) {
-            if (item.gx + cell.gx === mgx) {
-              this.activePieceIndex = item.index;
-              break;
-            }
-          }
-        }
+    // 2. 自機ショット発射（弾を撃って落下中ミノに当てる！）
+    if ((input.shoot || input.isMouseDown) && this.player.fireCooldown <= 0) {
+      const newBullets = this.player.shootBullets(this.playerBullets);
+      if (newBullets.length > 0) {
+        this.playerBullets.push(...newBullets);
+        this.sound.playShoot();
+        this.player.fireCooldown = PLAYER_FIRE_INTERVAL;
       }
     }
 
-    const activeItem = this.fallingPieces[this.activePieceIndex];
-    if (!activeItem || activeItem.settled) {
-      this.cycleActivePiece();
-    }
-
-    const currentItem = this.fallingPieces[this.activePieceIndex];
-
-    // 操作中のブロック移動
-    if (currentItem && !currentItem.settled) {
-      let moveDir = 0;
-      if (input.justLeft) moveDir = -1;
-      else if (input.justRight) moveDir = 1;
-      else if (input.left || input.right) {
-        this.keyRepeatTimer += dt;
-        if (this.keyRepeatTimer > 0.2) {
-          moveDir = input.left ? -1 : 1;
-          this.keyRepeatTimer = 0.12;
-        }
-      } else {
-        this.keyRepeatTimer = 0;
-      }
-
-      if (moveDir !== 0) {
-        const nextGx = currentItem.gx + moveDir;
-        if (this.canPlace(currentItem.piece, nextGx, currentItem.gy, currentItem)) {
-          currentItem.gx = nextGx;
-          this.checkInstantDock(currentItem);
-        }
-      }
-
-      // 回転
-      if (input.justRotate) {
-        currentItem.piece.rotate();
-        if (!this.canPlace(currentItem.piece, currentItem.gx, currentItem.gy, currentItem)) {
-          if (this.canPlace(currentItem.piece, currentItem.gx - 1, currentItem.gy, currentItem)) {
-            currentItem.gx--;
-          } else if (this.canPlace(currentItem.piece, currentItem.gx + 1, currentItem.gy, currentItem)) {
-            currentItem.gx++;
-          } else {
-            currentItem.piece.rotateCounter();
-          }
-        }
-        this.checkInstantDock(currentItem);
+    // 弾の更新
+    for (let i = this.playerBullets.length - 1; i >= 0; i--) {
+      const b = this.playerBullets[i];
+      b.update(dt);
+      if (b.isDead) {
+        this.playerBullets.splice(i, 1);
       }
     }
 
-    // 3つのブロックの自然落下
+    // 3. 落下中ミノの自律ドリフト移動＆弾との衝突回転判定
     for (const item of this.fallingPieces) {
       if (item.settled) continue;
 
-      const isActive = item.index === this.activePieceIndex;
-      const isFastDrop = isActive && (input.down || input.justDrop);
-      const dropInterval = isFastDrop ? 0.05 : 0.65;
+      // 左右・下への緩やかなドリフト
+      item.x += item.vx * dt;
+      item.y += item.vy * dt;
 
-      item.fallTimer += dt;
-      if (item.fallTimer >= dropInterval) {
-        item.fallTimer = 0;
-        const nextGy = item.gy + 1;
+      // 画面左右端で反転バウンド
+      if (item.x < 20) {
+        item.x = 20;
+        item.vx = Math.abs(item.vx);
+      } else if (item.x > CANVAS_WIDTH - 20 - BLOCK_SIZE * 3) {
+        item.x = CANVAS_WIDTH - 20 - BLOCK_SIZE * 3;
+        item.vx = -Math.abs(item.vx);
+      }
 
-        if (this.canPlace(item.piece, item.gx, nextGy, item)) {
-          item.gy = nextGy;
-          this.checkInstantDock(item);
-        } else {
-          this.resolvePiecePlacement(item);
+      item.gx = Math.round(item.x / BLOCK_SIZE);
+      item.gy = Math.round(item.y / BLOCK_SIZE);
+
+      // 弾 vs 落下中ミノの回転判定！
+      // ユーザー要望：弾を当てると90度回転！左側ヒットなら時計回り、右側ヒットなら反時計回り
+      const pieceBounds = item.piece.getBoundingBox(item.x, item.y);
+      const pieceCenterX = (pieceBounds.minX + pieceBounds.maxX) / 2;
+
+      for (let bi = this.playerBullets.length - 1; bi >= 0; bi--) {
+        const pb = this.playerBullets[bi];
+        if (pb.isDead) continue;
+
+        if (
+          pb.x >= pieceBounds.minX - 4 &&
+          pb.x <= pieceBounds.maxX + 4 &&
+          pb.y >= pieceBounds.minY - 4 &&
+          pb.y <= pieceBounds.maxY + 4
+        ) {
+          pb.isDead = true;
+          this.particles.emitSparks(pb.x, pb.y, item.piece.color, 10);
+          this.sound.playHit();
+
+          if (pb.x < pieceCenterX) {
+            item.piece.rotate(); // 左側ヒット：時計回り（右回転）
+          } else {
+            item.piece.rotateCounter(); // 右側ヒット：反時計回り（左回転）
+          }
         }
+      }
+
+      // 4. 自機との接触・近接スナップ合体判定！
+      const playerBounds = this.player.getBoundingBox();
+      const isClose =
+        pieceBounds.maxX >= playerBounds.minX - 10 &&
+        pieceBounds.minX <= playerBounds.maxX + 10 &&
+        pieceBounds.maxY >= playerBounds.minY - 10 &&
+        pieceBounds.minY <= playerBounds.maxY + 10;
+
+      if (isClose) {
+        // 自機と一番整合するグリッドにスナップ吸着
+        const dockRes = this.player.tryDockFromPixel(item.piece, item.x, item.y);
+        if (dockRes.docked) {
+          item.settled = true;
+          this.sound.playDock(); // ムーンクレスタ風ピロピロピロ！
+          this.particles.emitDockRing(item.x + BLOCK_SIZE, item.y + BLOCK_SIZE, item.piece.color);
+          this.score += 500;
+          break;
+        }
+      }
+
+      // 底まで落ちてしまった場合
+      if (item.y > CANVAS_HEIGHT - 30) {
+        item.settled = true;
+        this.sound.playExplosion(false);
+        this.particles.emitExplosion(item.x + BLOCK_SIZE, item.y, item.piece.color, 16);
       }
     }
 
     const remaining = this.fallingPieces.filter(p => !p.settled).length;
     this.remainingPiecesCount = remaining;
 
-    // 3つ落とし終わったら即座にバトルへ突入！
+    // ドッキング終了したら即座にバトルへ突入！
     if (remaining === 0) {
       this.startShootingPhase();
-    }
-  }
-
-  private cycleActivePiece(): void {
-    const unsettled = this.fallingPieces.filter(p => !p.settled);
-    if (unsettled.length === 0) return;
-
-    let nextIdx = (this.activePieceIndex + 1) % 2;
-    for (let i = 0; i < 2; i++) {
-      if (this.fallingPieces[nextIdx] && !this.fallingPieces[nextIdx].settled) {
-        this.activePieceIndex = nextIdx;
-        return;
-      }
-      nextIdx = (nextIdx + 1) % 2;
-    }
-  }
-
-  // 重なり判定（画面端と自機、他の落下中ブロックとの衝突）
-  private canPlace(piece: TetrominoPiece, gx: number, gy: number, selfItem: FallingPieceItem): boolean {
-    const myCells = this.player.getOccupiedCells();
-
-    for (const cell of piece.cells) {
-      const testGx = gx + cell.gx;
-      const testGy = gy + cell.gy;
-
-      // 画面左右端（壁がないので0〜GRID_COLS-1まで完全に利用可能）
-      if (testGx < 0 || testGx >= GRID_COLS) return false;
-      if (testGy >= GRID_ROWS - 1) return false;
-
-      for (const mc of myCells) {
-        if (mc.gx === testGx && mc.gy === testGy) return false;
-      }
-
-      for (const other of this.fallingPieces) {
-        if (other !== selfItem && !other.settled) {
-          for (const oc of other.piece.cells) {
-            if (other.gx + oc.gx === testGx && other.gy + oc.gy === testGy) {
-              return false;
-            }
-          }
-        }
-      }
-    }
-    return true;
-  }
-
-  // 自機との接触即確定
-  private checkInstantDock(item: FallingPieceItem): boolean {
-    if (item.settled) return false;
-
-    const dockResult = this.player.tryDock(item.piece, item.gx, item.gy);
-    if (dockResult.docked) {
-      item.settled = true;
-      this.sound.playDock(); // ムーンクレスタ風ピロピロピロ！
-      const px = (item.gx + 1) * BLOCK_SIZE;
-      const py = (item.gy + 1) * BLOCK_SIZE;
-      this.particles.emitDockRing(px, py, item.piece.color);
-      this.score += 300;
-      this.cycleActivePiece();
-      return true;
-    }
-
-    return false;
-  }
-
-  private resolvePiecePlacement(item: FallingPieceItem): void {
-    if (!this.checkInstantDock(item)) {
-      // スルー：床で粉砕消滅
-      item.settled = true;
-      const px = (item.gx + 1) * BLOCK_SIZE;
-      const py = (item.gy + 1) * BLOCK_SIZE;
-      this.sound.playExplosion(false);
-      this.particles.emitExplosion(px, py, item.piece.color, 14);
-      this.cycleActivePiece();
     }
   }
 
@@ -443,42 +409,52 @@ export class GameManager {
 
     switch (this.stage) {
       case 1:
-        // 【WAVE 1：ギャラガ導入編】（ザコ44機！）
-        // 美しいS字カーブと8の字ループ。軌道が流麗で、連射でなぎ倒す基本面！
-        for (let k = 0; k < 24; k++) {
+        // 【WAVE 1：ギャラガ＆ムーンクレスタ導入編】（ザコ44機！）
+        // 美しいS字カーブ、そしてムーンクレスタ名物・不規則に揺れ撃つと2つに分裂するSPLITTING_EYE！
+        for (let k = 0; k < 18; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
-        for (let k = 0; k < 20; k++) {
+        for (let k = 0; k < 16; k++) {
           this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 1.2, 'FIGURE_EIGHT', k));
+        }
+        // ★ ムーンクレスタ分裂敵
+        for (let i = 0; i < 6; i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 1.5 + i * 0.4));
         }
         break;
 
       case 2:
-        // 【WAVE 2：左右クロスストリーム ＆ ジグザグ急降下】（ザコ56機！）
-        // 左右から交差して降下する大編隊＋電光石火のジグザグ急降下奇襲！
+        // 【WAVE 2：ゼビウスクランク＆左右クロスストリーム】（ザコ56機！）
+        // 左右から交差して降下する大編隊＋ゼビウス風直角クランクのトーロイド！狭窄地形も初登場！
         for (let k = 0; k < 20; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
-        for (let k = 0; k < 20; k++) {
+        for (let k = 0; k < 16; k++) {
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 5 + (k % 4), 2, 0.5, 'S_CURVE_RIGHT_TO_LEFT', k));
         }
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'ZIGZAG_DIVE', 1 + (i % 7), 1, 1.4 + i * 0.14));
+        // ★ ゼビウス風トーロイド
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 2 + (i % 5), 1, 1.0 + i * 0.25));
+        }
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 0, 2.0 + i * 0.3));
         }
         break;
 
       case 3:
-        // 【WAVE 3：下からの噴水地獄 ＆ 8の字挟み撃ち】（ザコ52機！）
-        // 画面下から猛烈な勢いで噴き上がる噴水ストリーム！下向きビーム大活躍！
-        for (let k = 0; k < 20; k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 2 + (k % 5), 1, 0.2, 'FIGURE_EIGHT', k));
-        }
-        // 下からの連隊（16機×2列が噴水のように連続噴出）
+        // 【WAVE 3：★右スクロール洞窟突破！スターフォース旋回＆噴水迎撃】（ザコ54機！）
+        // 右スクロールで上下に天井と床の鍾乳石！高速ダイブするスターフォース敵と噴水編隊！
         for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 4) * 2, 2, 1.0 + i * 0.12));
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.4 + i * 0.2));
         }
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 2 + (i % 4) * 2, 2, 2.2 + i * 0.12));
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 6), 1, 0.8 + i * 0.2));
+        }
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 4) * 2, 2, 1.2 + i * 0.15));
+        }
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 1.8 + i * 0.3));
         }
         break;
 
@@ -658,55 +634,6 @@ export class GameManager {
     this.shootingTimeLimit -= dt;
     this.formationOffsetAngle += dt * 2.4;
 
-    // バトル中のブロック降下管理（1ウェーブに1回程度、約7〜9秒経過時に上から降下）
-    this.battlePieceTimer += dt;
-    if (!this.hasSpawnedBattlePieceThisWave && this.battlePieceTimer >= 8.0 && !this.battlePiece) {
-      const types: TetrominoType[] = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
-      const type = types[Math.floor(Math.random() * types.length)];
-      const piece = new TetrominoPiece(type);
-      const r = Math.floor(Math.random() * 4);
-      for (let k = 0; k < r; k++) piece.rotate();
-
-      // ランダムな列から降下開始
-      const spawnCol = 2 + Math.floor(Math.random() * (GRID_COLS - 5));
-      this.battlePiece = {
-        index: 99,
-        piece,
-        gx: spawnCol,
-        gy: -2,
-        fallTimer: 0,
-        settled: false,
-      };
-      this.hasSpawnedBattlePieceThisWave = true;
-    }
-
-    // バトル中落下ブロックの更新（回転不可、一定速度で落下。プレイヤーが自機を動かして接触ドッキング）
-    if (this.battlePiece && !this.battlePiece.settled) {
-      this.battlePiece.fallTimer += dt;
-      // 0.45秒ごとに1マス下降
-      if (this.battlePiece.fallTimer >= 0.45) {
-        this.battlePiece.fallTimer = 0;
-        this.battlePiece.gy += 1;
-
-        // 自機との接触即ドッキング判定
-        if (this.checkInstantDock(this.battlePiece)) {
-          this.battlePiece = null;
-        } else if (this.battlePiece.gy >= GRID_ROWS - 1) {
-          // 底に着いたら粉砕消滅
-          const px = (this.battlePiece.gx + 1) * BLOCK_SIZE;
-          const py = (this.battlePiece.gy + 1) * BLOCK_SIZE;
-          this.sound.playExplosion(false);
-          this.particles.emitExplosion(px, py, this.battlePiece.piece.color, 12);
-          this.battlePiece = null;
-        }
-      } else {
-        // 落下インターバル中も自機との接触判定
-        if (this.checkInstantDock(this.battlePiece)) {
-          this.battlePiece = null;
-        }
-      }
-    }
-
     // 自機ショット（ムーンクレスタ風ピシューン！ 押しっぱなし連射＋各銃口2発制限）
     if ((input.shoot || input.isMouseDown) && this.player.fireCooldown <= 0) {
       const newBullets = this.player.shootBullets(this.playerBullets);
@@ -717,12 +644,90 @@ export class GameManager {
       }
     }
 
-    // プレイヤー弾の更新
+    // 地形（洞窟壁）のスクロール更新
+    this.terrain.update(dt, this.phase === 'SHOOTING' ? 140 : 60);
+
+    // 要望②：自機 vs 地形の衝突判定（狭窄洞窟でパーツ破損・Oミノ破壊でゲームオーバー）
+    if (this.terrain.enabled && !this.player.isDead) {
+      const occupied = this.player.getOccupiedCells();
+      for (const cell of occupied) {
+        const cx = cell.gx * BLOCK_SIZE;
+        const cy = cell.gy * BLOCK_SIZE;
+        if (this.terrain.isRectColliding(cx, cy, BLOCK_SIZE, BLOCK_SIZE)) {
+          const hitRes = this.player.checkHit(cx + BLOCK_SIZE / 2, cy + BLOCK_SIZE / 2, this.particles);
+          this.sound.playExplosion(false);
+          this.screenShake = 10;
+          if (hitRes.detachedPieces && hitRes.detachedPieces.length > 0) {
+            this.spawnDetachedFloatingPieces(hitRes.detachedPieces);
+          }
+          break;
+        }
+      }
+    }
+
+    // プレイヤー弾の更新 ＆ 要望④：自分の弾は自身とぶつかっても消える（自傷ダメージなし）
+    const playerCells = this.player.getOccupiedCells();
     for (let i = this.playerBullets.length - 1; i >= 0; i--) {
       const b = this.playerBullets[i];
       b.update(dt);
+
+      // 自弾 vs 自機ブロック吸収判定（弾消滅、自機ノーダメージ）
+      if (!b.isDead) {
+        for (const cell of playerCells) {
+          const cx = cell.gx * BLOCK_SIZE;
+          const cy = cell.gy * BLOCK_SIZE;
+          if (b.x >= cx && b.x <= cx + BLOCK_SIZE && b.y >= cy && b.y <= cy + BLOCK_SIZE) {
+            b.isDead = true;
+            this.particles.emitSparks(b.x, b.y, b.color, 4);
+            break;
+          }
+        }
+      }
+
+      // 自弾 vs 地形壁（壁に当たると弾消滅）
+      if (!b.isDead && this.terrain.enabled && this.terrain.isColliding(b.x, b.y)) {
+        b.isDead = true;
+        this.particles.emitSparks(b.x, b.y, '#ffaa00', 4);
+      }
+
       if (b.isDead) {
         this.playerBullets.splice(i, 1);
+      }
+    }
+
+    // 要望③：切断されて浮遊・落下中のパーツの更新＆再回収
+    for (let i = this.detachedPieces.length - 1; i >= 0; i--) {
+      const dp = this.detachedPieces[i];
+      dp.x += dp.vx * dt;
+      dp.y += dp.vy * dt;
+      dp.lifeTime += dt;
+
+      // 画面左右バウンド
+      if (dp.x < 10) { dp.x = 10; dp.vx = Math.abs(dp.vx); }
+      if (dp.x > CANVAS_WIDTH - 50) { dp.x = CANVAS_WIDTH - 50; dp.vx = -Math.abs(dp.vx); }
+
+      // プレイヤーが自機を寄せてキャッチ（再ドッキング！）
+      const playerBounds = this.player.getBoundingBox();
+      const isClose =
+        dp.x >= playerBounds.minX - 20 &&
+        dp.x <= playerBounds.maxX + 20 &&
+        dp.y >= playerBounds.minY - 20 &&
+        dp.y <= playerBounds.maxY + 20;
+
+      if (isClose) {
+        const dockRes = this.player.tryDockFromPixel(dp.piece, dp.x, dp.y);
+        if (dockRes.docked) {
+          this.sound.playDock();
+          this.particles.emitDockRing(dp.x, dp.y, dp.piece.color);
+          this.score += 400;
+          this.detachedPieces.splice(i, 1);
+          continue;
+        }
+      }
+
+      // 画面下端を抜けたら消滅
+      if (dp.y > CANVAS_HEIGHT + 30) {
+        this.detachedPieces.splice(i, 1);
       }
     }
 
@@ -764,11 +769,30 @@ export class GameManager {
 
           const killed = enemy.hit(1);
           if (killed) {
+            // 要望①：ムーンクレスタ名物 SPLITTING_EYE が撃破されたら2つの MINI_EYE に分裂！
+            if (enemy.rank === 'SPLITTING_EYE') {
+              this.sound.playExplosion(false);
+              this.particles.emitExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, '#ff0055', 18);
+              const mini1 = new Enemy('MINI_EYE', 'MOON_SPLIT_FLOAT', 0, 0, 0);
+              mini1.x = enemy.x - 12;
+              mini1.y = enemy.y;
+              mini1.vx = -90;
+              mini1.vy = 65;
+
+              const mini2 = new Enemy('MINI_EYE', 'MOON_SPLIT_FLOAT', 0, 0, 0);
+              mini2.x = enemy.x + 12;
+              mini2.y = enemy.y;
+              mini2.vx = 90;
+              mini2.vy = 65;
+
+              this.enemies.push(mini1, mini2);
+              this.score += enemy.scoreValue;
+              break;
+            }
+
             const isGiant = enemy.rank.startsWith('GIANT') || enemy.rank === 'UFO_MOTHERSHIP';
 
             if (enemy === this.currentBoss || enemy.isBoss) {
-              // ★ ユーザー要望：ボスのド迫力ヤラレ爆発！
-              // 白い四角ではなく、多重巨大パラパラ爆発と轟音を発生させ、爆発をしっかり見せてからクリア！
               this.sound.playBossExplosion();
               this.particles.emitBossExplosion(
                 enemy.x + enemy.width / 2,
@@ -793,11 +817,10 @@ export class GameManager {
                 isGiant
               );
               this.score += enemy.scoreValue;
-              this.hitStopTimer = isGiant ? 0.05 : 0.025; // マイクロヒットストップ
+              this.hitStopTimer = isGiant ? 0.05 : 0.025;
               this.screenShake = Math.max(this.screenShake, isGiant ? 6 : 2.5);
             }
           } else {
-            // 被弾時（ボス等）：手応えのあるマイクロヒットストップと軽い振動
             this.hitStopTimer = 0.025;
             this.screenShake = Math.max(this.screenShake, 3);
           }
@@ -811,6 +834,11 @@ export class GameManager {
       if (enemy.isDead) continue;
       const hitRes = this.player.checkHit(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, this.particles);
       if (hitRes.hit) {
+        // 切り離されたパーツが発生した場合は浮遊物としてスポーン
+        if (hitRes.detachedPieces && hitRes.detachedPieces.length > 0) {
+          this.spawnDetachedFloatingPieces(hitRes.detachedPieces);
+        }
+
         const killed = enemy.hit(5);
         this.sound.playExplosion(true);
         this.screenShake = 12;
@@ -861,6 +889,28 @@ export class GameManager {
     this.showTransitionText('GAME OVER');
   }
 
+  // 要望③：Oミノから切り離されたパーツを浮遊物として戦場に放出し、再回収可能にする
+  private spawnDetachedFloatingPieces(detachedList: { piece: TetrominoPiece; relGx: number; relGy: number }[]): void {
+    const baseGx = Math.round(this.player.anchorX / BLOCK_SIZE);
+    const baseGy = Math.round(this.player.anchorY / BLOCK_SIZE);
+
+    for (const d of detachedList) {
+      const px = (baseGx + d.relGx) * BLOCK_SIZE;
+      const py = (baseGy + d.relGy) * BLOCK_SIZE;
+
+      this.detachedPieces.push({
+        piece: d.piece,
+        x: px,
+        y: py,
+        vx: (Math.random() - 0.5) * 60, // 左右にふわふわドリフト
+        vy: 35 + Math.random() * 25, // ゆっくり下へ落下
+        lifeTime: 0,
+      });
+
+      this.particles.emitSparks(px + BLOCK_SIZE, py + BLOCK_SIZE, d.piece.color, 16);
+    }
+  }
+
   // ==========================================
   // 描画
   // ==========================================
@@ -877,37 +927,28 @@ export class GameManager {
     // 1. 豪華な渦巻き銀河・星雲・多層スターフィールド
     this.starfield.draw(ctx);
 
-    // 2. パズルフェーズ：3つの落下中ブロック
+    // ★ 要望②：洞窟・狭窄地形の描画（グラディウス・サラマンダー風岩肌）
+    this.terrain.draw(ctx);
+
+    // 2. パズルフェーズ：自律浮遊・回転中の落下ブロック
     if (this.phase === 'TETRIS') {
       for (const item of this.fallingPieces) {
         if (item.settled) continue;
 
-        const isActive = item.index === this.activePieceIndex;
-
         for (const cell of item.piece.cells) {
-          const px = (item.gx + cell.gx) * BLOCK_SIZE;
-          const py = (item.gy + cell.gy) * BLOCK_SIZE;
+          const px = item.x + cell.gx * BLOCK_SIZE;
+          const py = item.y + cell.gy * BLOCK_SIZE;
           item.piece.drawCell(ctx, px, py);
         }
 
-        if (isActive) {
-          ctx.save();
-          let ghostGy = item.gy;
-          while (this.canPlace(item.piece, item.gx, ghostGy + 1, item)) {
-            ghostGy++;
-          }
-          if (ghostGy > item.gy) {
-            ctx.globalAlpha = 0.35;
-            for (const cell of item.piece.cells) {
-              const gpx = (item.gx + cell.gx) * BLOCK_SIZE;
-              const gpy = (ghostGy + cell.gy) * BLOCK_SIZE;
-              ctx.strokeStyle = item.piece.color;
-              ctx.lineWidth = 1.5;
-              ctx.strokeRect(gpx + 1, gpy + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
-            }
-          }
-          ctx.restore();
-        }
+        // ガイド用の淡い光彩枠
+        const bounds = item.piece.getBoundingBox(item.x, item.y);
+        ctx.save();
+        ctx.strokeStyle = item.piece.color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(bounds.minX - 2, bounds.minY - 2, bounds.maxX - bounds.minX + 4, bounds.maxY - bounds.minY + 4);
+        ctx.restore();
       }
 
       // ★ ムーンクレスタ完全再現：「ドッキングせよ！」をシアン色ピクセルで描画！
@@ -923,18 +964,19 @@ export class GameManager {
       }
     }
 
+    // ★ 要望③：切断されて浮遊・落下中のパーツ描画（点滅しながら落下）
+    for (const dp of this.detachedPieces) {
+      const alpha = Math.sin(dp.lifeTime * 8) > 0 ? 0.9 : 0.5;
+      for (const cell of dp.piece.cells) {
+        const px = dp.x + cell.gx * BLOCK_SIZE;
+        const py = dp.y + cell.gy * BLOCK_SIZE;
+        dp.piece.drawCell(ctx, px, py, undefined, alpha);
+      }
+    }
+
     // 3. 自機
     if (!this.player.isDead) {
       this.player.draw(ctx);
-    }
-
-    // ★ バトル中の落下ブロック描画（回転不可・自機を動かしてドッキング！）
-    if (this.phase === 'SHOOTING' && this.battlePiece && !this.battlePiece.settled) {
-      for (const cell of this.battlePiece.piece.cells) {
-        const px = (this.battlePiece.gx + cell.gx) * BLOCK_SIZE;
-        const py = (this.battlePiece.gy + cell.gy) * BLOCK_SIZE;
-        this.battlePiece.piece.drawCell(ctx, px, py);
-      }
     }
 
     // 4. プレイヤー極太弾
@@ -1251,7 +1293,7 @@ export class GameManager {
 
     ctx.font = '9px monospace';
     ctx.fillStyle = '#556677';
-    ctx.fillText('VER 2.5 (METEOR & WAVE OVERHAUL)', cx, cy + 38);
+    ctx.fillText('VER 3.0 (TERRAIN & EXERION MECHANICS)', cx, cy + 38);
 
     ctx.restore();
   }

@@ -154,6 +154,28 @@ export class TetrominoPiece {
     }
   }
 
+  // 指定ピクセル座標におけるピース全体のバウンディングボックス
+  public getBoundingBox(px: number, py: number): { minX: number; maxX: number; minY: number; maxY: number } {
+    let minGx = 999;
+    let maxGx = -999;
+    let minGy = 999;
+    let maxGy = -999;
+
+    for (const c of this.cells) {
+      if (c.gx < minGx) minGx = c.gx;
+      if (c.gx > maxGx) maxGx = c.gx;
+      if (c.gy < minGy) minGy = c.gy;
+      if (c.gy > maxGy) maxGy = c.gy;
+    }
+
+    return {
+      minX: px + minGx * BLOCK_SIZE,
+      maxX: px + (maxGx + 1) * BLOCK_SIZE,
+      minY: py + minGy * BLOCK_SIZE,
+      maxY: py + (maxGy + 1) * BLOCK_SIZE,
+    };
+  }
+
   // 単体セル描画
   public drawCell(
     ctx: CanvasRenderingContext2D,

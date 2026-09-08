@@ -7,7 +7,10 @@ export type AlienRank =
   | 'GIANT_RED'        // 倍サイズ大型レッド
   | 'GIANT_YELLOW'     // 倍サイズ大型イエロー
   | 'UFO_MOTHERSHIP'   // 超大型ボスUFO
-  | 'METEOR_ROCK';     // ★ ムーンクレスタ名物：隕石メテオ（硬くて回転しながら急降下！）
+  | 'METEOR_ROCK'      // ★ ムーンクレスタ名物：隕石メテオ（硬くて回転しながら急降下！）
+  | 'SPLITTING_EYE'    // ★ ムーンクレスタ名物：撃つと2つに分裂する不規則移動の目玉怪獣
+  | 'MINI_EYE'         // ★ 分裂した小型目玉
+  | 'TOROID_SCOUT';    // ★ ゼビウス風トーロイド
 
 export type CurvePathType =
   | 'FIGURE_EIGHT'         // ギャラガ8の字ループ
@@ -28,7 +31,10 @@ export type FlightPattern =
   | 'RETURNING'
   | 'METEOR_FALL'         // ★ ムーンクレスタ風：隕石・メテオ群（上から高速降下）
   | 'ZIGZAG_DIVE'         // ★ ムーンクレスタ風：カミソリ急降下（電光石火の左右切り返し）
-  | 'CROSS_SPLIT';        // ★ 左右斜め上から中央交差突入
+  | 'CROSS_SPLIT'         // ★ 左右斜め上から中央交差突入
+  | 'MOON_SPLIT_FLOAT'    // ★ ムーンクレスタ風：カクカク不規則に左右に振れながら降下
+  | 'XEVIOUS_TOROID'      // ★ ゼビウス風：直角クランク移動で画面をクロス
+  | 'STARFORCE_SWOOP';    // ★ スターフォース風：超高速ダイナミック全画面ダイブ＆旋回
 
 export class Enemy {
   public id: string;
@@ -137,6 +143,24 @@ export class Enemy {
         this.maxHp = 3; // 隕石は頑丈（3発）
         this.scoreValue = 300;
         break;
+      case 'SPLITTING_EYE':
+        this.width = 46;
+        this.height = 42;
+        this.maxHp = 1; // 1発で2つのMINI_EYEに分裂
+        this.scoreValue = 500;
+        break;
+      case 'MINI_EYE':
+        this.width = 24;
+        this.height = 22;
+        this.maxHp = 1;
+        this.scoreValue = 250;
+        break;
+      case 'TOROID_SCOUT':
+        this.width = 32;
+        this.height = 32;
+        this.maxHp = 1;
+        this.scoreValue = 350;
+        break;
     }
     if (this.isBoss) {
       // ユーザー要望：ボスの大きさを2倍に巨大化！
@@ -171,6 +195,21 @@ export class Enemy {
       this.y = -50;
       this.vx = 180;
       this.vy = 120;
+    } else if (pattern === 'MOON_SPLIT_FLOAT') {
+      this.x = this.formationX;
+      this.y = -40;
+      this.vx = (Math.random() > 0.5 ? 1 : -1) * 80;
+      this.vy = 45; // ゆっくりカクカク不規則降下
+    } else if (pattern === 'XEVIOUS_TOROID') {
+      this.x = Math.random() > 0.5 ? -30 : CANVAS_WIDTH + 30;
+      this.y = 80 + Math.random() * 200;
+      this.vx = this.x < 0 ? 140 : -140;
+      this.vy = 0;
+    } else if (pattern === 'STARFORCE_SWOOP') {
+      this.x = Math.random() > 0.5 ? 40 : CANVAS_WIDTH - 40;
+      this.y = -40;
+      this.vx = (Math.random() - 0.5) * 200;
+      this.vy = 220; // 超高速急降下
     } else if (pattern === 'CROSS_SPLIT') {
       this.x = formationCol < 4 ? -40 : CANVAS_WIDTH + 40;
       this.y = -40;
@@ -396,6 +435,58 @@ export class Enemy {
         }
         break;
       }
+
+      // ★ ムーンクレスタ風：カクカク不規則移動で左右に揺れながら降下
+      case 'MOON_SPLIT_FLOAT': {
+        this.y += this.vy * dt;
+        // 不規則なカクカクステップ移動
+        const stepPeriod = Math.floor(this.timeAlive * 3.5);
+        const dir = (stepPeriod % 2 === 0) ? 1 : -1;
+        this.x += dir * Math.abs(this.vx) * dt;
+
+        if (this.x < 30) this.vx = Math.abs(this.vx);
+        if (this.x > CANVAS_WIDTH - 30 - this.width) this.vx = -Math.abs(this.vx);
+
+        if (this.y > CANVAS_HEIGHT + 30) {
+          this.y = -40;
+          this.x = 60 + Math.random() * (CANVAS_WIDTH - 120);
+        }
+        break;
+      }
+
+      // ★ ゼビウス風：直角クランク移動（横直進→直角折れ曲がり急降下→再び横直進）
+      case 'XEVIOUS_TOROID': {
+        const cycle = this.timeAlive % 4.0;
+        if (cycle < 1.4) {
+          this.x += this.vx * dt; // 水平高速直進
+        } else if (cycle < 2.0) {
+          this.y += 180 * dt; // 直角急降下！
+        } else if (cycle < 3.4) {
+          this.x -= this.vx * dt; // 逆方向に水平直進！
+        } else {
+          this.y += 120 * dt;
+        }
+
+        if (this.y > CANVAS_HEIGHT + 40) {
+          this.y = -30;
+          this.x = Math.random() > 0.5 ? -30 : CANVAS_WIDTH + 30;
+          this.vx = this.x < 0 ? 140 : -140;
+        }
+        break;
+      }
+
+      // ★ スターフォース風：超高速全画面ダイブ＆大きく旋回
+      case 'STARFORCE_SWOOP': {
+        this.y += this.vy * dt;
+        this.x += Math.sin(this.timeAlive * 3.0) * 240 * dt;
+
+        if (this.y > CANVAS_HEIGHT + 40) {
+          this.y = -40;
+          this.x = 40 + Math.random() * (CANVAS_WIDTH - 80);
+          this.vy = 200 + Math.random() * 60;
+        }
+        break;
+      }
     }
 
     return justStartedDive;
@@ -591,6 +682,55 @@ export class Enemy {
         ctx.fillRect(8, -3, 3, 6);
         ctx.fillRect(-3, -11, 6, 3);
         ctx.fillRect(-3, 8, 6, 3);
+        break;
+      }
+
+      // ★ ムーンクレスタ名物：撃つと2つに分裂する目玉怪獣
+      case 'SPLITTING_EYE': {
+        // 生物感のあるドット絵
+        ctx.fillStyle = '#ff0055';
+        ctx.fillRect(-14, -12, 28, 24);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-10, -8, 20, 16);
+        // ギョロリと動く瞳
+        const eyeOffsetX = Math.sin(this.timeAlive * 5) * 3;
+        ctx.fillStyle = '#00f0ff';
+        ctx.fillRect(-5 + eyeOffsetX, -5, 10, 10);
+        ctx.fillStyle = '#000033';
+        ctx.fillRect(-2 + eyeOffsetX, -2, 4, 4);
+
+        // 触手・トゲ（パタパタ動く）
+        ctx.fillStyle = f === 0 ? '#ffcc00' : '#ff3300';
+        ctx.fillRect(-18, -4, 4, 8);
+        ctx.fillRect(14, -4, 4, 8);
+        ctx.fillRect(-8, 12, 4, 5);
+        ctx.fillRect(4, 12, 4, 5);
+        break;
+      }
+
+      // ★ 分裂したミニ目玉
+      case 'MINI_EYE': {
+        ctx.fillStyle = '#ff0055';
+        ctx.fillRect(-8, -7, 16, 14);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-5, -4, 10, 8);
+        ctx.fillStyle = '#00f0ff';
+        ctx.fillRect(-2, -2, 4, 4);
+        ctx.fillStyle = f === 0 ? '#ffcc00' : '#ff3300';
+        ctx.fillRect(-10, -2, 2, 4);
+        ctx.fillRect(8, -2, 2, 4);
+        break;
+      }
+
+      // ★ ゼビウス風トーロイド（幾何学的菱形リング）
+      case 'TOROID_SCOUT': {
+        ctx.rotate(this.timeAlive * 4); // 高速回転リング
+        ctx.fillStyle = '#cccccc';
+        ctx.fillRect(-10, -10, 20, 20);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(-5, -5, 10, 10); // 中央空洞（リング）
+        ctx.fillStyle = f === 0 ? '#00f0ff' : '#ffffff';
+        ctx.fillRect(-2, -2, 4, 4); // コア発光
         break;
       }
     }

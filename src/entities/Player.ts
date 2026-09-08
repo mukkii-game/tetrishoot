@@ -12,6 +12,8 @@ export interface AttachedPiece {
 export class Player {
   public anchorX: number; // 自機の基準ピクセルX（グリッドの基準点）
   public anchorY: number; // 自機の基準ピクセルY
+  public vx = 0; // エクセリオン風慣性速度X
+  public vy = 0; // エクセリオン風慣性速度Y
   public pieces: AttachedPiece[] = [];
   public fireCooldown = 0;
   public isDead = false;
@@ -26,6 +28,8 @@ export class Player {
   public resetToBottomCenter(): void {
     this.anchorX = Math.floor(CANVAS_WIDTH / 2 - BLOCK_SIZE);
     this.anchorY = PLAYER_INITIAL_Y;
+    this.vx = 0;
+    this.vy = 0;
   }
 
   // 初期の自機：Oミノ（正方形2x2、端点なし＝弾なし、肉壁コア）
@@ -37,6 +41,8 @@ export class Player {
       relGx: 0,
       relGy: 0,
     });
+    this.vx = 0;
+    this.vy = 0;
   }
 
   // 占有しているすべての絶対グリッド座標を返す
@@ -145,7 +151,32 @@ export class Player {
     return { docked: false };
   }
 
-  // 上下左右（全方向）移動処理（左右の壁撤廃、画面端までオープンに動ける！）
+  // ピクセル単位で浮遊しているピースを自機に最も近い有効グリッド位置へスナップ吸着してドッキング
+  public tryDockFromPixel(
+    piece: TetrominoPiece,
+    px: number,
+    py: number
+  ): { docked: boolean; piece?: TetrominoPiece } {
+    const targetGx = Math.round(px / BLOCK_SIZE);
+    const targetGy = Math.round(py / BLOCK_SIZE);
+
+    // targetGx, targetGy を中心に ±1 のグリッドを探索して結合可能かチェック
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const testGx = targetGx + dx;
+        const testGy = targetGy + dy;
+
+        const res = this.tryDock(piece, testGx, testGy);
+        if (res.docked) {
+          return res;
+        }
+      }
+    }
+
+    return { docked: false };
+  }
+
+  // エクセリオン風・滑らかな慣性移動処理（加速・減速・ドリフト感）
   public updateMovement(
     dt: number,
     inputs: {
@@ -162,50 +193,78 @@ export class Player {
     const width = bounds.maxX - bounds.minX;
     const height = bounds.maxY - bounds.minY;
 
-    // 画面全体が移動可能エリア！
+    // 画面全体が移動可能エリア
     const minScreenX = 0;
     const maxScreenX = CANVAS_WIDTH;
     const minScreenY = 60; // 上部HUD下
     const maxScreenY = CANVAS_HEIGHT - 10;
 
-    let deltaX = 0;
-    let deltaY = 0;
+    const ACCEL = 980; // 加速度 (px/s^2)
+    const MAX_SPEED = PLAYER_SPEED * 1.25; // 最高速
+    const FRICTION = 0.88; // 毎フレームの摩擦減速係数（離した時のスーッと流れる慣性ドリフト感）
+
+    let inputAx = 0;
+    let inputAy = 0;
 
     if (inputs.hasMouseMoved && inputs.mouseX !== null && inputs.mouseY !== null) {
       const targetAnchorX = inputs.mouseX - width / 2;
       const targetAnchorY = inputs.mouseY - height / 2;
       const diffX = targetAnchorX - this.anchorX;
       const diffY = targetAnchorY - this.anchorY;
+      const dist = Math.hypot(diffX, diffY);
 
-      deltaX = Math.sign(diffX) * Math.min(Math.abs(diffX), PLAYER_SPEED * 1.6 * dt);
-      deltaY = Math.sign(diffY) * Math.min(Math.abs(diffY), PLAYER_SPEED * 1.6 * dt);
+      if (dist > 5) {
+        inputAx = (diffX / dist) * ACCEL * 1.2;
+        inputAy = (diffY / dist) * ACCEL * 1.2;
+      }
     } else {
-      if (inputs.left) deltaX -= PLAYER_SPEED * dt;
-      if (inputs.right) deltaX += PLAYER_SPEED * dt;
-      if (inputs.up) deltaY -= PLAYER_SPEED * dt;
-      if (inputs.down) deltaY += PLAYER_SPEED * dt;
+      if (inputs.left) inputAx -= ACCEL;
+      if (inputs.right) inputAx += ACCEL;
+      if (inputs.up) inputAy -= ACCEL;
+      if (inputs.down) inputAy += ACCEL;
     }
 
-    // X軸移動
-    if (deltaX !== 0) {
-      const nextAnchorX = this.anchorX + deltaX;
-      const nextMinX = nextAnchorX + (bounds.minX - this.anchorX);
-      const nextMaxX = nextAnchorX + (bounds.maxX - this.anchorX);
+    // 加速度適用
+    this.vx += inputAx * dt;
+    this.vy += inputAy * dt;
 
-      if (nextMinX >= minScreenX && nextMaxX <= maxScreenX) {
-        this.anchorX = nextAnchorX;
-      }
+    // 入力がない軸は摩擦減衰（エクセリオン風）
+    if (inputAx === 0) {
+      this.vx *= Math.pow(FRICTION, dt * 60);
+      if (Math.abs(this.vx) < 3) this.vx = 0;
+    }
+    if (inputAy === 0) {
+      this.vy *= Math.pow(FRICTION, dt * 60);
+      if (Math.abs(this.vy) < 3) this.vy = 0;
     }
 
-    // Y軸移動
-    if (deltaY !== 0) {
-      const nextAnchorY = this.anchorY + deltaY;
-      const nextMinY = nextAnchorY + (bounds.minY - this.anchorY);
-      const nextMaxY = nextAnchorY + (bounds.maxY - this.anchorY);
+    // 速度制限
+    const currentSpeed = Math.hypot(this.vx, this.vy);
+    if (currentSpeed > MAX_SPEED) {
+      const scale = MAX_SPEED / currentSpeed;
+      this.vx *= scale;
+      this.vy *= scale;
+    }
 
-      if (nextMinY >= minScreenY && nextMaxY <= maxScreenY) {
-        this.anchorY = nextAnchorY;
-      }
+    // 位置更新
+    const nextAnchorX = this.anchorX + this.vx * dt;
+    const nextMinX = nextAnchorX + (bounds.minX - this.anchorX);
+    const nextMaxX = nextAnchorX + (bounds.maxX - this.anchorX);
+
+    if (nextMinX >= minScreenX && nextMaxX <= maxScreenX) {
+      this.anchorX = nextAnchorX;
+    } else {
+      this.vx = 0; // 壁衝突で速度リセット
+    }
+
+    const nextAnchorY = this.anchorY + this.vy * dt;
+    const nextMinY = nextAnchorY + (bounds.minY - this.anchorY);
+    const nextMaxY = nextAnchorY + (bounds.maxY - this.anchorY);
+
+    if (nextMinY >= minScreenY && nextMaxY <= maxScreenY) {
+      this.anchorY = nextAnchorY;
+    } else {
+      this.vy = 0;
     }
 
     if (this.fireCooldown > 0) {
@@ -274,12 +333,93 @@ export class Player {
     return bullets;
   }
 
+  // Oミノ（中心コア）から地続き（隣接）になっているかをBFSで検証
+  // Oミノから切り離されたパーツを配列で取り出して返す（落下・回収用）
+  public checkConnectivity(): AttachedPiece[] {
+    // Oミノ（コア）を探す
+    const coreIndex = this.pieces.findIndex(p => p.piece.type === 'O');
+    if (coreIndex === -1) {
+      // Oミノが破壊された＝ゲームオーバー
+      this.isDead = true;
+      return [];
+    }
+
+    // 各ピースが占有するセルの集合
+    const pieceCells = this.pieces.map(attached => {
+      const set = new Set<string>();
+      for (const c of attached.piece.cells) {
+        set.add(`${attached.relGx + c.gx},${attached.relGy + c.gy}`);
+      }
+      return set;
+    });
+
+    // ピース間の隣接グラフを構築
+    const n = this.pieces.length;
+    const adj: number[][] = Array.from({ length: n }, () => []);
+
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let isNeighbor = false;
+        for (const coordStr of pieceCells[i]) {
+          const [gx, gy] = coordStr.split(',').map(Number);
+          const neighbors = [
+            `${gx + 1},${gy}`,
+            `${gx - 1},${gy}`,
+            `${gx},${gy + 1}`,
+            `${gx},${gy - 1}`,
+          ];
+          for (const nb of neighbors) {
+            if (pieceCells[j].has(nb)) {
+              isNeighbor = true;
+              break;
+            }
+          }
+          if (isNeighbor) break;
+        }
+        if (isNeighbor) {
+          adj[i].push(j);
+          adj[j].push(i);
+        }
+      }
+    }
+
+    // BFSでコアから到達可能なピースをマーク
+    const visited = new Set<number>();
+    const queue = [coreIndex];
+    visited.add(coreIndex);
+
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      for (const next of adj[curr]) {
+        if (!visited.has(next)) {
+          visited.add(next);
+          queue.push(next);
+        }
+      }
+    }
+
+    // 未到達のピースを切り離す
+    const remaining: AttachedPiece[] = [];
+    const detached: AttachedPiece[] = [];
+
+    for (let i = 0; i < n; i++) {
+      if (visited.has(i)) {
+        remaining.push(this.pieces[i]);
+      } else {
+        detached.push(this.pieces[i]);
+      }
+    }
+
+    this.pieces = remaining;
+    return detached;
+  }
+
   // 被弾判定
   public checkHit(
     px: number,
     py: number,
     particles: ParticleManager
-  ): { hit: boolean; pieceDestroyed: boolean; pieceType?: TetrominoType } {
+  ): { hit: boolean; pieceDestroyed: boolean; pieceType?: TetrominoType; detachedPieces?: AttachedPiece[] } {
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
 
@@ -300,15 +440,27 @@ export class Player {
             const destroyedType = piece.type;
             this.pieces.splice(i, 1);
 
+            // コア（Oミノ）が破壊された場合、即ゲームオーバー
+            if (destroyedType === 'O') {
+              this.isDead = true;
+              const bounds = this.getBoundingBox();
+              const centerX = (bounds.minX + bounds.maxX) / 2 || px;
+              const centerY = (bounds.minY + bounds.maxY) / 2 || py;
+              particles.emitRetroExplosion(centerX, centerY, 3.2);
+              return { hit: true, pieceDestroyed: true, pieceType: destroyedType };
+            }
+
+            // 残ったパーツの連結性検証：Oミノから切り離されたパーツは浮遊・落下！
+            const detachedPieces = this.checkConnectivity();
+
             if (this.pieces.length === 0) {
               this.isDead = true;
-              // 80年代アーケード風パラパラ爆発アニメーション発火！
               const bounds = this.getBoundingBox();
               const centerX = (bounds.minX + bounds.maxX) / 2 || px;
               const centerY = (bounds.minY + bounds.maxY) / 2 || py;
               particles.emitRetroExplosion(centerX, centerY, 2.8);
             }
-            return { hit: true, pieceDestroyed: true, pieceType: destroyedType };
+            return { hit: true, pieceDestroyed: true, pieceType: destroyedType, detachedPieces };
           }
 
           return { hit: true, pieceDestroyed: false, pieceType: piece.type };
