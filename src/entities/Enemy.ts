@@ -684,17 +684,18 @@ export class Enemy {
       }
 
       case 'KAMIKAZE_DIVE': {
-        if (this.patternTimer < 0.45) {
-          this.diveAngle += 7.0 * dt;
-          this.x += Math.cos(this.diveAngle) * 110 * dt;
-          this.y += Math.sin(this.diveAngle) * 110 * dt;
+        if (this.patternTimer < 0.40) {
+          this.diveAngle += 7.5 * dt;
+          this.x += Math.cos(this.diveAngle) * 120 * dt;
+          this.y += Math.sin(this.diveAngle) * 120 * dt;
         } else {
-          const dx = this.diveTargetX - this.x;
-          const dy = (this.diveTargetY + 60) - this.y;
+          // 自機の現在位置を追尾しながら急降下（体当たり狙い！）
+          const dx = playerX - this.x;
+          const dy = (playerY + 50) - this.y;
           const dist = Math.hypot(dx, dy) || 1;
-          const speed = 190 + (this.rank.startsWith('GIANT') ? 35 : 20);
+          const speed = 250 + (this.rank.startsWith('GIANT') ? 40 : 20);
           this.x += (dx / dist) * speed * dt;
-          this.y += Math.max(90, (dy / dist) * speed) * dt;
+          this.y += Math.max(120, (dy / dist) * speed) * dt;
 
           if (this.y > CANVAS_HEIGHT + 30) {
             this.y = -40;
@@ -1055,29 +1056,33 @@ export class Enemy {
         break;
       }
 
-      // ★ ユーザー要望：グラディウス／沙羅曼蛇の「開幕編隊」（突進してきて反転離脱）
+      // ★ ユーザー要望：グラディウス／沙羅曼蛇の「開幕編隊」（画面最下部の自機まで容赦なく急降下突進！）
+      // 「ムーンクレスタって、このゲームもだけど玉を打たないから体当たりでダメージなんだよね
+      //   weve２のあかいやつ、したまでおりてこないからただのやられやく」
       case 'GRADIUS_FLEET': {
-        const t = this.patternTimer % 4.5;
-        if (t < 1.4) {
-          // フェーズ1: 上からまっすぐ整然と突っ込んでくる！
-          this.y += 280 * dt;
-        } else if (t < 2.1) {
-          // フェーズ2: 自機手前でキュッと急旋回Uターン！
-          const turnAngle = (t - 1.4) / 0.7 * Math.PI;
-          const turnDir = (this.formationX > CANVAS_WIDTH / 2) ? 1 : -1;
-          this.x += Math.cos(turnAngle) * 90 * turnDir * dt;
-          this.y += Math.sin(turnAngle) * 40 * dt;
+        const t = this.patternTimer % 4.2;
+        if (t < 1.7) {
+          // フェーズ1: 猛烈なスピードで画面最下部（自機の目前〜足元 y ≈ 660）まで一直線に急降下突進！
+          this.y += 420 * dt;
+          // 自機に接近するにつれて自機のX座標を狙って強引に寄せる（体当たり急襲！）
+          if (this.y > 240) {
+            const dx = playerX - this.x;
+            this.x += Math.sign(dx) * 95 * dt;
+          }
+        } else if (t < 2.5) {
+          // フェーズ2: 画面最下部（自機と同じ深さ y ≈ 560〜660）で鋭く横切る大スウィープ！
+          const turnDir = (this.formationX > CANVAS_WIDTH / 2) ? -1 : 1;
+          this.x += turnDir * 280 * dt;
+          this.y += 75 * dt; // 下端へ抜けながら横切る
         } else {
-          // フェーズ3: 斜め後方やまっすぐ上へ高速で整然と離脱！
-          const escapeDir = (this.formationX > CANVAS_WIDTH / 2) ? 1 : -1;
-          this.x += escapeDir * 220 * dt;
-          this.y -= 260 * dt; // 上空へ急離脱！
+          // フェーズ3: 画面下端を突き抜けて離脱！
+          this.y += 340 * dt;
         }
 
-        // 上部や左右へ抜けたら再度上から整然と突撃再突入！
-        if (this.patternTimer > 2.2 && (this.y < -50 || this.x < -50 || this.x > CANVAS_WIDTH + 50)) {
+        // 画面下端（または左右端）を抜けたら即座に上空から再突入！死ぬまでエンドレス急降下
+        if (this.y > CANVAS_HEIGHT + 40 || this.x < -60 || this.x > CANVAS_WIDTH + 60) {
           this.y = -40;
-          this.x = 60 + Math.random() * (CANVAS_WIDTH - 120);
+          this.x = Math.max(40, Math.min(CANVAS_WIDTH - 40, playerX + (Math.random() - 0.5) * 180));
           this.patternTimer = 0;
         }
         break;
@@ -1204,17 +1209,19 @@ export class Enemy {
         return { x: x - this.width / 2, y: y - this.height / 2 };
       }
 
-      // 2. 左から優雅なS字蛇行で画面を渡る
+      // 2. 左から優雅なS字蛇行で画面を渡る（自機付近 y ≈ 520〜560 まで深く急降下スウィング！）
       case 'S_CURVE_LEFT_TO_RIGHT': {
         const progressX = (t / 4.0) * (CANVAS_WIDTH + 140) - 70;
-        const y = 80 + Math.sin(t * 3.2) * 130 + t * 45;
+        const dip = Math.sin((t / 4.0) * Math.PI) * 440;
+        const y = 80 + dip + Math.sin(t * 3.0) * 40;
         return { x: progressX - this.width / 2, y: y - this.height / 2 };
       }
 
-      // 3. 右から優雅なS字蛇行で画面を渡る
+      // 3. 右から優雅なS字蛇行で画面を渡る（自機付近 y ≈ 520〜560 まで深く急降下スウィング！）
       case 'S_CURVE_RIGHT_TO_LEFT': {
         const progressX = CANVAS_WIDTH + 70 - (t / 4.0) * (CANVAS_WIDTH + 140);
-        const y = 80 + Math.cos(t * 3.2) * 130 + t * 45;
+        const dip = Math.sin((t / 4.0) * Math.PI) * 440;
+        const y = 80 + dip + Math.cos(t * 3.0) * 40;
         return { x: progressX - this.width / 2, y: y - this.height / 2 };
       }
 
