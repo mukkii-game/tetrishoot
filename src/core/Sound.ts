@@ -226,6 +226,63 @@ export class Sound {
     osc.stop(now + 0.09);
   }
 
+  // ★ ユーザー要望：R-TYPEのフォースをぶち当てているような「ジャシシッ！」「ガガッ」という重厚な破壊ヒット音
+  public playBossHit(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const dur = 0.12;
+
+    // レイヤー1: 低域の重い矩形波ディストーション（ガシッ！）
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(35, now + dur);
+
+    oscGain.gain.setValueAtTime(0.28, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.005, now + dur);
+
+    osc.connect(oscGain);
+    oscGain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + dur + 0.01);
+
+    // レイヤー2: 粗いビットクラッシュ調バンドパスノイズ（ジャシシッ！）
+    const bufferSize = Math.floor(this.ctx.sampleRate * dur);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      const raw = Math.random() * 2 - 1;
+      // 粗い量子化でジャリジャリ感を強調
+      const quantized = Math.round(raw * 3) / 3;
+      // 高速な小刻みパルス変調（ジャ・シ・シ・シ）
+      const flutter = (Math.sin(i * 0.18) > 0 ? 1.0 : 0.45);
+      data[i] = quantized * flutter * Math.exp(-i / (bufferSize * 0.45));
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1200, now);
+    filter.frequency.exponentialRampToValueAtTime(450, now + dur);
+    filter.Q.setValueAtTime(2.2, now);
+
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.38, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.005, now + dur);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(this.ctx.destination);
+
+    noise.start(now);
+  }
+
   // 6.5. ギャラガ名物・急降下ダイブ警報（ピュロロロロ〜ン！と降下する電子音）
   public playDiveSiren(): void {
     if (this.isMuted) return;

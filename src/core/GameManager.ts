@@ -80,6 +80,7 @@ export class GameManager {
   public currentBoss: Enemy | null = null;
   public bossDying = false;
   public bossDeathTimer = 0;
+  private bossMinionTimer = 0; // ボスが部下を定期的に召喚するタイマー
 
   // 80年代アーケード風ゲームフィール：画面揺れ（シェイク）＆ヒットストップ
   public screenShake = 0;
@@ -575,168 +576,174 @@ export class GameManager {
         break;
 
       case 2:
-        // 【WAVE 2：ギャラガ・S字＆8の字大流星編隊＋高速フライバイ】
-        // ユーザー要望：左右に地形がある所や端っこは近づけないので、敵を中央寄りに配置＆中央へ移動させる
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 24 : 16); k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, 0.05, 'S_CURVE_LEFT_TO_RIGHT', k));
+        // 【WAVE 2：グラディウス・沙羅曼蛇 開幕猛攻＆斜め超高速メテオ】
+        // ★ ユーザー要望：グラディウスや沙羅曼蛇の最初にまっすぐ突っ込んできて真っ直ぐや斜めに戻っていく編隊！
+        // 1. 第一波：中央へまっすぐ突進し、自機手前で急反転離脱するグラディウス開幕編隊！
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 12 : 8); k++) {
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, k * 0.28));
         }
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 20 : 12); k++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 4), 1, 0.45, 'FIGURE_EIGHT', k));
+        // 2. 第二波：左右上空から画面を弾丸のように斜めに切り裂く高速メテオ！
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 16 : 10); k++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 2 + (k % 4), 0, 2.5 + k * 0.25));
         }
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 12 : 6); k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 3), 3, 0.8, 'INFINITY_DIVE_LEFT', k));
+        // 3. 第三波：ギャラガS字流星編隊＋第二波グラディウス突進
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 16 : 10); k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, 0.4, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
-        // 高速横切りフライバイ急襲（中央高度を横断）
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 6); i++) {
-          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 2 + (i % 4), 0, 1.8 + i * 0.35));
-        }
-        if (this.difficulty === 'HARD') {
-          // ハードモード追加：超高速直進メテオ＋バンガードポッドの混成奇襲！
-          for (let i = 0; i < 8; i++) {
-            this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 2 + (i % 5), 0, 1.0 + i * 0.4));
-          }
-          for (let i = 0; i < 6; i++) {
-            this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 2 + (i % 4), 1, 2.5 + i * 0.35));
-          }
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 10 : 6); k++) {
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, 4.5 + k * 0.3));
         }
         break;
 
       case 3:
-        // 【WAVE 3：沙羅曼蛇 1・縦スクロール バンガード岩盤迷宮突破】（ザコ46機）
-        // カクカクしたバンガード山鳴り地形！一定位置を往復巡航するバンガードポッド＋地表ミサイル迎撃！
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 22 : 14); i++) {
-          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 0.3 + i * 0.25));
+        // 【WAVE 3：スターフォース「ガリ」の急襲＆バンガード岩盤地帯】
+        // ★ ユーザー要望：スターフォースのガリの動き（急降下→急停止→超高速ダッシュ）！
+        // 1. 初手：ガリの高速編隊が急停止スウィングから電光石火のダッシュ！
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, i * 0.35));
         }
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 22 : 14); i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 0.8 + i * 0.22));
+        // 2. バンガード岩盤回廊の巡航ポッド＆地表ミサイル
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
+          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 1.2 + i * 0.25));
         }
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 5), 1, 1.2 + i * 0.18));
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 1.8 + i * 0.22));
         }
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 4), 0, 1.6 + i * 0.2));
+        // 3. 後半：ガリ第二波が全画面を強襲！
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 6); i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 2 + (i % 5), 0, 4.5 + i * 0.3));
         }
         break;
 
       case 4:
-        // 【WAVE 4：ムーンクレスタ Stage 3&4・フォー・フライ＆怒涛のメテオストーム＆超高速フライバイ】
-        // 1. 初手：フォー・フライが待機時間ゼロ（t=0）で即座に急降下カミソリ襲撃！
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, i * 0.15));
-        }
-        // 2. 超高速メテオが火花を散らして天頂から連続直進落下！
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 28 : 16); i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.3 + i * 0.15));
-        }
-        // 3. 電光石火の横切りフライバイ部隊が画面を交差急襲！
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', i % 2 === 0 ? 0 : 7, 0, 0.8 + i * 0.22));
-        }
-        // 4. 不規則カクカク飛行のフォー・フライ＆コールドアイが波状攻撃
+        // 【WAVE 4：索敵急加速ミサイル＆怒涛のメテオストーム＆フォー・フライ】
+        // ★ ユーザー要望：多少横に動いたあと、縦や横に高速で飛んでいくミサイル！
+        // 1. 初手：索敵急加速ミサイル群がフワリと横移動後、突如バーニア点火で急加速！
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('FOUR_FLY', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 1, 1.5 + i * 0.18));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, i * 0.25));
+        }
+        // 2. 超高速直線メテオ＋斜めメテオの交差ストーム！
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 20 : 12); i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.4 + i * 0.16));
         }
         for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 2.0 + i * 0.22));
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 6), 0, 1.0 + i * 0.22));
+        }
+        // 3. ムーンクレスタ：フォー・フライのカミソリ急降下
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
+          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, 2.0 + i * 0.18));
+        }
+        // 4. 第二波：索敵急加速ミサイル＆フライバイ
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 8); i++) {
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 3.6 + i * 0.2));
         }
         break;
 
       case 5:
         // 【WAVE 5：ギャラガ＆沙羅曼蛇（斜めスクロール！宇宙浮遊要塞・高速侵攻）】（ザコ56機）
-        // 左右対角線から交差突撃する大編隊＋地表ミサイル＋巡航ポッド！
+        // 左右対角線から交差突撃する大編隊＋地表ミサイル＋斜め高速メテオ！
         for (let k = 0; k < 16; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.15, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.15, 'INFINITY_DIVE_RIGHT', k));
         }
         for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 0.6 + i * 0.2));
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 0.6 + i * 0.22));
         }
-        for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 0.9 + i * 0.18));
+        for (let i = 0; i < 10; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 6), 0, 1.2 + i * 0.2));
+        }
+        for (let i = 0; i < 10; i++) {
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 1.6 + i * 0.18));
         }
         break;
 
       case 6:
         // 【WAVE 6：沙羅曼蛇 2・横スクロール 右方向バンガード岩盤回廊】（ザコ52機）
-        // 天井と床から突き出るバンガードブロック岩！高速で旋回するトーロイドとスターフォース！
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 6), 1, 0.3 + i * 0.2));
-        }
+        // 天井と床から突き出るバンガードブロック岩！ガリの急襲＋索敵加速ミサイル＋トーロイド！
         for (let i = 0; i < 14; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 5), 0, 0.5 + i * 0.2));
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.2 + i * 0.25));
         }
         for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.8 + i * 0.18));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 5), 0, 0.8 + i * 0.22));
+        }
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 6), 1, 1.4 + i * 0.2));
         }
         for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 5), 1, 1.2 + i * 0.2));
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 5), 0, 2.0 + i * 0.18));
         }
         break;
 
       case 7:
         // 【WAVE 7：ムーンクレスタ Stage 5&7・アトミック・ファントム＆ベータ・ファントム】（ザコ58機）
-        // 鋭角急加速突撃のアトミック・ファントム＋コウモリ翼の強敵ベータ・ファントム大乱舞！
-        for (let i = 0; i < 20; i++) {
+        // 鋭角急加速突撃のアトミック・ファントム＋コウモリ翼ベータ・ファントム＋斜めメテオ乱舞！
+        for (let i = 0; i < 18; i++) {
           this.enemies.push(new Enemy('ATOMIC_PHANTOM', 'ZIGZAG_DIVE', 1 + (i % 8), 1, 0.2 + i * 0.14));
         }
-        for (let i = 0; i < 18; i++) {
+        for (let i = 0; i < 16; i++) {
           this.enemies.push(new Enemy('BETA_PHANTOM', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 0, 0.6 + i * 0.16));
         }
-        for (let i = 0; i < 20; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 1.0 + i * 0.12));
+        for (let i = 0; i < 16; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 8), 0, 1.0 + i * 0.14));
+        }
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 2.2 + i * 0.2));
         }
         break;
 
       case 8:
         // 【WAVE 8：ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】（ザコ66機）
-        // 画面全方位から押し寄せるギャプラス風ストリーム大編隊＋電光石火フライバイ！
+        // 画面全方位から押し寄せるギャプラス風ストリーム大編隊＋グラディウス開幕編隊＋フライバイ！
         for (let k = 0; k < 20; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.12, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.12, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'ZIGZAG_DIVE', 1 + (i % 8), 2, 0.8 + i * 0.11));
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 0.8 + i * 0.18));
+        }
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 1.4 + i * 0.16));
         }
         for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, 1.2 + i * 0.15));
+          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, 2.2 + i * 0.15));
         }
         break;
 
       case 9:
         // 【WAVE 9：沙羅曼蛇 3・極限バンガード迷宮要塞】（ザコ72機）
-        // 左右から大きくせり出す山鳴りブロック回廊＋全方位エイリアン迎撃！
-        for (let i = 0; i < 20; i++) {
-          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 0.3 + i * 0.15));
+        // 左右から大きくせり出す山鳴りブロック回廊＋ガリ・索敵ミサイル・トーロイドの猛攻！
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.2 + i * 0.18));
         }
         for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 0.5 + i * 0.16));
-        }
-        for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 0.7 + i * 0.18));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 0.6 + i * 0.16));
         }
         for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'SURPRISE_FROM_BOTTOM', 1 + (i % 6) * 2, 2, 1.0 + i * 0.12));
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 1.0 + i * 0.15));
+        }
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 1.5 + i * 0.15));
         }
         break;
 
       case 10:
       default:
         // 【WAVE 10：最終決戦・オールスター総力戦カタストロフィ】（ザコ90機超え！）
-        // ムーンクレスタ怪獣・ギャラガ編隊・沙羅曼蛇部隊が総結集する究極のラストバトル！
-        for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('BETA_PHANTOM', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 0, 0.2 + i * 0.15));
-        }
-        for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('ATOMIC_PHANTOM', 'ZIGZAG_DIVE', 1 + (i % 8), 1, 0.4 + i * 0.13));
-        }
-        for (let k = 0; k < 20; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.1, 'INFINITY_DIVE_LEFT', k));
-        }
+        // ムーンクレスタ怪獣・スターフォース・グラディウス・沙羅曼蛇が総結集する究極のラストバトル！
         for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.6 + i * 0.1));
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.1 + i * 0.14));
         }
         for (let i = 0; i < 14; i++) {
-          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 6), 0, 1.0 + i * 0.15));
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 0.4 + i * 0.16));
+        }
+        for (let i = 0; i < 16; i++) {
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 0.7 + i * 0.14));
+        }
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('BETA_PHANTOM', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 0, 1.0 + i * 0.12));
+        }
+        for (let i = 0; i < 16; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 8), 0, 1.4 + i * 0.1));
         }
         break;
     }
@@ -1121,6 +1128,56 @@ export class GameManager {
       this.spawnWaveBoss();
     }
 
+    // ★ ユーザー要望：ボス戦中、ボス自体が部下のそれなりにめんどくさい敵編隊や変な動きの敵を生み出して撹乱！
+    if (this.currentBoss && !this.currentBoss.isDead && !this.bossDying) {
+      this.bossMinionTimer += dt;
+      const spawnInterval = this.difficulty === 'HARD' ? 2.8 : 4.0;
+      if (this.bossMinionTimer >= spawnInterval) {
+        this.bossMinionTimer = 0;
+        const b = this.currentBoss;
+        const minionTypes = ['STARFORCE_GARI', 'GRADIUS_FAN', 'DART_MISSILE', 'TOROID_SCOUT', 'VANGUARD_POD'] as const;
+        const mType = minionTypes[Math.floor(Math.random() * minionTypes.length)];
+
+        if (mType === 'STARFORCE_GARI') {
+          // ボスから飛び出すガリ！
+          const gari = new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 0, 0, 0);
+          gari.x = b.x + b.width / 2 - gari.width / 2;
+          gari.y = b.y + b.height;
+          this.enemies.push(gari);
+          this.particles.emitSparks(gari.x, gari.y, '#00ffff', 12);
+        } else if (mType === 'GRADIUS_FAN') {
+          // ボス左右ハッチから2機同時発進するグラディウス開幕ファン編隊！
+          const f1 = new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1, 0, 0);
+          f1.x = b.x - 20;
+          f1.y = b.y + b.height / 2;
+          const f2 = new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 5, 0, 0);
+          f2.x = b.x + b.width + 20;
+          f2.y = b.y + b.height / 2;
+          this.enemies.push(f1, f2);
+          this.particles.emitSparks(b.x, b.y + b.height, '#ffaa00', 14);
+        } else if (mType === 'DART_MISSILE') {
+          // 索敵加速ミサイルを2発放出！
+          const m1 = new Enemy('DART_MISSILE', 'DELAYED_DART', 0, 0, 0);
+          m1.x = b.x;
+          m1.y = b.y + b.height;
+          const m2 = new Enemy('DART_MISSILE', 'DELAYED_DART', 1, 0, 0);
+          m2.x = b.x + b.width;
+          m2.y = b.y + b.height;
+          this.enemies.push(m1, m2);
+        } else if (mType === 'TOROID_SCOUT') {
+          const toroid = new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 0, 0, 0);
+          toroid.x = b.x + b.width / 2;
+          toroid.y = b.y + b.height;
+          this.enemies.push(toroid);
+        } else {
+          const pod = new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 0, 0, 0);
+          pod.x = b.x + b.width / 2;
+          pod.y = b.y + b.height;
+          this.enemies.push(pod);
+        }
+      }
+    }
+
     // プレイヤー弾 vs 敵・地形壁面サイロ
     for (let i = this.playerBullets.length - 1; i >= 0; i--) {
       const pb = this.playerBullets[i];
@@ -1151,6 +1208,13 @@ export class GameManager {
         ) {
           pb.isDead = true;
           this.particles.emitSparks(pb.x, pb.y, pb.color, 8);
+
+          // ★ ユーザー要望：ボスに当たっている時はR-TYPE風の重厚な「ジャシシッ！」「ガガッ」という重撃音！
+          if (enemy.isBoss || enemy === this.currentBoss) {
+            this.sound.playBossHit();
+          } else {
+            this.sound.playHit();
+          }
 
           const killed = enemy.hit(1);
           if (killed) {
@@ -1232,6 +1296,21 @@ export class GameManager {
               this.bossDeathTimer = 0;
               this.hitStopTimer = 0.08;
               this.screenShake = 14;
+
+              // ★ ユーザー要望：ボスを倒したら残っているザコはつられて連鎖爆破する！
+              for (const z of this.enemies) {
+                if (!z.isDead && z !== enemy) {
+                  z.isDead = true;
+                  this.particles.emitExplosion(
+                    z.x + z.width / 2,
+                    z.y + z.height / 2,
+                    '#ffaa00',
+                    18,
+                    false
+                  );
+                  this.score += z.scoreValue;
+                }
+              }
               return;
             } else {
               this.sound.playExplosion(isGiant);

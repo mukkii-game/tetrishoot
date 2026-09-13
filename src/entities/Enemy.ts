@@ -17,6 +17,9 @@ export type AlienRank =
   | 'VANGUARD_POD'     // ★ SNKバンガード：特定高度を往復巡航し急降下
   | 'TERRAIN_MISSILE'  // ★ コナミ・スクランブル：地形から横・縦に噴射突進
   | 'FAST_FLYBY'       // ★ 高速横断フライバイ
+  | 'STARFORCE_GARI'   // ★ スターフォース名物：ガリ（急停止・高速旋回・電光石火の急襲）
+  | 'GRADIUS_FAN'      // ★ グラディウス／沙羅曼蛇：開幕編隊（突進・反転離脱）
+  | 'DART_MISSILE'     // ★ 索敵加速ミサイル（水平浮遊後、縦・横へ急加速）
   | 'GIGA_COLD_EYE'    // ★ 超ド級分裂目玉ボス
   | 'SPACE_SERPENT_HEAD' // ★ 多関節スペースドラゴン（頭部）
   | 'SERPENT_BODY';    // ★ 多関節スペースドラゴン（胴体節）
@@ -40,6 +43,7 @@ export type FlightPattern =
   | 'RETURNING'
   | 'METEOR_FALL'         // ★ ムーンクレスタ風：隕石・メテオ群（上から高速降下）
   | 'METEOR_STRAIGHT'     // ★ ムーンクレスタ風：超高速直線メテオ
+  | 'METEOR_DIAGONAL'     // ★ 斜め高速メテオ（画面を鋭く切り裂く）
   | 'ZIGZAG_DIVE'         // ★ ムーンクレスタ風：カミソリ急降下（電光石火の左右切り返し）
   | 'CROSS_SPLIT'         // ★ 左右斜め上から中央交差突入
   | 'MOON_SPLIT_FLOAT'    // ★ ムーンクレスタ風：カクカク不規則に左右に振れながら降下
@@ -47,6 +51,9 @@ export type FlightPattern =
   | 'MOON_SUPER_EYE'      // ★ ムーンクレスタ完全再現：スーパーアイ（左右高速ダイアゴナルバウンド）
   | 'XEVIOUS_TOROID'      // ★ ゼビウス風：直角クランク移動で画面をクロス
   | 'STARFORCE_SWOOP'     // ★ スターフォース風：超高速ダイナミック全画面ダイブ＆旋回
+  | 'STARFORCE_GARI_MOVE' // ★ スターフォース・ガリの動き（急降下→急停止→鋭角急加速）
+  | 'GRADIUS_FLEET'       // ★ グラディウス開幕編隊（突撃後、急旋回して斜め離脱）
+  | 'DELAYED_DART'        // ★ 索敵加速ミサイル（微動後、一気に高速直進）
   | 'VANGUARD_CRUISE'     // ★ SNKバンガード：画面上部往復から急降下ダイブ
   | 'TERRAIN_LAUNCH'      // ★ スクランブル：壁から横へ加速発射
   | 'FLYBY_CROSS'         // ★ 水平全速フライバイ
@@ -227,6 +234,24 @@ export class Enemy {
         this.maxHp = 1;
         this.scoreValue = 500;
         break;
+      case 'STARFORCE_GARI':
+        this.width = 34;
+        this.height = 30;
+        this.maxHp = 1;
+        this.scoreValue = 600; // スターフォースの難敵ガリ
+        break;
+      case 'GRADIUS_FAN':
+        this.width = 32;
+        this.height = 28;
+        this.maxHp = 1;
+        this.scoreValue = 400; // グラディウス開幕ファン編隊
+        break;
+      case 'DART_MISSILE':
+        this.width = 24;
+        this.height = 24;
+        this.maxHp = 1;
+        this.scoreValue = 350; // 索敵急加速ミサイル
+        break;
       case 'GIGA_COLD_EYE':
         this.width = 112;
         this.height = 96;
@@ -350,6 +375,33 @@ export class Enemy {
       this.movingRight = Math.random() > 0.5;
       this.vx = (this.movingRight ? 1 : -1) * 160;
       this.vy = 0;
+    } else if (pattern === 'METEOR_DIAGONAL') {
+      // ★ 斜め高速メテオ：左右上空から対角線へ火花を散らして急降下
+      const fromLeft = Math.random() > 0.5;
+      this.x = fromLeft ? -30 : CANVAS_WIDTH + 30;
+      this.y = -30 + Math.random() * 80;
+      this.vx = (fromLeft ? 1 : -1) * (260 + Math.random() * 100);
+      this.vy = 320 + Math.random() * 80;
+    } else if (pattern === 'STARFORCE_GARI_MOVE') {
+      // ★ スターフォース・ガリ：画面上部から高速降下
+      this.x = Math.max(40, Math.min(CANVAS_WIDTH - 40 - this.width, this.formationX));
+      this.y = -40;
+      this.vx = 0;
+      this.vy = 280; // 初速降下
+    } else if (pattern === 'GRADIUS_FLEET') {
+      // ★ グラディウス開幕突進編隊：上空からまっすぐ急降下
+      const colX = 70 + (formationCol % 6) * 65;
+      this.x = colX;
+      this.y = -40;
+      this.vx = 0;
+      this.vy = 260; // まっすぐ突撃
+    } else if (pattern === 'DELAYED_DART') {
+      // ★ 索敵急加速ミサイル：横にフワッと浮遊
+      const fromLeft = formationCol % 2 === 0;
+      this.x = fromLeft ? 40 : CANVAS_WIDTH - 40;
+      this.y = 80 + Math.random() * 120;
+      this.vx = (fromLeft ? 1 : -1) * 75; // 最初の索敵慣性移動
+      this.vy = 25;
     } else if (pattern === 'TERRAIN_LAUNCH') {
       this.x = Math.random() > 0.5 ? -40 : CANVAS_WIDTH + 40;
       this.y = 100 + Math.random() * (CANVAS_HEIGHT * 0.5);
@@ -838,36 +890,172 @@ export class Enemy {
         break;
       }
 
-      // ★ コナミ・スクランブル風ミサイル：壁や端から横・斜めへ推進加速！
+      // ★ コナミ・スクランブル風ミサイル：壁や端から横・斜めへ推進加速！（抜けたら反対側から再突入）
       case 'TERRAIN_LAUNCH': {
         this.x += this.vx * dt;
         this.y += this.vy * dt;
-        // 徐々に速度アップ
-        this.vx *= 1.015;
-        this.vy *= 1.01;
+        this.vx *= 1.012;
+        this.vy *= 1.008;
 
-        if (this.x < -60 || this.x > CANVAS_WIDTH + 60 || this.y > CANVAS_HEIGHT + 60 || this.y < -60) {
-          this.isDead = true;
+        // 画面外へ抜けたら消滅させず、反対側・別高度から再突入！
+        if (this.x < -60) {
+          this.x = CANVAS_WIDTH + 40;
+          this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
+          this.vx = -Math.abs(this.vx) * 0.85;
+        } else if (this.x > CANVAS_WIDTH + 60) {
+          this.x = -40;
+          this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
+          this.vx = Math.abs(this.vx) * 0.85;
+        }
+        if (this.y > CANVAS_HEIGHT + 60) {
+          this.y = -30;
         }
         break;
       }
 
-      // ★ 超高速直進メテオ：斜め上から一直線に火花を散らして切り裂く
+      // ★ 超高速直進メテオ：上から一直線急降下！（抜けたら上部から再突入）
       case 'METEOR_STRAIGHT': {
         this.x += this.vx * dt;
         this.y += this.vy * dt;
-        if (this.y > CANVAS_HEIGHT + 50 || this.x < -50 || this.x > CANVAS_WIDTH + 50) {
-          this.isDead = true;
+        if (this.y > CANVAS_HEIGHT + 50) {
+          this.y = -50;
+          this.x = 40 + Math.random() * (CANVAS_WIDTH - 80);
+          this.vy = 420 + Math.random() * 80;
+        }
+        if (this.x < -40) this.x = CANVAS_WIDTH + 30;
+        else if (this.x > CANVAS_WIDTH + 40) this.x = -30;
+        break;
+      }
+
+      // ★ ユーザー要望：斜めに素早く画面をすり抜けるメテオ（抜けたら反対側上空から再突入）
+      case 'METEOR_DIAGONAL': {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        if (this.y > CANVAS_HEIGHT + 50 || this.x < -60 || this.x > CANVAS_WIDTH + 60) {
+          const fromLeft = Math.random() > 0.5;
+          this.x = fromLeft ? -30 : CANVAS_WIDTH + 30;
+          this.y = -40 + Math.random() * 80;
+          this.vx = (fromLeft ? 1 : -1) * (260 + Math.random() * 100);
+          this.vy = 320 + Math.random() * 80;
         }
         break;
       }
 
-      // ★ 超高速フライバイ：画面横外から一瞬で全画面を突き抜ける
+      // ★ ユーザー要望：スターフォースの「ガリ」の動き！
+      // 画面上部から猛スピードで急降下→自機前で急停止スウィング→角度を変えて超高速ダッシュ！
+      case 'STARFORCE_GARI_MOVE': {
+        const t = this.patternTimer % 4.2;
+        if (t < 0.9) {
+          // フェーズ1: 超高速ストレート急降下
+          this.y += 340 * dt;
+        } else if (t < 1.7) {
+          // フェーズ2: 自機直前でキュキュッと急停止＆小刻みな横スウィング（ガリの真骨頂！）
+          this.x += Math.sin((t - 0.9) * 16) * 140 * dt;
+        } else if (t < 3.2) {
+          // フェーズ3: 自機の方向を狙って電光石火の斜め急加速ダッシュ！
+          if (t - dt < 1.7) {
+            const dx = playerX - this.x;
+            const dy = playerY - this.y;
+            const dist = Math.hypot(dx, dy) || 1;
+            this.vx = (dx / dist) * 380;
+            this.vy = Math.max(160, (dy / dist) * 380);
+          }
+          this.x += this.vx * dt;
+          this.y += this.vy * dt;
+        } else {
+          // 画面外を回って上空へ
+          this.y += this.vy * dt;
+          this.x += this.vx * dt;
+        }
+
+        // 画面下・外に出たら上空から再突入！死ぬまでループ
+        if (this.y > CANVAS_HEIGHT + 40 || this.x < -80 || this.x > CANVAS_WIDTH + 80) {
+          this.y = -40;
+          this.x = Math.max(40, Math.min(CANVAS_WIDTH - 60, playerX + (Math.random() - 0.5) * 160));
+          this.patternTimer = 0;
+          this.vx = 0;
+          this.vy = 280;
+        }
+        break;
+      }
+
+      // ★ ユーザー要望：グラディウス／沙羅曼蛇の「開幕編隊」（突進してきて反転離脱）
+      case 'GRADIUS_FLEET': {
+        const t = this.patternTimer % 4.5;
+        if (t < 1.4) {
+          // フェーズ1: 上からまっすぐ整然と突っ込んでくる！
+          this.y += 280 * dt;
+        } else if (t < 2.1) {
+          // フェーズ2: 自機手前でキュッと急旋回Uターン！
+          const turnAngle = (t - 1.4) / 0.7 * Math.PI;
+          const turnDir = (this.formationX > CANVAS_WIDTH / 2) ? 1 : -1;
+          this.x += Math.cos(turnAngle) * 90 * turnDir * dt;
+          this.y += Math.sin(turnAngle) * 40 * dt;
+        } else {
+          // フェーズ3: 斜め後方やまっすぐ上へ高速で整然と離脱！
+          const escapeDir = (this.formationX > CANVAS_WIDTH / 2) ? 1 : -1;
+          this.x += escapeDir * 220 * dt;
+          this.y -= 260 * dt; // 上空へ急離脱！
+        }
+
+        // 上部や左右へ抜けたら再度上から整然と突撃再突入！
+        if (this.patternTimer > 2.2 && (this.y < -50 || this.x < -50 || this.x > CANVAS_WIDTH + 50)) {
+          this.y = -40;
+          this.x = 60 + Math.random() * (CANVAS_WIDTH - 120);
+          this.patternTimer = 0;
+        }
+        break;
+      }
+
+      // ★ ユーザー要望：多少横に動いたあと、縦や横に高速で飛んでいくミサイル
+      case 'DELAYED_DART': {
+        const t = this.patternTimer % 3.8;
+        if (t < 1.2) {
+          // フェーズ1: 索敵モード（ふわふわと横へ慣性浮遊）
+          this.x += this.vx * dt;
+          this.y += Math.sin(this.timeAlive * 6) * 20 * dt;
+        } else if (t < 1.5) {
+          // フェーズ2: ロックオン予兆（小刻み振動）
+          this.x += (Math.random() - 0.5) * 4;
+        } else {
+          // フェーズ3: アフターバーナー点火！縦（自機方向）または横へ超高速突進（500px/s）！
+          if (t - dt < 1.5) {
+            // 直下に急降下するか、横一直線に走るかをランダム選択
+            const isVertical = Math.random() > 0.4;
+            if (isVertical) {
+              this.vx = (playerX - this.x) * 0.5;
+              this.vy = 480;
+            } else {
+              this.vx = (playerX > this.x ? 1 : -1) * 520;
+              this.vy = 40;
+            }
+          }
+          this.x += this.vx * dt;
+          this.y += this.vy * dt;
+        }
+
+        // 画面外に抜けたら消滅させず、別の位置から再突入！
+        if (this.y > CANVAS_HEIGHT + 40 || this.x < -60 || this.x > CANVAS_WIDTH + 60) {
+          this.patternTimer = 0;
+          const fromLeft = Math.random() > 0.5;
+          this.x = fromLeft ? 30 : CANVAS_WIDTH - 30;
+          this.y = 70 + Math.random() * 140;
+          this.vx = (fromLeft ? 1 : -1) * 80;
+          this.vy = 20;
+        }
+        break;
+      }
+
+      // ★ 超高速フライバイ：画面横外から一瞬で全画面を突き抜ける（抜けたら反対側から再突入）
       case 'FLYBY_CROSS': {
         this.x += this.vx * dt;
         this.y += this.vy * dt;
-        if (this.x < -80 || this.x > CANVAS_WIDTH + 80) {
-          this.isDead = true;
+        if (this.x < -80) {
+          this.x = CANVAS_WIDTH + 60;
+          this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.45);
+        } else if (this.x > CANVAS_WIDTH + 80) {
+          this.x = -60;
+          this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.45);
         }
         break;
       }
@@ -1312,6 +1500,43 @@ export class Enemy {
         ctx.fillRect(-6, -7, 12, 14);
         ctx.fillStyle = f === 0 ? '#ffff00' : '#ffffff';
         ctx.fillRect(-2, -2, 4, 4);
+        break;
+      }
+
+      // ★ スターフォース名物：ガリ（STARFORCE_GARI）菱形ボディ＋鋭利なウイング
+      case 'STARFORCE_GARI': {
+        ctx.fillStyle = '#00d0ff';
+        ctx.fillRect(-10, -10, 20, 20); // 菱形コア
+        ctx.fillStyle = '#ffea00';
+        ctx.fillRect(-14, -4, 28, 8);  // 翼
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-6, -6, 12, 12);
+        ctx.fillStyle = f === 0 ? '#ff0033' : '#ff5500';
+        ctx.fillRect(-3, -3, 6, 6);    // コア点滅
+        break;
+      }
+
+      // ★ グラディウス／沙羅曼蛇：ファン編隊（GRADIUS_FAN）往年の扇形宇宙艇
+      case 'GRADIUS_FAN': {
+        ctx.fillStyle = '#ff3300';
+        ctx.fillRect(-12, -8, 24, 6);
+        ctx.fillRect(-8, -2, 16, 8);
+        ctx.fillStyle = '#ffcc00';
+        ctx.fillRect(-4, 6, 8, 4);
+        ctx.fillStyle = f === 0 ? '#00ffff' : '#ffffff';
+        ctx.fillRect(-6, -6, 4, 4);
+        ctx.fillRect(2, -6, 4, 4);
+        break;
+      }
+
+      // ★ 索敵急加速ミサイル（DART_MISSILE）
+      case 'DART_MISSILE': {
+        ctx.fillStyle = '#ffff00';
+        ctx.fillRect(-8, -4, 16, 8);
+        ctx.fillStyle = '#ff0044';
+        ctx.fillRect(4, -6, 6, 12); // 弾頭
+        ctx.fillStyle = f === 0 ? '#00e5ff' : '#ffffff';
+        ctx.fillRect(-12, -3, 4, 6); // バーニア火花
         break;
       }
 
