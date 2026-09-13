@@ -14,6 +14,7 @@ export class Input {
   public justRight = false;
   public justRotate = false;
   public justDrop = false;
+  public justShoot = false;
   public justTab = false;
   public enter = false;
   public justEnter = false;
@@ -22,6 +23,7 @@ export class Input {
   public mouseX: number | null = null;
   public mouseY: number | null = null;
   public isMouseDown = false;
+  public justMouseDown = false;
   public hasMouseMoved = false;
 
   private canvas: HTMLCanvasElement;
@@ -61,7 +63,7 @@ export class Input {
           this.down = true;
           break;
         case 'Space':
-          if (!this.shoot) this.justRotate = true;
+          if (!this.shoot) this.justShoot = true;
           this.shoot = true;
           break;
         case 'Enter':
@@ -137,6 +139,7 @@ export class Input {
 
     window.addEventListener('mousedown', (e) => {
       if (e.button === 0) {
+        if (!this.isMouseDown) this.justMouseDown = true;
         this.isMouseDown = true;
         this.shoot = true;
       }
@@ -156,6 +159,19 @@ export class Input {
     });
   }
 
+  public clearTransientInputs(): void {
+    this.shoot = false;
+    this.isMouseDown = false;
+    this.justShoot = false;
+    this.justMouseDown = false;
+    this.justEnter = false;
+    this.justRotate = false;
+    this.justDrop = false;
+    this.justLeft = false;
+    this.justRight = false;
+    this.justEscape = false;
+  }
+
   public resetPerFrame(): void {
     this.mutePressed = false;
     this.justEscape = false;
@@ -163,6 +179,8 @@ export class Input {
     this.justRight = false;
     this.justRotate = false;
     this.justDrop = false;
+    this.justShoot = false;
+    this.justMouseDown = false;
     this.justTab = false;
     this.justEnter = false;
     this.selectedPieceIndex = null;

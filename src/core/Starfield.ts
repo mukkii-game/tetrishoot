@@ -112,16 +112,16 @@ export class Starfield {
   public draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
 
-    // 1. 深宇宙のネビュラ（星雲）の淡い光彩
-    const nebulaGrad = ctx.createRadialGradient(
-      this.galaxyX, this.galaxyY, 10,
-      this.galaxyX, this.galaxyY, 180
-    );
+    // 1. 深宇宙のネビュラ（星雲の局所描画で大幅高速化）
+    ctx.save();
+    ctx.translate(this.galaxyX, this.galaxyY);
+    const nebulaGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 180);
     nebulaGrad.addColorStop(0, 'rgba(160, 40, 220, 0.22)');
     nebulaGrad.addColorStop(0.4, 'rgba(0, 180, 255, 0.12)');
     nebulaGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = nebulaGrad;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillRect(-180, -180, 360, 360);
+    ctx.restore();
 
     // 2. 渦巻き銀河（Spiral Galaxy）の描画
     ctx.save();

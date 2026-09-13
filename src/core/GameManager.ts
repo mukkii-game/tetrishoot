@@ -50,6 +50,7 @@ export class GameManager {
   public phase: GamePhase = 'TETRIS';
   public stage = 1;
   public score = 0;
+  public difficulty: 'NORMAL' | 'HARD' = 'NORMAL';
 
   public player: Player;
   public starfield: Starfield;
@@ -218,12 +219,12 @@ export class GameManager {
         this.state = 'PAUSED';
         this.pauseMenuSelection = 'RESUME';
         this.sound.playHit();
-        input.resetPerFrame();
+        input.clearTransientInputs();
         return;
       } else if (this.state === 'PAUSED') {
         this.state = 'PLAYING';
         this.sound.playHit();
-        input.resetPerFrame();
+        input.clearTransientInputs();
         return;
       }
     }
@@ -239,7 +240,23 @@ export class GameManager {
 
     switch (this.state) {
       case 'TITLE':
-        if (input.shoot || input.isMouseDown) {
+        // 難易度切り替え（左右キー、または難易度表示エリアのクリック）
+        if (input.justLeft || input.justRight) {
+          this.difficulty = this.difficulty === 'NORMAL' ? 'HARD' : 'NORMAL';
+          this.sound.playHit();
+        }
+        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 465 && input.mouseY <= 530) {
+          if (input.mouseX !== null) {
+            this.difficulty = input.mouseX < CANVAS_WIDTH / 2 ? 'NORMAL' : 'HARD';
+          } else {
+            this.difficulty = this.difficulty === 'NORMAL' ? 'HARD' : 'NORMAL';
+          }
+          this.sound.playHit();
+          break;
+        }
+
+        // ゲーム開始（単発Space、Enter、またはゲーム開始エリアのクリック）
+        if (input.justShoot || input.justEnter || (input.justMouseDown && (input.mouseY === null || input.mouseY < 465 || input.mouseY > 530))) {
           this.startNewGame();
         }
         break;
@@ -273,9 +290,9 @@ export class GameManager {
           }
         }
 
-        // スペースキー、Enterキー、またはマウスクリックで決定
-        if (input.shoot || input.justEnter || (input.isMouseDown && input.mouseY !== null && input.mouseY >= 360 && input.mouseY <= 530)) {
-          this.handlePauseConfirm();
+        // スペースキー、Enterキー、またはマウスクリックで決定（単発押し判定）
+        if (input.justShoot || input.justEnter || (input.justMouseDown && input.mouseY !== null && input.mouseY >= 360 && input.mouseY <= 530)) {
+          this.handlePauseConfirm(input);
         }
         break;
 
@@ -558,60 +575,69 @@ export class GameManager {
         break;
 
       case 2:
-        // 【WAVE 2：ギャラガ・S字＆8の字大流星編隊＋高速フライバイ】（ザコ48機）
-        // 左上・右上から流麗な曲線を描いて飛来し、隊列から急降下ダイブ！
-        for (let k = 0; k < 18; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.05, 'S_CURVE_LEFT_TO_RIGHT', k));
+        // 【WAVE 2：ギャラガ・S字＆8の字大流星編隊＋高速フライバイ】
+        // ユーザー要望：左右に地形がある所や端っこは近づけないので、敵を中央寄りに配置＆中央へ移動させる
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 24 : 16); k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, 0.05, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
-        for (let k = 0; k < 14; k++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 0.45, 'FIGURE_EIGHT', k));
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 20 : 12); k++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 4), 1, 0.45, 'FIGURE_EIGHT', k));
         }
-        for (let k = 0; k < 8; k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 3, 0.8, 'INFINITY_DIVE_LEFT', k));
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 12 : 6); k++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 3), 3, 0.8, 'INFINITY_DIVE_LEFT', k));
         }
-        // 高速横切りフライバイ急襲！
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 6), 0, 2.0 + i * 0.3));
+        // 高速横切りフライバイ急襲（中央高度を横断）
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 6); i++) {
+          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 2 + (i % 4), 0, 1.8 + i * 0.35));
+        }
+        if (this.difficulty === 'HARD') {
+          // ハードモード追加：超高速直進メテオ＋バンガードポッドの混成奇襲！
+          for (let i = 0; i < 8; i++) {
+            this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 2 + (i % 5), 0, 1.0 + i * 0.4));
+          }
+          for (let i = 0; i < 6; i++) {
+            this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 2 + (i % 4), 1, 2.5 + i * 0.35));
+          }
         }
         break;
 
       case 3:
         // 【WAVE 3：沙羅曼蛇 1・縦スクロール バンガード岩盤迷宮突破】（ザコ46機）
         // カクカクしたバンガード山鳴り地形！一定位置を往復巡航するバンガードポッド＋地表ミサイル迎撃！
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 22 : 14); i++) {
           this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 0.3 + i * 0.25));
         }
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 22 : 14); i++) {
           this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 0.8 + i * 0.22));
         }
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
           this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 5), 1, 1.2 + i * 0.18));
         }
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 4), 0, 1.6 + i * 0.2));
         }
         break;
 
       case 4:
-        // 【WAVE 4：ムーンクレスタ Stage 3&4・フォー・フライ＆怒涛のメテオストーム＆超高速フライバイ】（ザコ52機）
+        // 【WAVE 4：ムーンクレスタ Stage 3&4・フォー・フライ＆怒涛のメテオストーム＆超高速フライバイ】
         // 1. 初手：フォー・フライが待機時間ゼロ（t=0）で即座に急降下カミソリ襲撃！
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
           this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, i * 0.15));
         }
         // 2. 超高速メテオが火花を散らして天頂から連続直進落下！
-        for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.4 + i * 0.18));
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 28 : 16); i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.3 + i * 0.15));
         }
         // 3. 電光石火の横切りフライバイ部隊が画面を交差急襲！
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', i % 2 === 0 ? 0 : 7, 0, 1.0 + i * 0.25));
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
+          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', i % 2 === 0 ? 0 : 7, 0, 0.8 + i * 0.22));
         }
         // 4. 不規則カクカク飛行のフォー・フライ＆コールドアイが波状攻撃
-        for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('FOUR_FLY', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 1, 1.8 + i * 0.2));
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
+          this.enemies.push(new Enemy('FOUR_FLY', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 1, 1.5 + i * 0.18));
         }
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 2.5 + i * 0.25));
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 2.0 + i * 0.22));
         }
         break;
 
@@ -752,6 +778,11 @@ export class GameManager {
       // 1〜2面ボス：ジャイアントイエロー司令機
       bossRank = 'GIANT_YELLOW';
       bossHp = this.stage === 1 ? 20 : 32;
+    }
+
+    // ★ ユーザー要望：ハードモードはボスを2倍固くする！
+    if (this.difficulty === 'HARD') {
+      bossHp *= 2;
     }
 
     const pattern = this.stage === 10 ? 'CAROUSEL_CIRCLE' : (this.stage === 6 ? 'SERPENT_SLITHER' : 'FORMATION_LOOP');
@@ -916,8 +947,18 @@ export class GameManager {
       }
     }
 
-    // 地形（洞窟壁）のスクロール更新
-    this.terrain.update(dt, this.phase === 'SHOOTING' ? 140 : 60);
+    // ★ 地形（洞窟壁）のスクロール更新＆スクランブル風 壁面ミサイル発射台の連動
+    this.terrain.update(dt, this.phase === 'SHOOTING' ? 140 : 60, (lx, ly, vx, vy) => {
+      // 洞窟壁から横・斜めへミサイル噴射発射！
+      const m = new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 0, 0, 0);
+      m.x = lx;
+      m.y = ly;
+      m.vx = vx;
+      m.vy = vy;
+      this.enemies.push(m);
+      this.particles.emitSparks(lx, ly, '#ff4400', 8);
+      this.sound.playShoot();
+    });
 
     // 要望②：自機 vs 地形の衝突判定（狭窄洞窟でパーツ破損・Oミノ破壊でゲームオーバー）
     if (this.terrainHitCooldown > 0) {
@@ -1080,10 +1121,26 @@ export class GameManager {
       this.spawnWaveBoss();
     }
 
-    // プレイヤー弾 vs 敵
+    // プレイヤー弾 vs 敵・地形壁面サイロ
     for (let i = this.playerBullets.length - 1; i >= 0; i--) {
       const pb = this.playerBullets[i];
       if (pb.isDead) continue;
+
+      // プレイヤー弾 vs 壁面ミサイル発射台
+      if (this.terrain.enabled) {
+        const siloHit = this.terrain.checkBulletHit(pb.x, pb.y, pb.width, pb.height);
+        if (siloHit) {
+          pb.isDead = true;
+          this.particles.emitSparks(siloHit.x, siloHit.y, '#ffff00', 8);
+          this.sound.playHit();
+          if (siloHit.score >= 400) {
+            this.sound.playExplosion(false);
+            this.particles.emitExplosion(siloHit.x, siloHit.y, '#ff4400', 18);
+            this.score += siloHit.score;
+          }
+          continue;
+        }
+      }
 
       for (const enemy of this.enemies) {
         if (enemy.isDead) continue;
@@ -1291,8 +1348,10 @@ export class GameManager {
   }
 
   // ユーザー要望：ESCキーでポーズし「ゲームに戻る」「waveの最初から」「タイトルに戻る」の3択
-  private handlePauseConfirm(): void {
+  private handlePauseConfirm(input?: Input): void {
     this.sound.playHit();
+    if (input) input.clearTransientInputs();
+
     if (this.pauseMenuSelection === 'RESUME') {
       this.state = 'PLAYING';
     } else if (this.pauseMenuSelection === 'RESTART_WAVE') {
@@ -1580,10 +1639,49 @@ export class GameManager {
       ctx.shadowBlur = 8;
       ctx.fillText('ブロックを合体して全方位ビームでエイリアンを撃破せよ！', CANVAS_WIDTH / 2, 390);
 
-      ctx.font = '13px "DotGothic16", sans-serif';
-      ctx.fillStyle = '#8b949e';
+      // 2. 難易度セレクター（NORMAL / HARD）
+      const isNormal = this.difficulty === 'NORMAL';
+      const isHard = this.difficulty === 'HARD';
+
+      ctx.font = '900 18px monospace';
+      ctx.textAlign = 'center';
+
+      // NORMAL
+      if (isNormal) {
+        ctx.fillStyle = '#00f0ff';
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 12;
+        ctx.fillText('▶ [ NORMAL ] ◀', CANVAS_WIDTH / 2 - 110, 445);
+      } else {
+        ctx.fillStyle = '#667788';
+        ctx.shadowBlur = 0;
+        ctx.fillText('  [ NORMAL ]  ', CANVAS_WIDTH / 2 - 110, 445);
+      }
+
+      // HARD
+      if (isHard) {
+        ctx.fillStyle = '#ff2255';
+        ctx.shadowColor = '#ff2255';
+        ctx.shadowBlur = 14;
+        ctx.fillText('▶ [ HARD ] ◀', CANVAS_WIDTH / 2 + 110, 445);
+      } else {
+        ctx.fillStyle = '#667788';
+        ctx.shadowBlur = 0;
+        ctx.fillText('  [ HARD ]  ', CANVAS_WIDTH / 2 + 110, 445);
+      }
+
       ctx.shadowBlur = 0;
-      ctx.fillText('ESCキーでいつでもタイトルに戻れます', CANVAS_WIDTH / 2, 430);
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = isHard ? '#ff8899' : '#88ddff';
+      ctx.fillText(
+        isHard ? '★ HARD: ボスHP2倍！ 敵出現数2倍＆多彩な奇襲！' : '★ NORMAL: 標準バランス（80sレトロSTG体験）',
+        CANVAS_WIDTH / 2,
+        478
+      );
+
+      ctx.font = '11px monospace';
+      ctx.fillStyle = '#778899';
+      ctx.fillText('←/→キー または クリックで難易度切替', CANVAS_WIDTH / 2, 502);
 
       // 3. スタートプロンプト
       const blink = Math.sin(Date.now() / 250) > 0;
@@ -1592,11 +1690,11 @@ export class GameManager {
         ctx.fillStyle = '#ffea00';
         ctx.shadowColor = '#ffea00';
         ctx.shadowBlur = 10;
-        ctx.fillText('PRESS SPACE OR CLICK TO START', CANVAS_WIDTH / 2, 510);
+        ctx.fillText('PRESS SPACE OR CLICK TO START', CANVAS_WIDTH / 2, 550);
       }
 
       // 4. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
-      this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 635);
+      this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 642);
 
       ctx.restore();
     } else if (this.state === 'PAUSED') {

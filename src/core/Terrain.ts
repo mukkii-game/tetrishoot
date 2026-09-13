@@ -2,11 +2,27 @@ import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../config';
 
 export type ScrollDirection = 'UP' | 'RIGHT' | 'DIAGONAL_UP_RIGHT';
 
+export interface TerrainSilo {
+  id: number;
+  worldY: number;
+  side: 'LEFT' | 'RIGHT';
+  launched: boolean;
+  isDead: boolean;
+  hp: number;
+  flashTime: number;
+}
+
 export class TerrainManager {
   public direction: ScrollDirection = 'UP';
   public enabled = false;
   private scrollOffset = 0;
   private seed = 42;
+  public elapsedTime = 0;
+
+  // ★ コナミ・スクランブル風 地形配置ロケット発射台（Silo）
+  public silos: TerrainSilo[] = [];
+  private nextSiloId = 1;
+  private lastSiloSpawnY = 0;
 
   constructor() {
     this.reset();
@@ -18,14 +34,107 @@ export class TerrainManager {
     this.scrollOffset = 0;
     this.elapsedTime = 0;
     this.seed = Math.random() * 1000;
+    this.silos = [];
+    this.lastSiloSpawnY = 0;
   }
 
-  public elapsedTime = 0;
-
-  public update(dt: number, speed: number): void {
+  public update(
+    dt: number,
+    speed: number,
+    onLaunchMissile?: (x: number, y: number, vx: number, vy: number) => void
+  ): void {
     if (!this.enabled) return;
     this.scrollOffset += speed * dt;
     this.elapsedTime += dt;
+
+    // ★ 洞窟壁サイロの生成（約260pxスクロールごと）
+    const nextSpawnY = Math.floor((this.scrollOffset + 720) / 260) * 260;
+    if (nextSpawnY > this.lastSiloSpawnY) {
+      this.lastSiloSpawnY = nextSpawnY;
+      const side = Math.random() > 0.5 ? 'LEFT' : 'RIGHT';
+      this.silos.push({
+        id: this.nextSiloId++,
+        worldY: nextSpawnY,
+        side,
+        launched: false,
+        isDead: false,
+        hp: 1,
+        flashTime: 0,
+      });
+    }
+
+    // サイロの更新＆ロケット発射判定
+    for (let i = this.silos.length - 1; i >= 0; i--) {
+      const silo = this.silos[i];
+      if (silo.flashTime > 0) silo.flashTime -= dt;
+
+      const screenY = silo.worldY - this.scrollOffset;
+
+      // 画面下端を抜けたら消去
+      if (screenY > CANVAS_HEIGHT + 60) {
+        this.silos.splice(i, 1);
+        continue;
+      }
+
+      // 画面内（Y=120〜520）に進入し、未発射なら自機方向へミサイル水平発射！
+      if (!silo.launched && !silo.isDead && screenY >= 140 && screenY <= 520) {
+        silo.launched = true;
+        const { w1, w2 } = this.getWallThickness(screenY);
+        let launchX = 0;
+        let vx = 0;
+        const vy = (Math.random() - 0.5) * 50;
+
+        if (silo.side === 'LEFT') {
+          launchX = Math.max(16, w1 + 10);
+          vx = 220 + Math.random() * 50; // 右の中央通路へ噴射加速！
+        } else {
+          launchX = Math.min(CANVAS_WIDTH - 30, CANVAS_WIDTH - w2 - 20);
+          vx = -(220 + Math.random() * 50); // 左の中央通路へ噴射加速！
+        }
+
+        if (onLaunchMissile) {
+          onLaunchMissile(launchX, screenY, vx, vy);
+        }
+      }
+    }
+  }
+
+  // 弾 vs 壁面サイロの命中判定（発射前・後どちらも撃破可能！）
+  public checkBulletHit(
+    bx: number,
+    by: number,
+    bw: number,
+    bh: number
+  ): { hit: boolean; score: number; x: number; y: number } | null {
+    if (!this.enabled) return null;
+
+    for (const silo of this.silos) {
+      if (silo.isDead) continue;
+      const screenY = silo.worldY - this.scrollOffset;
+      if (screenY < -30 || screenY > CANVAS_HEIGHT + 30) continue;
+
+      const { w1, w2 } = this.getWallThickness(screenY);
+      const siloX = silo.side === 'LEFT' ? Math.max(8, w1 - 10) : CANVAS_WIDTH - w2 - 12;
+      const siloY = screenY - 12;
+      const sw = 22;
+      const sh = 24;
+
+      if (
+        bx + bw / 2 >= siloX &&
+        bx - bw / 2 <= siloX + sw &&
+        by + bh / 2 >= siloY &&
+        by - bh / 2 <= siloY + sh
+      ) {
+        silo.hp -= 1;
+        silo.flashTime = 0.12;
+        if (silo.hp <= 0) {
+          silo.isDead = true;
+          return { hit: true, score: 500, x: siloX + sw / 2, y: siloY + sh / 2 };
+        }
+        return { hit: true, score: 100, x: siloX + sw / 2, y: siloY + sh / 2 };
+      }
+    }
+    return null;
   }
 
   public getWallThickness(screenCoord: number): { w1: number; w2: number } {
@@ -171,7 +280,7 @@ export class TerrainManager {
     return false;
   }
 
-  // ★ SNK『バンガード (Vanguard)』風：ブロックによるカクカクした山鳴り地形描画
+  // ★ SNK『バンガード (Vanguard)』風：ブロックによるカクカクした山鳴り地形描画（バッチ高速化版）
   public draw(ctx: CanvasRenderingContext2D): void {
     if (!this.enabled) return;
 
@@ -179,107 +288,152 @@ export class TerrainManager {
     const blockSize = 20; // バンガード風のブロック単位
 
     if (this.direction === 'UP') {
-      // Y方向に20pxブロック単位で階段状に描画
       const startY = -((this.scrollOffset) % blockSize);
       for (let y = startY; y < CANVAS_HEIGHT + blockSize; y += blockSize) {
         const { w1, w2 } = this.getWallThickness(y + blockSize / 2);
 
-        // 左壁：ブロックの列（横にも20px刻みでブロックを並べる）
+        // 左壁：ソリッドベース＋表面立体ベベルブロック
         if (w1 > 0) {
-          for (let bx = 0; bx < w1; bx += blockSize) {
-            const bw = Math.min(blockSize, w1 - bx);
-            this.drawVanguardBlock(ctx, bx, y, bw, blockSize, '#552200', '#aa4400', '#ff8800');
-          }
+          ctx.fillStyle = '#441800';
+          ctx.fillRect(0, y, w1, blockSize);
+          const edgeBx = Math.max(0, w1 - blockSize);
+          ctx.fillStyle = '#aa4400';
+          ctx.fillRect(edgeBx, y, blockSize, blockSize);
+          ctx.fillStyle = '#ff8800';
+          ctx.fillRect(edgeBx + 1, y + 1, blockSize - 2, 2);
+          ctx.fillRect(edgeBx + 1, y + 1, 2, blockSize - 2);
+          ctx.fillStyle = '#220800';
+          ctx.fillRect(edgeBx + blockSize - 2, y, 2, blockSize);
+          ctx.fillRect(edgeBx, y + blockSize - 2, blockSize, 2);
         }
 
-        // 右壁：ブロックの列
+        // 右壁：ソリッドベース＋表面立体ベベルブロック
         if (w2 > 0) {
           const rx = CANVAS_WIDTH - w2;
-          for (let bx = rx; bx < CANVAS_WIDTH; bx += blockSize) {
-            const bw = Math.min(blockSize, CANVAS_WIDTH - bx);
-            this.drawVanguardBlock(ctx, bx, y, bw, blockSize, '#552200', '#aa4400', '#ff8800');
-          }
+          ctx.fillStyle = '#441800';
+          ctx.fillRect(rx, y, w2, blockSize);
+          ctx.fillStyle = '#aa4400';
+          ctx.fillRect(rx, y, blockSize, blockSize);
+          ctx.fillStyle = '#ff8800';
+          ctx.fillRect(rx + 1, y + 1, blockSize - 2, 2);
+          ctx.fillRect(rx + 1, y + 1, 2, blockSize - 2);
+          ctx.fillStyle = '#220800';
+          ctx.fillRect(rx + blockSize - 2, y, 2, blockSize);
+          ctx.fillRect(rx, y + blockSize - 2, blockSize, 2);
         }
       }
     } else if (this.direction === 'RIGHT') {
-      // X方向に20pxブロック単位で階段状に描画
       const startX = -((this.scrollOffset) % blockSize);
       for (let x = startX; x < CANVAS_WIDTH + blockSize; x += blockSize) {
         const { w1, w2 } = this.getWallThickness(x + blockSize / 2);
 
         // 上壁
         if (w1 > 0) {
-          for (let by = 0; by < w1; by += blockSize) {
-            const bh = Math.min(blockSize, w1 - by);
-            this.drawVanguardBlock(ctx, x, by, blockSize, bh, '#002255', '#0055aa', '#00aaff');
-          }
+          ctx.fillStyle = '#001844';
+          ctx.fillRect(x, 0, blockSize, w1);
+          const edgeBy = Math.max(0, w1 - blockSize);
+          ctx.fillStyle = '#0055aa';
+          ctx.fillRect(x, edgeBy, blockSize, blockSize);
+          ctx.fillStyle = '#00aaff';
+          ctx.fillRect(x + 1, edgeBy + 1, blockSize - 2, 2);
+          ctx.fillRect(x + 1, edgeBy + 1, 2, blockSize - 2);
         }
 
         // 下壁
         if (w2 > 0) {
           const by = CANVAS_HEIGHT - w2;
-          for (let y = by; y < CANVAS_HEIGHT; y += blockSize) {
-            const bh = Math.min(blockSize, CANVAS_HEIGHT - y);
-            this.drawVanguardBlock(ctx, x, y, blockSize, bh, '#002255', '#0055aa', '#00aaff');
-          }
+          ctx.fillStyle = '#001844';
+          ctx.fillRect(x, by, blockSize, w2);
+          ctx.fillStyle = '#0055aa';
+          ctx.fillRect(x, by, blockSize, blockSize);
+          ctx.fillStyle = '#00aaff';
+          ctx.fillRect(x + 1, by + 1, blockSize - 2, 2);
+          ctx.fillRect(x + 1, by + 1, 2, blockSize - 2);
         }
       }
     } else if (this.direction === 'DIAGONAL_UP_RIGHT') {
-      // 斜めスクロール：段々畑状に斜めバンガードブロックを描画
       const start = -((this.scrollOffset) % blockSize);
       for (let y = start; y < CANVAS_HEIGHT + blockSize; y += blockSize) {
         const { w1, w2 } = this.getWallThickness(y + blockSize / 2);
-        // 左側段々畑
         if (w1 > 0) {
-          for (let bx = 0; bx < w1; bx += blockSize) {
-            const bw = Math.min(blockSize, w1 - bx);
-            this.drawVanguardBlock(ctx, bx, y, bw, blockSize, '#330044', '#770088', '#cc00ff');
-          }
+          ctx.fillStyle = '#280038';
+          ctx.fillRect(0, y, w1, blockSize);
+          const edgeBx = Math.max(0, w1 - blockSize);
+          ctx.fillStyle = '#770088';
+          ctx.fillRect(edgeBx, y, blockSize, blockSize);
+          ctx.fillStyle = '#cc00ff';
+          ctx.fillRect(edgeBx + 1, y + 1, blockSize - 2, 2);
         }
-        // 右側段々畑
         if (w2 > 0) {
           const rx = CANVAS_WIDTH - w2;
-          for (let bx = rx; bx < CANVAS_WIDTH; bx += blockSize) {
-            const bw = Math.min(blockSize, CANVAS_WIDTH - bx);
-            this.drawVanguardBlock(ctx, bx, y, bw, blockSize, '#330044', '#770088', '#cc00ff');
-          }
+          ctx.fillStyle = '#280038';
+          ctx.fillRect(rx, y, w2, blockSize);
+          ctx.fillStyle = '#770088';
+          ctx.fillRect(rx, y, blockSize, blockSize);
+          ctx.fillStyle = '#cc00ff';
+          ctx.fillRect(rx + 1, y + 1, blockSize - 2, 2);
         }
       }
     }
 
-    ctx.restore();
-  }
+    // ★ コナミ・スクランブル風 壁面ミサイル発射台（Silo）の描画
+    for (const silo of this.silos) {
+      if (silo.isDead) continue;
+      const screenY = silo.worldY - this.scrollOffset;
+      if (screenY < -30 || screenY > CANVAS_HEIGHT + 30) continue;
 
-  // バンガード風の立体感・輪郭線のあるレトロアーケードブロック描画
-  private drawVanguardBlock(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    baseColor: string,
-    edgeColor: string,
-    highlightColor: string
-  ): void {
-    // ブロック内部
-    ctx.fillStyle = baseColor;
-    ctx.fillRect(x, y, w, h);
+      const { w1, w2 } = this.getWallThickness(screenY);
+      const siloX = silo.side === 'LEFT' ? Math.max(8, w1 - 10) : CANVAS_WIDTH - w2 - 12;
+      const siloY = screenY - 10;
 
-    // ブロック外枠
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      ctx.save();
+      // 被弾点滅
+      if (silo.flashTime > 0) {
+        ctx.fillStyle = '#ffffff';
+      } else {
+        ctx.fillStyle = '#667788'; // 発射台フレーム
+      }
+      ctx.fillRect(siloX, siloY + 4, 22, 16);
+      ctx.fillStyle = '#334455';
+      ctx.fillRect(siloX + 2, siloY + 6, 18, 12);
 
-    // 上・左ハイライト（立体感）
-    if (w > 2 && h > 2) {
-      ctx.fillStyle = highlightColor;
-      ctx.fillRect(x + 1, y + 1, w - 2, 2);
-      ctx.fillRect(x + 1, y + 1, 2, h - 2);
+      // ミサイル本体（未発射時）
+      if (!silo.launched) {
+        // 弾頭（赤）
+        ctx.fillStyle = '#ff2244';
+        if (silo.side === 'LEFT') {
+          // 右向き弾頭
+          ctx.beginPath();
+          ctx.moveTo(siloX + 22, siloY + 12);
+          ctx.lineTo(siloX + 16, siloY + 7);
+          ctx.lineTo(siloX + 16, siloY + 17);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          // 左向き弾頭
+          ctx.beginPath();
+          ctx.moveTo(siloX, siloY + 12);
+          ctx.lineTo(siloX + 6, siloY + 7);
+          ctx.lineTo(siloX + 6, siloY + 17);
+          ctx.closePath();
+          ctx.fill();
+        }
+        // ミサイル胴体（白）
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(siloX + 6, siloY + 9, 10, 6);
 
-      // 右・下シャドウ
-      ctx.fillStyle = edgeColor;
-      ctx.fillRect(x + w - 2, y + 2, 2, h - 3);
-      ctx.fillRect(x + 2, y + h - 2, w - 3, 2);
+        // 発射前点滅ランプ
+        const blink = Math.sin(Date.now() / 100) > 0;
+        ctx.fillStyle = blink ? '#ffff00' : '#ff0000';
+        ctx.fillRect(siloX + 9, siloY + 2, 4, 3);
+      } else {
+        // 発射済みの空サイロ（黒煙痕）
+        ctx.fillStyle = '#111122';
+        ctx.fillRect(siloX + 4, siloY + 8, 14, 8);
+      }
+      ctx.restore();
     }
+
+    ctx.restore();
   }
 }

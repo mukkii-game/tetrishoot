@@ -86,6 +86,9 @@ export class Enemy {
   public trail: { x: number; y: number }[] = [];
   public leader?: Enemy;
   public segmentIndex = 0;
+  // ボス専用3態ダイナミックAIパラメータ（左右大旋回・前進急停止後退・ホバリング）
+  public bossPhase: 'HOVER_BARRAGE' | 'WIDE_SWEEP' | 'DIVE_FORWARD_RETREAT' = 'HOVER_BARRAGE';
+  public bossPhaseTimer = 0;
 
   private animFrame = 0;
   private animTimer = 0;
@@ -279,6 +282,12 @@ export class Enemy {
       this.y = -60;
       this.vx = (Math.random() - 0.5) * 40;
       this.vy = 210; // ムーンクレスタ名物：超高速隕石落下！
+    } else if (pattern === 'METEOR_STRAIGHT') {
+      // ★ ユーザー要望：超高速で突っ込んでくるメテオ！火花を散らして一直線急降下
+      this.x = Math.max(30, Math.min(CANVAS_WIDTH - 30 - this.width, this.formationX));
+      this.y = -60;
+      this.vx = (Math.random() - 0.5) * 100;
+      this.vy = 420 + Math.random() * 80; // 420〜500px/s の超高速ダイブ！
     } else if (pattern === 'ZIGZAG_DIVE') {
       this.x = this.formationX;
       this.y = -50;
@@ -302,7 +311,7 @@ export class Enemy {
       this.movingRight = colIndex % 2 === 0;
       this.diveDelay = 1.8 + colIndex * 2.4;
       this.vx = (this.movingRight ? 1 : -1) * 190;
-      this.vy = 24;
+      this.vy = 65; // ムーンクレスタ本来のリズミカルな階段降下速度
     } else if (pattern === 'MOON_SUPER_EYE') {
       // ★ ムーンクレスタ完全再現：スーパーアイ
       const colIndex = Math.floor(formationCol) % 8;
@@ -328,11 +337,6 @@ export class Enemy {
       this.y = -40;
       this.vx = formationCol < 4 ? 140 : -140;
       this.vy = 130;
-    } else if (pattern === 'METEOR_STRAIGHT') {
-      this.x = 40 + Math.random() * (CANVAS_WIDTH - 80);
-      this.y = -50;
-      this.vx = (Math.random() - 0.5) * 120;
-      this.vy = 260 + Math.random() * 80; // 高速直線落下
     } else if (pattern === 'FLYBY_CROSS') {
       const fromLeft = formationCol % 2 === 0;
       this.x = fromLeft ? -50 : CANVAS_WIDTH + 50;
@@ -502,6 +506,70 @@ export class Enemy {
       }
 
       case 'IN_FORMATION': {
+        // ★ ユーザー要望：ボス専用3態ダイナミックAI（左右大旋回・前進急接近後退・ホバリング）
+        // 「ボスが、あまりにうごかなすぎる うごかないときがあっていいけど、さゆうにおおきくうごくとかぜんごにうごくとか、てきどにいれて」
+        if (this.isBoss && this.rank !== 'SPACE_SERPENT_HEAD' && this.rank !== 'SERPENT_BODY') {
+          this.bossPhaseTimer += dt;
+
+          switch (this.bossPhase) {
+            case 'HOVER_BARRAGE': {
+              // 1. ホバリング静止弾幕（2.8秒間：中央付近で小さく揺れながら狙い撃ち）
+              this.x = this.formationX + Math.sin(this.bossPhaseTimer * 2.5) * 35;
+              this.y = this.formationY + Math.cos(this.bossPhaseTimer * 1.8) * 12;
+
+              if (this.bossPhaseTimer >= 2.8) {
+                this.bossPhase = 'WIDE_SWEEP';
+                this.bossPhaseTimer = 0;
+              }
+              break;
+            }
+
+            case 'WIDE_SWEEP': {
+              // 2. 画面横幅いっぱいの大旋回スイープ（4.8秒間：画面左右端まで大きく振り子スイング！）
+              const sweepProgress = this.bossPhaseTimer / 4.8;
+              const angle = sweepProgress * Math.PI * 2.5;
+              this.x = CANVAS_WIDTH / 2 + Math.sin(angle) * (CANVAS_WIDTH * 0.38) - this.width / 2;
+              this.y = this.formationY + Math.sin(angle * 2) * 35;
+
+              if (this.bossPhaseTimer >= 4.8) {
+                this.bossPhase = 'DIVE_FORWARD_RETREAT';
+                this.bossPhaseTimer = 0;
+              }
+              break;
+            }
+
+            case 'DIVE_FORWARD_RETREAT': {
+              // 3. 前後に動くダイブ＆後退（3.6秒間：自機へ向けてぐっと前進接近し、急停止して後退！）
+              // 0.0〜1.3s: 前進急接近（y: formationY -> 280）
+              // 1.3〜2.1s: 自機の目の前で急ブレーキ静止＆拡散射撃
+              // 2.1〜3.4s: 逆噴射で急後退（y: 280 -> formationY）
+              const t = this.bossPhaseTimer;
+              const forwardY = 270;
+              if (t < 1.3) {
+                const ratio = t / 1.3;
+                const ease = Math.sin((ratio * Math.PI) / 2);
+                this.y = this.formationY + (forwardY - this.formationY) * ease;
+                this.x = this.formationX + (playerX - this.formationX) * 0.4 * ease;
+              } else if (t < 2.1) {
+                // 自機の目の前で急停止！
+                this.y = forwardY + Math.sin((t - 1.3) * 8) * 8;
+              } else if (t < 3.4) {
+                const ratio = (t - 2.1) / 1.3;
+                const ease = Math.sin((ratio * Math.PI) / 2);
+                this.y = forwardY - (forwardY - this.formationY) * ease;
+                this.x = this.formationX + Math.sin(t * 3) * 20;
+              } else {
+                this.y = this.formationY;
+                this.bossPhase = 'HOVER_BARRAGE';
+                this.bossPhaseTimer = 0;
+              }
+              break;
+            }
+          }
+          break;
+        }
+
+        // 通常ザコの陣形ゆらぎ
         const waveX = Math.sin(formationOffsetAngle) * 22;
         const waveY = Math.cos(formationOffsetAngle * 2) * 6;
         this.x = this.formationX + waveX;
@@ -639,7 +707,7 @@ export class Enemy {
         } else {
           // 【急降下モード：ムーンクレスタ名物・階段状カクカクジグザグ急降下！】
           this.x += this.vx * dt;
-          this.y += 24 * dt; // 緩やかな下降
+          this.y += 65 * dt; // リズミカルな急降下
           this.eyeLookX = this.movingRight ? 1 : -1;
 
           // 画面左右端に達したら一段「ガクン」と急降下して方向転換（階段移動）
@@ -649,21 +717,21 @@ export class Enemy {
           if (this.x <= leftLimit && !this.movingRight) {
             this.x = leftLimit;
             this.movingRight = true;
-            this.vx = 190;
-            this.y += 36; // ガクンと階段を降りるように下降！
+            this.vx = 200;
+            this.y += 44; // ガクンと一段大きく下降！
           } else if (this.x >= rightLimit && this.movingRight) {
             this.x = rightLimit;
             this.movingRight = false;
-            this.vx = -190;
-            this.y += 36; // ガクンと階段を降りるように下降！
+            this.vx = -200;
+            this.y += 44; // ガクンと一段大きく下降！
           }
 
-          // 画面下端を抜けたら天頂から再突入（ムーンクレスタのループ仕様！）
-          if (this.y > CANVAS_HEIGHT + 30) {
-            this.y = -35;
-            this.x = Math.max(30, Math.min(CANVAS_WIDTH - 30 - this.width, this.x));
-            this.movingRight = !this.movingRight;
-            this.vx = (this.movingRight ? 1 : -1) * 190;
+          // ★ ムーンクレスタ完全再現：画面下端を抜けたら天頂から再突入し、倒されるまで何度もループ急襲！
+          if (this.y > CANVAS_HEIGHT + 20) {
+            this.y = -45;
+            this.x = 40 + Math.random() * (CANVAS_WIDTH - 80 - this.width);
+            this.movingRight = Math.random() > 0.5;
+            this.vx = (this.movingRight ? 1 : -1) * 200;
           }
         }
         break;
