@@ -584,6 +584,32 @@ export class Player {
         const cellY = this.anchorY + (attached.relGy + cell.gy) * BLOCK_SIZE;
 
         if (px >= cellX && px < cellX + BLOCK_SIZE && py >= cellY && py < cellY + BLOCK_SIZE) {
+          // ★ ユーザー要望：0ミノにあたったら死亡ルールでしたが、もしまだテトリミノがついていたらそのうちのどれかが代わりに犠牲になる
+          if (piece.type === 'O') {
+            const nonOPieces = this.pieces.filter(p => p.piece.type !== 'O');
+            if (nonOPieces.length > 0) {
+              // 接続されている外装テトリミノの1つが身代わりとして犠牲になる！
+              const sacrificeAttached = nonOPieces[nonOPieces.length - 1];
+              const sacrificeIndex = this.pieces.indexOf(sacrificeAttached);
+              const sacrificePiece = sacrificeAttached.piece;
+              const destroyedType = sacrificePiece.type;
+
+              // Oミノ被弾地点に防護スパーク
+              particles.emitSparks(px, py, '#00f0ff', 18);
+
+              // 身代わりパーツが爆散！
+              const sacCell = sacrificePiece.cells[0];
+              const sacX = this.anchorX + (sacrificeAttached.relGx + sacCell.gx) * BLOCK_SIZE + BLOCK_SIZE / 2;
+              const sacY = this.anchorY + (sacrificeAttached.relGy + sacCell.gy) * BLOCK_SIZE + BLOCK_SIZE / 2;
+              particles.emitExplosion(sacX, sacY, sacrificePiece.color, 32, true);
+
+              this.pieces.splice(sacrificeIndex, 1);
+              const detachedPieces = this.checkConnectivity();
+
+              return { hit: true, pieceDestroyed: true, pieceType: destroyedType, detachedPieces };
+            }
+          }
+
           const isDestroyed = piece.hit(1);
           particles.emitSparks(px, py, piece.color, 12);
 

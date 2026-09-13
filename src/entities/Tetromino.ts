@@ -177,6 +177,18 @@ export class TetrominoPiece {
   }
 
   // 単体セル描画
+  /** セルの発射口・マズル情報を取得（未接合時・落下時の全開放チェック用） */
+  public getGunPortForCell(gx: number, gy: number): { hasGun: boolean; angle?: number } {
+    const gun = this.gunPorts.find(g => g.cellGx === gx && g.cellGy === gy);
+    if (gun) {
+      return { hasGun: true, angle: gun.angle };
+    }
+    if (this.type === 'O' && gy === 0) {
+      return { hasGun: true, angle: -Math.PI / 2 };
+    }
+    return { hasGun: false };
+  }
+
   public drawCell(
     ctx: CanvasRenderingContext2D,
     pixelX: number,

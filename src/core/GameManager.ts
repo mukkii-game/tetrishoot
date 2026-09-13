@@ -1421,22 +1421,31 @@ export class GameManager {
               this.screenShake = 14;
 
               // ★ ユーザー要望：ボスを倒したら残っているザコはつられて連鎖爆破する！
+              let chainDelay = 0;
               for (const z of this.enemies) {
                 if (!z.isDead && z !== enemy) {
                   z.isDead = true;
-                  this.particles.emitExplosion(
-                    z.x + z.width / 2,
-                    z.y + z.height / 2,
-                    '#ffaa00',
-                    18,
-                    false
-                  );
+                  chainDelay += 0.04;
+                  window.setTimeout(() => {
+                    this.sound.playEnemyPop(z.rank);
+                    this.particles.emitExplosion(
+                      z.x + z.width / 2,
+                      z.y + z.height / 2,
+                      '#ffaa00',
+                      18,
+                      false
+                    );
+                  }, chainDelay * 1000);
                   this.score += z.scoreValue;
                 }
               }
               return;
             } else {
-              this.sound.playExplosion(isGiant);
+              if (isGiant) {
+                this.sound.playExplosion(true);
+              } else {
+                this.sound.playEnemyPop(enemy.rank);
+              }
               this.particles.emitExplosion(
                 enemy.x + enemy.width / 2,
                 enemy.y + enemy.height / 2,
@@ -1700,7 +1709,8 @@ export class GameManager {
         for (const cell of item.piece.cells) {
           const px = item.x + cell.gx * BLOCK_SIZE;
           const py = item.y + cell.gy * BLOCK_SIZE;
-          item.piece.drawCell(ctx, px, py);
+          const gun = item.piece.getGunPortForCell(cell.gx, cell.gy);
+          item.piece.drawCell(ctx, px, py, undefined, 1.0, gun.hasGun, gun.angle);
         }
 
         // ガイド用の淡い光彩枠
@@ -1731,12 +1741,13 @@ export class GameManager {
       }
 
     } else if (this.phase === 'SHOOTING') {
-      // ★ ユーザー要望：Oミノ救済テトリミノの描画＆「DOCK!」の誘導表示
+      // ★ ユーザー要望：Oミノ救済テトリミノの描画＆「DOCKING!」の誘導表示
       if (this.battlePiece && !this.battlePiece.settled) {
         for (const cell of this.battlePiece.piece.cells) {
           const px = this.battlePiece.x + cell.gx * BLOCK_SIZE;
           const py = this.battlePiece.y + cell.gy * BLOCK_SIZE;
-          this.battlePiece.piece.drawCell(ctx, px, py);
+          const gun = this.battlePiece.piece.getGunPortForCell(cell.gx, cell.gy);
+          this.battlePiece.piece.drawCell(ctx, px, py, undefined, 1.0, gun.hasGun, gun.angle);
         }
 
         const bounds = this.battlePiece.piece.getBoundingBox(this.battlePiece.x, this.battlePiece.y);
@@ -1760,13 +1771,14 @@ export class GameManager {
       }
     }
 
-    // ★ 要望③：切断されて浮遊・落下中のパーツ描画（点滅しながら落下）
+    // ★ 要望③：切断されて浮遊・落下中のパーツ描画（点滅しながら落下、発射口も表示）
     for (const dp of this.detachedPieces) {
       const alpha = Math.sin(dp.lifeTime * 8) > 0 ? 0.9 : 0.5;
       for (const cell of dp.piece.cells) {
         const px = dp.x + cell.gx * BLOCK_SIZE;
         const py = dp.y + cell.gy * BLOCK_SIZE;
-        dp.piece.drawCell(ctx, px, py, undefined, alpha);
+        const gun = dp.piece.getGunPortForCell(cell.gx, cell.gy);
+        dp.piece.drawCell(ctx, px, py, undefined, alpha, gun.hasGun, gun.angle);
       }
     }
 

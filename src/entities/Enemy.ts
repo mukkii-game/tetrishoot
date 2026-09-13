@@ -587,10 +587,21 @@ export class Enemy {
       }
 
       case 'SURPRISE_FROM_BOTTOM': {
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
-        if (this.y < 90) {
-          this.pattern = 'FORMATION_LOOP';
+        if (this.isBoss) {
+          // ボスはS字を描いて左右に動きながら上昇し、中央でプレイヤーを轢き殺すのを防止
+          this.y += this.vy * dt;
+          this.x = CANVAS_WIDTH / 2 + Math.sin(this.timeAlive * 2.8) * 110 - this.width / 2;
+          if (this.y < 85) {
+            this.pattern = 'IN_FORMATION';
+            this.bossPhase = 'WIDE_SWEEP'; // 上昇完了後は即座に左右大旋回へ！
+            this.bossPhaseTimer = 0;
+          }
+        } else {
+          this.x += this.vx * dt;
+          this.y += this.vy * dt;
+          if (this.y < 90) {
+            this.pattern = 'FORMATION_LOOP';
+          }
         }
         break;
       }
@@ -611,17 +622,17 @@ export class Enemy {
 
       case 'IN_FORMATION': {
         // ★ ユーザー要望：ボス専用3態ダイナミックAI（左右大旋回・前進急接近後退・ホバリング）
-        // 「ボスが、あまりにうごかなすぎる うごかないときがあっていいけど、さゆうにおおきくうごくとかぜんごにうごくとか、てきどにいれて」
+        // 「ステージ3のボス 画面中央で泊まっているとスクロールしているので避けようがなく死ぬ 左右にも動いて」
         if (this.isBoss && this.rank !== 'SPACE_SERPENT_HEAD' && this.rank !== 'SERPENT_BODY') {
           this.bossPhaseTimer += dt;
 
           switch (this.bossPhase) {
             case 'HOVER_BARRAGE': {
-              // 1. ホバリング静止弾幕（2.8秒間：中央付近で小さく揺れながら狙い撃ち）
-              this.x = this.formationX + Math.sin(this.bossPhaseTimer * 2.5) * 35;
-              this.y = this.formationY + Math.cos(this.bossPhaseTimer * 1.8) * 12;
+              // 1. 左右巡航移動弾幕（中央で静止留まりせず、左右へ幅広く±120px遊泳しながら射撃）
+              this.x = CANVAS_WIDTH / 2 + Math.sin(this.bossPhaseTimer * 1.5) * 125 - this.width / 2;
+              this.y = this.formationY + Math.cos(this.bossPhaseTimer * 1.8) * 14;
 
-              if (this.bossPhaseTimer >= 2.8) {
+              if (this.bossPhaseTimer >= 2.6) {
                 this.bossPhase = 'WIDE_SWEEP';
                 this.bossPhaseTimer = 0;
               }

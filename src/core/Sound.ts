@@ -1,4 +1,17 @@
-import { shoot_arc_b64, damage_arc_b64, score_arc_b64, boss_lfo1_b64, boss_lfo2_b64, boss_warning_b64, player_death_b64 } from '../audio/audioData';
+import {
+  shoot_arc_b64,
+  damage_arc_b64,
+  score_arc_b64,
+  boss_lfo1_b64,
+  boss_lfo2_b64,
+  boss_warning_b64,
+  player_death_b64,
+  enemy_kill1_b64,
+  enemy_kill2_b64,
+  enemy_kill3_b64,
+  enemy_kill4_b64,
+  enemy_kill5_b64,
+} from '../audio/audioData';
 
 // ムーンクレスタ風 往年チップチューン音源（Web Audio API）＋ OtoLogic効果音
 export class Sound {
@@ -16,6 +29,9 @@ export class Sound {
   private bossWarningBuffer: AudioBuffer | null = null;
   private playerDeathBuffer: AudioBuffer | null = null;
 
+  // ユーザー提供：気持ちいいレトロ敵ヤラレ音・ダメージ音バッファ5種
+  private enemyKillBuffers: (AudioBuffer | null)[] = [null, null, null, null, null];
+
   // ボスLFO再生用ループノード
   private activeBossLfoSource: AudioBufferSourceNode | null = null;
   private activeBossLfoGain: GainNode | null = null;
@@ -26,7 +42,8 @@ export class Sound {
 
   // ショット音の過剰な重なり防止用（スロットリング＆ボイススティーリング）
   private lastShootTime = 0;
-  private lastShootSource: AudioBufferSourceNode | null = null;
+  private shootVoiceIndex = 0;
+  private shootSources: (AudioBufferSourceNode | null)[] = [null, null, null, null];
 
   constructor() {
     // 遅延デコード（ユーザー操作時に初期化）
@@ -70,6 +87,13 @@ export class Sound {
     decode(boss_lfo2_b64, buf => { this.bossLfo2Buffer = buf; });
     decode(boss_warning_b64, buf => { this.bossWarningBuffer = buf; });
     decode(player_death_b64, buf => { this.playerDeathBuffer = buf; });
+
+    // ユーザー提供の敵ヤラレ・ダメージ音5種をデコード
+    decode(enemy_kill1_b64, buf => { this.enemyKillBuffers[0] = buf; });
+    decode(enemy_kill2_b64, buf => { this.enemyKillBuffers[1] = buf; });
+    decode(enemy_kill3_b64, buf => { this.enemyKillBuffers[2] = buf; });
+    decode(enemy_kill4_b64, buf => { this.enemyKillBuffers[3] = buf; });
+    decode(enemy_kill5_b64, buf => { this.enemyKillBuffers[4] = buf; });
   }
 
   public toggleMute(): boolean {
@@ -133,8 +157,9 @@ export class Sound {
 
   // 3. ショット音
   // ユーザー要望：
-  // 「Arcade-Shooter01-1(Shoot) 玉発射音
-  //  これだけだと単調かも。テトリミノにより音が違う、今使ってるのと2種類あってもいい」
+  // 「発射音の数が少ない気がする。間引きすぎ？」
+  // スロットリング間隔を 0.075s (75ms) から 0.022s (22ms) に大幅短縮し、
+  // 4ボイスのラウンドロビン再生により前の音を切断せず重ねて発音。連射時の抜けを完全解消！
   public playShoot(pieceType?: string): void {
     if (this.isMuted) return;
     this.initContext();
@@ -142,21 +167,13 @@ export class Sound {
 
     const now = this.ctx.currentTime;
 
-    // 1. 間隔制限 (スロットリング / ゲート)
-    // 複数砲門が同時に発射されたり連射された際、75ms以内の極短間隔なら音の生成をスキップして耳障りな重なりを防止
-    if (now - this.lastShootTime < 0.075) return;
+    // 1. 極小間隔スロットリング（同一フレーム内での超過剰重なり22msのみガード）
+    if (now - this.lastShootTime < 0.022) return;
     this.lastShootTime = now;
 
-    // 2. ボイススティーリング (前の音が鳴っていたらスパッと切断して単一発音を維持)
-    if (this.lastShootSource) {
-      try {
-        this.lastShootSource.stop();
-        this.lastShootSource.disconnect();
-      } catch {
-        // すでに再生終了している場合は無視
-      }
-      this.lastShootSource = null;
-    }
+    // 2. 4ボイス・ラウンドロビン（前の音を急停止させず自然に重ねる）
+    const voiceIdx = this.shootVoiceIndex;
+    this.shootVoiceIndex = (this.shootVoiceIndex + 1) % this.shootSources.length;
 
     // I, L, J, T, S, Z ミノにより発射音の音色・ピッチバリエーションを展開
     // I, T, S は OtoLogicのリアルアーケードショット音 (Arcade-Shooter01-1)
@@ -172,9 +189,6 @@ export class Sound {
         else if (pieceType === 'S') src.playbackRate.value = 1.1;
         else src.playbackRate.value = 1.0;
 
-        // 3. 音量の低減 & 4. 発音時間の短縮
-        // 原音は長いため、0.11秒でクイックに減衰(exponentialRamp)させ、0.12秒で強制ストップ
-        // 音量も 0.65 -> 0.28 に抑制
         const dur = 0.11;
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0.28, now);
@@ -185,7 +199,7 @@ export class Sound {
         src.start(now);
         src.stop(now + dur + 0.01);
 
-        this.lastShootSource = src;
+        this.shootSources[voiceIdx] = src;
         return;
       } catch {
         // フォールバック
@@ -227,7 +241,6 @@ export class Sound {
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
-    // ムーンクレスタ実機準拠のドッキング成功チャープ（急上昇→高音反復トリル）
     const freqs = [
       523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98, 2093.00,
       1567.98, 2093.00
@@ -259,6 +272,22 @@ export class Sound {
     this.initContext();
     if (!this.ctx) return;
 
+    // ユーザー提供のヤラレ音バッファを爆発音の核として合成再生
+    const sampleIdx = big ? 4 : Math.floor(Math.random() * 3);
+    const sample = this.enemyKillBuffers[sampleIdx];
+    if (sample) {
+      try {
+        const src = this.ctx.createBufferSource();
+        src.buffer = sample;
+        src.playbackRate.value = big ? 0.85 : (0.95 + (Math.random() - 0.5) * 0.1);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(big ? 0.75 : 0.50, this.ctx.currentTime);
+        src.connect(gain);
+        gain.connect(this.ctx.destination);
+        src.start(0);
+      } catch {}
+    }
+
     const now = this.ctx.currentTime;
     const dur = big ? 0.48 : 0.26;
 
@@ -285,7 +314,6 @@ export class Sound {
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
-      // 80年代レトロノイズジェネレータ風（粗い量子化ビットクラッシュ調）
       const raw = Math.random() * 2 - 1;
       const stepped = Math.round(raw * 4) / 4;
       data[i] = stepped * Math.exp(-i / (bufferSize * (big ? 0.35 : 0.25)));
@@ -294,7 +322,6 @@ export class Sound {
     const noise = this.ctx.createBufferSource();
     noise.buffer = buffer;
 
-    // バンドパス＋ローパスでナムコ・ムーンクレスタ風の「バギュッ」という歯切れの良さを実現
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(big ? 900 : 1400, now);
@@ -311,16 +338,63 @@ export class Sound {
     noise.start(now);
   }
 
-  // ザコ敵撃破時の小気味良いポップ音（ギャラガ/ゼビウス風）
-  public playEnemyPop(): void {
+  // ★ ユーザー要望：ザコ敵撃破時の小気味良いポップ音（ユーザー提供のレトロアーケード撃破音5種）
+  // 敵のランクやサイズによって音色を自動選定し、ピッチも微妙に変調させて爽快感を最大化！
+  public playEnemyPop(rank?: string): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    let bufferIndex = 0;
+    if (rank === 'GREEN_DRONE' || rank === 'FOUR_FLY' || rank === 'MINI_EYE') {
+      bufferIndex = Math.random() < 0.5 ? 0 : 1;
+    } else if (rank === 'RED_GUARD' || rank === 'GRADIUS_FAN' || rank === 'FAST_FLYBY') {
+      bufferIndex = Math.random() < 0.5 ? 1 : 2;
+    } else if (rank === 'YELLOW_COMMANDER' || rank === 'STARFORCE_GARI' || rank === 'ATOMIC_PHANTOM' || rank === 'TOROID_SCOUT') {
+      bufferIndex = Math.random() < 0.5 ? 2 : 3;
+    } else if (rank === 'METEOR_ROCK' || rank === 'SPLITTING_EYE' || rank === 'BETA_PHANTOM' || rank === 'DART_MISSILE') {
+      bufferIndex = Math.random() < 0.5 ? 3 : 4;
+    } else {
+      bufferIndex = Math.floor(Math.random() * 5);
+    }
+
+    const buf = this.enemyKillBuffers[bufferIndex];
+    if (buf) {
+      try {
+        const src = this.ctx.createBufferSource();
+        src.buffer = buf;
+        // 微小なランダムピッチ変調で連続撃破の快感を演出
+        src.playbackRate.value = 0.96 + Math.random() * 0.10;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.60, this.ctx.currentTime);
+        src.connect(gain);
+        gain.connect(this.ctx.destination);
+        src.start(0);
+        return;
+      } catch {}
+    }
+
     this.playExplosion(false);
   }
 
-  // ★ ボス専用：轟音連続爆発サウンド！
+  // ★ ボス専用：轟音連続爆発サウンド！（ユーザー提供のヤラレ音群を多段炸裂）
   public playBossExplosion(): void {
     this.playExplosion(true);
-    [0.08, 0.18, 0.30, 0.44].forEach(delay => {
+    [0.08, 0.18, 0.30, 0.44].forEach((delay, i) => {
       window.setTimeout(() => {
+        const buf = this.enemyKillBuffers[i % 5];
+        if (buf && this.ctx && !this.isMuted) {
+          try {
+            const src = this.ctx.createBufferSource();
+            src.buffer = buf;
+            src.playbackRate.value = 0.8 + i * 0.08;
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0.7, this.ctx.currentTime);
+            src.connect(gain);
+            gain.connect(this.ctx.destination);
+            src.start(0);
+          } catch {}
+        }
         this.playExplosion(true);
       }, delay * 1000);
     });
@@ -350,33 +424,33 @@ export class Sound {
     osc.stop(now + 0.09);
   }
 
-  // ★ ユーザー要望：Arcade-Shooter01-2(Damage) 敵・ボスダメージに使う
-  // ボスダメージの重低音（布団を殴るようなボスボス音）を排除し、より高音で威力と硬質感のあるクリスプな金属・装甲ヒット音に調整
+  // ★ ユーザー要望：敵・ボスダメージ音
+  // ユーザー提供の硬質で気持ちいい撃破・ダメージ音バッファを活用！
   public playEnemyDamage(isBoss = false): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
 
-    if (this.damageBuffer) {
+    const buf = isBoss
+      ? (this.enemyKillBuffers[4] || this.damageBuffer)
+      : (this.enemyKillBuffers[1] || this.damageBuffer);
+
+    if (buf) {
       try {
         const src = this.ctx.createBufferSource();
-        src.buffer = this.damageBuffer;
-        // 布団のようなこもった低音化を撤廃し、高め（1.25〜1.35）の鋭いピッチで装甲被弾の衝撃を演出
-        src.playbackRate.value = isBoss ? (1.28 + Math.random() * 0.08) : (1.10 + Math.random() * 0.06);
+        src.buffer = buf;
+        src.playbackRate.value = isBoss ? (1.15 + (Math.random() - 0.5) * 0.1) : (1.05 + Math.random() * 0.08);
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(isBoss ? 0.85 : 0.65, this.ctx.currentTime);
+        gain.gain.setValueAtTime(isBoss ? 0.70 : 0.45, this.ctx.currentTime);
         src.connect(gain);
         gain.connect(this.ctx.destination);
         src.start(0);
 
         if (isBoss) {
-          // ボス時は高音の金属装甲スパーク（高周波パルス）を重ねて手応えと硬質感をプラス
           this.playBossMetallicClang();
         }
         return;
-      } catch {
-        // fallback
-      }
+      } catch {}
     }
     this.playHit();
   }
