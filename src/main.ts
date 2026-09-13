@@ -14,6 +14,17 @@ window.addEventListener('DOMContentLoaded', () => {
   const sound = new Sound();
   const game = new GameManager(sound);
 
+  // モバイル環境での Web Audio API 再生制限解除（初回タッチ・クリック時にオーディオコンテキストをアクティブ化）
+  const unlockAudio = () => {
+    sound.resumeAudio();
+    window.removeEventListener('touchstart', unlockAudio);
+    window.removeEventListener('pointerdown', unlockAudio);
+    window.removeEventListener('click', unlockAudio);
+  };
+  window.addEventListener('touchstart', unlockAudio, { passive: true });
+  window.addEventListener('pointerdown', unlockAudio, { passive: true });
+  window.addEventListener('click', unlockAudio, { passive: true });
+
   let lastTime = performance.now();
 
   function gameLoop(currentTime: number): void {

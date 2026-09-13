@@ -49,6 +49,10 @@ export class Sound {
     // 遅延デコード（ユーザー操作時に初期化）
   }
 
+  public resumeAudio(): void {
+    this.initContext();
+  }
+
   private initContext(): void {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;

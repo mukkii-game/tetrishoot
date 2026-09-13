@@ -29,6 +29,9 @@ export class Input {
   public hasMouseMoved = false;
 
   private canvas: HTMLCanvasElement;
+  private activeTouchId: number | null = null;
+  private lastTouchClientX = 0;
+  private lastTouchClientY = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -130,6 +133,8 @@ export class Input {
     });
 
     this.canvas.addEventListener('mousemove', (e) => {
+      if (this.activeTouchId !== null) return;
+
       const rect = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width / rect.width;
       const scaleY = this.canvas.height / rect.height;
@@ -152,6 +157,7 @@ export class Input {
     });
 
     window.addEventListener('mousedown', (e) => {
+      if (this.activeTouchId !== null) return;
       if (e.button === 0) {
         if (!this.isMouseDown) this.justMouseDown = true;
         this.isMouseDown = true;
@@ -160,6 +166,7 @@ export class Input {
     });
 
     window.addEventListener('mouseup', (e) => {
+      if (this.activeTouchId !== null) return;
       if (e.button === 0) {
         this.isMouseDown = false;
         this.shoot = false;
@@ -167,12 +174,89 @@ export class Input {
     });
 
     this.canvas.addEventListener('mouseleave', () => {
+      if (this.activeTouchId !== null) return;
       this.hasMouseMoved = false;
       this.mouseX = null;
       this.mouseY = null;
       this.mouseDeltaX = 0;
       this.mouseDeltaY = 0;
     });
+
+    // ==========================================
+    // スマートフォン向けタッチ操作（押し続けてドラッグで移動＆連射）
+    // ==========================================
+    window.addEventListener('touchstart', (e) => {
+      if (this.activeTouchId === null && e.changedTouches.length > 0) {
+        const touch = e.changedTouches[0];
+        this.activeTouchId = touch.identifier;
+        this.lastTouchClientX = touch.clientX;
+        this.lastTouchClientY = touch.clientY;
+
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+
+        this.mouseX = (touch.clientX - rect.left) * scaleX;
+        this.mouseY = (touch.clientY - rect.top) * scaleY;
+
+        if (!this.isMouseDown) this.justMouseDown = true;
+        this.isMouseDown = true;
+        if (!this.shoot) this.justShoot = true;
+        this.shoot = true;
+        this.hasMouseMoved = true;
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (this.activeTouchId === null) return;
+
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        if (touch.identifier === this.activeTouchId) {
+          e.preventDefault();
+
+          const rect = this.canvas.getBoundingClientRect();
+          const scaleX = this.canvas.width / rect.width;
+          const scaleY = this.canvas.height / rect.height;
+
+          const deltaClientX = touch.clientX - this.lastTouchClientX;
+          const deltaClientY = touch.clientY - this.lastTouchClientY;
+          this.lastTouchClientX = touch.clientX;
+          this.lastTouchClientY = touch.clientY;
+
+          this.mouseDeltaX += deltaClientX * scaleX;
+          this.mouseDeltaY += deltaClientY * scaleY;
+
+          this.mouseX = (touch.clientX - rect.left) * scaleX;
+          this.mouseY = (touch.clientY - rect.top) * scaleY;
+
+          this.hasMouseMoved = true;
+          this.isMouseDown = true;
+          this.shoot = true;
+          break;
+        }
+      }
+    }, { passive: false });
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (this.activeTouchId === null) return;
+
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        if (touch.identifier === this.activeTouchId) {
+          this.activeTouchId = null;
+          this.isMouseDown = false;
+          this.shoot = false;
+          this.mouseX = null;
+          this.mouseY = null;
+          this.hasMouseMoved = false;
+          break;
+        }
+      }
+    };
+
+    window.addEventListener('touchend', onTouchEnd, { passive: false });
+    window.addEventListener('touchcancel', onTouchEnd, { passive: false });
   }
 
   public clearTransientInputs(): void {

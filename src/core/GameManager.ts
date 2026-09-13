@@ -238,6 +238,17 @@ export class GameManager {
       this.sound.toggleMute();
     }
 
+    // 画面右上の MUTE / PAUSE ボタンのクリック・タップ判定
+    if (input.justMouseDown && input.mouseX !== null && input.mouseY !== null && input.mouseY >= 6 && input.mouseY <= 46) {
+      if (input.mouseX >= 436 && input.mouseX <= 478) {
+        this.sound.toggleMute();
+        input.clearTransientInputs();
+        return;
+      } else if (input.mouseX >= 482 && input.mouseX <= 526) {
+        input.justEscape = true;
+      }
+    }
+
     // ESCキーでポーズ画面へ移行 / ポーズ解除（★ ユーザー要望：ESCのときは音を消す！）
     if (input.justEscape) {
       if (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR') {
@@ -274,12 +285,19 @@ export class GameManager {
 
     switch (this.state) {
       case 'TITLE':
-        // 難易度切り替え（左右キー、または難易度表示エリアのクリック）
+        // 右上 MUTE ボタン
+        if (input.justMouseDown && input.mouseX !== null && input.mouseY !== null && input.mouseY >= 6 && input.mouseY <= 46 && input.mouseX >= 482 && input.mouseX <= 526) {
+          this.sound.toggleMute();
+          input.clearTransientInputs();
+          break;
+        }
+
+        // 難易度切り替え（左右キー、または難易度表示エリアのクリック・タップ）
         if (input.justLeft || input.justRight) {
           this.difficulty = this.difficulty === 'NORMAL' ? 'HARD' : 'NORMAL';
           this.sound.playHit();
         }
-        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 465 && input.mouseY <= 530) {
+        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 425 && input.mouseY <= 520) {
           if (input.mouseX !== null) {
             this.difficulty = input.mouseX < CANVAS_WIDTH / 2 ? 'NORMAL' : 'HARD';
           } else {
@@ -289,8 +307,8 @@ export class GameManager {
           break;
         }
 
-        // ゲーム開始（単発Space、Enter、またはゲーム開始エリアのクリック）
-        if (input.justShoot || input.justEnter || (input.justMouseDown && (input.mouseY === null || input.mouseY < 465 || input.mouseY > 530))) {
+        // ゲーム開始（単発Space、Enter、またはゲーム開始エリアのタップ）
+        if (input.justShoot || input.justEnter || (input.justMouseDown && (input.mouseY === null || input.mouseY < 425 || input.mouseY > 520))) {
           this.startNewGame();
         }
         break;
@@ -1921,6 +1939,38 @@ export class GameManager {
     ctx.fillText(`${this.highScore}`, CANVAS_WIDTH / 2, 28);
     ctx.shadowBlur = 0;
 
+    // ── 右上: モバイル・マウス向け MUTE & PAUSE ボタン ──
+    // MUTE (x: 440..476, y: 10..42)
+    ctx.fillStyle = 'rgba(20, 30, 48, 0.7)';
+    ctx.strokeStyle = '#304560';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(440, 10, 36, 32, 6);
+    else ctx.rect(440, 10, 36, 32);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '16px "Segoe UI Emoji", "Apple Color Emoji", monospace';
+    ctx.fillStyle = this.sound.isMuted ? '#ff4466' : '#00ffcc';
+    ctx.fillText(this.sound.isMuted ? '🔇' : '🔊', 458, 26);
+
+    // PAUSE (x: 486..522, y: 10..42)
+    ctx.fillStyle = 'rgba(20, 30, 48, 0.7)';
+    ctx.strokeStyle = '#304560';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(486, 10, 36, 32, 6);
+    else ctx.rect(486, 10, 36, 32);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 16px "Segoe UI Emoji", "Apple Color Emoji", monospace';
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillText('⏸', 504, 26);
+    ctx.textBaseline = 'top';
+
     // ── テトリスフェーズ中: ムーンクレスタ忠実再現 ──
     // 原作と同じく「レバーとボタンでドッキングせよ」＋タイマーを中央に控えめに表示
     if (this.phase === 'TETRIS' && this.state === 'PLAYING') {
@@ -1933,7 +1983,7 @@ export class GameManager {
         ctx.fillStyle = '#ffffff';
         ctx.shadowColor = '#ffffff';
         ctx.shadowBlur = 2;
-        ctx.fillText('レバーとボタンでドッキングせよ', CANVAS_WIDTH / 2, 130);
+        ctx.fillText('ドラッグ＆連射でドッキングせよ', CANVAS_WIDTH / 2, 130);
         ctx.shadowBlur = 0;
 
         // タイマー（原作通り「27: 0」形式、白文字・中央、ドッキングせよの直下）
@@ -1964,6 +2014,23 @@ export class GameManager {
       ctx.save();
       ctx.fillStyle = 'rgba(2, 4, 8, 0.92)';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      // 右上 MUTE ボタン
+      ctx.fillStyle = 'rgba(20, 30, 48, 0.7)';
+      ctx.strokeStyle = '#304560';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(486, 10, 36, 32, 6);
+      else ctx.rect(486, 10, 36, 32);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '16px "Segoe UI Emoji", "Apple Color Emoji", monospace';
+      ctx.fillStyle = this.sound.isMuted ? '#ff4466' : '#00ffcc';
+      ctx.fillText(this.sound.isMuted ? '🔇' : '🔊', 504, 26);
+      ctx.textBaseline = 'top';
 
       // 1. 凝ったメインロゴ（Galaxtris ＋ ギャラクトリス）
       this.drawCoolTitleLogo(ctx, CANVAS_WIDTH / 2, 210);
@@ -2018,7 +2085,7 @@ export class GameManager {
 
       ctx.font = '11px monospace';
       ctx.fillStyle = '#778899';
-      ctx.fillText('←/→キー または クリックで難易度切替', CANVAS_WIDTH / 2, 502);
+      ctx.fillText('←/→キー または タップで難易度切替', CANVAS_WIDTH / 2, 502);
 
       // 3. スタートプロンプト
       const blink = Math.sin(Date.now() / 250) > 0;
@@ -2027,7 +2094,7 @@ export class GameManager {
         ctx.fillStyle = '#ffea00';
         ctx.shadowColor = '#ffea00';
         ctx.shadowBlur = 10;
-        ctx.fillText('PRESS SPACE OR CLICK TO START', CANVAS_WIDTH / 2, 550);
+        ctx.fillText('TAP OR PRESS SPACE TO START', CANVAS_WIDTH / 2, 550);
       }
 
       // 4. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
@@ -2095,7 +2162,7 @@ export class GameManager {
       ctx.shadowBlur = 0;
       ctx.font = '13px monospace';
       ctx.fillStyle = '#8b949e';
-      ctx.fillText('UP/DOWN: SELECT   SPACE / ENTER / CLICK: DECIDE   ESC: RESUME', CANVAS_WIDTH / 2, 590);
+      ctx.fillText('SELECT & DECIDE: TAP / CLICK / ARROWS / SPACE', CANVAS_WIDTH / 2, 590);
       ctx.restore();
     } else if (this.state === 'GAMEOVER') {
       ctx.save();

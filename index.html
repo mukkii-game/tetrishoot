@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Galaxtris (ギャラクトリス)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,8 +13,13 @@
       margin: 0;
       padding: 0;
       user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
     }
-    body {
+    html, body {
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
       background: #06090e;
       color: #e6edf3;
       font-family: 'DotGothic16', 'Courier New', monospace;
@@ -22,20 +27,28 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
       overflow: hidden;
+      touch-action: none;
+      overscroll-behavior: none;
     }
     #game-container {
       position: relative;
       box-shadow: 0 0 40px rgba(0, 255, 180, 0.2), 0 0 80px rgba(255, 0, 100, 0.15);
-      border-radius: 16px;
+      border-radius: 14px;
       overflow: hidden;
-      border: 4px solid #202b38;
+      border: 3px solid #202b38;
       background: #020408;
+      width: min(540px, calc(100vw - 12px), calc((100dvh - 44px) * 540 / 720));
+      aspect-ratio: 540 / 720;
+      touch-action: none;
+      overscroll-behavior: none;
     }
     canvas {
       display: block;
+      width: 100%;
+      height: 100%;
       image-rendering: pixelated;
+      touch-action: none;
     }
     /* ブラウン管 (CRT) エフェクトレイヤー */
     .crt-overlay {
@@ -67,19 +80,27 @@
     }
 
     #instructions {
-      margin-top: 10px;
-      font-size: 12px;
+      margin-top: 6px;
+      font-size: 11px;
       color: #8b949e;
       text-align: center;
-      line-height: 1.6;
+      line-height: 1.4;
+      padding: 0 8px;
+      pointer-events: none;
+    }
+    @media (max-height: 700px) {
+      #instructions {
+        font-size: 10px;
+        margin-top: 3px;
+      }
     }
     kbd {
       background: #161b22;
       border: 1px solid #30363d;
-      padding: 2px 6px;
+      padding: 1px 5px;
       border-radius: 4px;
       color: #00ffcc;
-      font-size: 11px;
+      font-size: 10px;
     }
   </style>
 </head>
@@ -90,8 +111,8 @@
     <div class="crt-vignette"></div>
   </div>
   <div id="instructions">
-    Galaxtris (ギャラクトリス) ｜ ブロックを合体して全方位エイリアンを撃破せよ！<br/>
-    操作: <kbd>WASD</kbd> / <kbd>↑↓←→</kbd> / マウス: エクセリオン風慣性移動 ｜ <kbd>Space</kbd> / クリック: 連射ショット（ドッキング時はミノを撃って回転！） ｜ <kbd>Esc</kbd>: タイトルに戻る ｜ <kbd>M</kbd>: 音声切替
+    Galaxtris ｜ <span style="color:#00ffcc">スマホ: 押し続け＋ドラッグで移動＆連射</span><br/>
+    PC: <kbd>WASD</kbd>/マウス移動 ｜ <kbd>Space</kbd>/クリック連射 ｜ <kbd>Esc</kbd>: ポーズ ｜ <kbd>M</kbd>: 音声
   </div>
 
   <script type="module" src="/src/main.ts"></script>
