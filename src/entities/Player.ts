@@ -292,8 +292,6 @@ export class Player {
     }
   ): void {
     const bounds = this.getBoundingBox();
-    const width = bounds.maxX - bounds.minX;
-    const height = bounds.maxY - bounds.minY;
 
     // 画面全体が移動可能エリア
     const minScreenX = 0;
@@ -316,21 +314,7 @@ export class Player {
       this.vy *= 0.7071;
     }
 
-    // マウス操作時はマウス位置へ直接追従
-    if (inputs.hasMouseMoved && inputs.mouseX !== null && inputs.mouseY !== null) {
-      const targetAnchorX = inputs.mouseX - width / 2;
-      const targetAnchorY = inputs.mouseY - height / 2;
-      const diffX = targetAnchorX - this.anchorX;
-      const diffY = targetAnchorY - this.anchorY;
-      const dist = Math.hypot(diffX, diffY);
-
-      if (dist > 3) {
-        const mouseSpeed = Math.min(dist / dt, PLAYER_SPEED);
-        this.vx = (diffX / dist) * mouseSpeed;
-        this.vy = (diffY / dist) * mouseSpeed;
-      }
-    }
-
+    // ユーザー要望：マウス移動による自機操作はカット（キーボード操作に専念、マウスの意図しない介入を防止）
     // 位置更新（即時停止・ブレなし）
     this.anchorX += this.vx * dt;
     this.anchorY += this.vy * dt;
