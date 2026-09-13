@@ -167,7 +167,8 @@ export class GameManager {
     this.fallingPieces = [];
     this.shootingTimeLimit = 65; // バトル時間をさらに延長（ザコ2倍＋高耐久ボス戦に充分な時間）
     this.formationOffsetAngle = 0;
-    this.battlePiece = null; // 要望⑤：シューティング時のミノ落下は一旦休止
+    this.battlePiece = null;
+    this.rescueSpawnCooldown = 10.0;
     this.bossSpawned = false;
     this.bossWarningActive = false;
     this.bossWarningTimer = 0;
@@ -930,20 +931,22 @@ export class GameManager {
       }
     }
 
-    // ★ ユーザー要望：0ミノしかなくなった時は、救済でテトリミノを落としてくるけど、もし0ミノの他にもう1ミノしかついてないままのときは、10秒くらいの間を空けてもう一つテトリミノを落とす
-    // つまり、粘っていればどのステージでもテトリミノ３つ（0ミノ含む）までには復活できるってわけ
+    // ★ ユーザー要望：
+    // ・Oミノだけになってから10秒後にテトリミノが落ちてくる
+    // ・2つのテトリミノ（Oミノ＋1つ）になってから10秒たったらまたテトリミノが落ちてくる
+    // ・もし3つ以上のテトリミノの時は特に追加で出さない
     const pieceCount = this.player.pieces.length;
     if (pieceCount < 3) {
       if (!this.battlePiece || this.battlePiece.settled) {
         this.rescueSpawnCooldown -= dt;
         if (this.rescueSpawnCooldown <= 0) {
           this.spawnRescuePiece();
-          // 0ミノのみなら速やかに再救済、1ミノ付いているなら10秒間隔で投下
-          this.rescueSpawnCooldown = this.player.isOnlyOMino() ? 2.0 : 10.0;
+          // 次の投下判定までもきっちり10秒
+          this.rescueSpawnCooldown = 10.0;
         }
       }
     } else {
-      // 3パーツ以上揃っているときは救済タイマーをリセット（10秒待機状態）
+      // 3つ以上のテトリミノがある時は追加で出さない（タイマーは10秒待機でリセット）
       this.rescueSpawnCooldown = 10.0;
     }
 
