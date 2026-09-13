@@ -1977,20 +1977,21 @@ export class GameManager {
       const hasFallingPiece = this.fallingPieces.some(p => !p.settled);
 
       if (hasFallingPiece) {
-        // 「レバーとボタンでドッキングせよ」— ムーンクレスタ原作通り白文字・中央
+        // 「レバーとボタンでドッキングせよ」— ムーンクレスタ原作通り水色・太字・大きめサイズ・中央
         ctx.textAlign = 'center';
-        ctx.font = '900 16px "DotGothic16", "Courier New", monospace';
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = '#ffffff';
-        ctx.shadowBlur = 2;
-        ctx.fillText('ドラッグ＆連射でドッキングせよ', CANVAS_WIDTH / 2, 130);
+        ctx.textBaseline = 'top';
+        ctx.font = '900 24px "DotGothic16", "Courier New", monospace';
+        ctx.fillStyle = '#00f0ff';
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 10;
+        ctx.fillText('レバーとボタンでドッキングせよ', CANVAS_WIDTH / 2, 126);
         ctx.shadowBlur = 0;
 
         // タイマー（原作通り「27: 0」形式、白文字・中央、ドッキングせよの直下）
         const sec = Math.floor(this.dockingTimer);
         const dec = Math.floor((this.dockingTimer - sec) * 10);
         const timerStr = `${sec}: ${dec}`;
-        ctx.font = '900 20px "DotGothic16", "Courier New", monospace';
+        ctx.font = '900 22px "DotGothic16", "Courier New", monospace';
         // 残り10秒以下で赤く警告（原作リスペクトの緊張感）
         if (this.dockingTimer <= 10) {
           ctx.fillStyle = '#ff2244';
@@ -2001,7 +2002,7 @@ export class GameManager {
           ctx.shadowColor = '#ffffff';
           ctx.shadowBlur = 2;
         }
-        ctx.fillText(timerStr, CANVAS_WIDTH / 2, 155);
+        ctx.fillText(timerStr, CANVAS_WIDTH / 2, 158);
         ctx.shadowBlur = 0;
       }
     }
@@ -2098,7 +2099,7 @@ export class GameManager {
       }
 
       // 4. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
-      this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 642);
+      this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 608);
 
       ctx.restore();
     } else if (this.state === 'PAUSED') {
@@ -2375,10 +2376,11 @@ export class GameManager {
     ctx.restore();
   }
 
-  // 画面下に往年のNAMCO風「MUKKII」作者ロゴを描画（細くクッキリ読みやすく！）
+  // 画面下に往年のNAMCO風「MUKKII」作者ロゴを描画（細くクッキリ読みやすく、権利表記との重なりを完全解消）
   private drawNamcoStyleMukkiiLogo(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
     ctx.save();
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
 
     const namcoRed = '#e60012';
     const logoText = 'mukkii';
@@ -2398,18 +2400,20 @@ export class GameManager {
     ctx.shadowBlur = 6;
     ctx.fillText(logoText, cx, cy);
 
+    // 権利表記・クレジット（mukkiiロゴの下端から充分な余白をとって整列）
+    ctx.textBaseline = 'top';
     ctx.font = 'bold 11px "Courier New", monospace';
     ctx.fillStyle = '#8b949e';
     ctx.shadowBlur = 0;
-    ctx.fillText('© 2026 MUKKII ALL RIGHTS RESERVED', cx, cy + 24);
+    ctx.fillText('© 2026 MUKKII ALL RIGHTS RESERVED', cx, cy + 12);
 
     ctx.font = '9px monospace';
     ctx.fillStyle = '#6e7681';
-    ctx.fillText('SOUND: OtoLogic / 効果音ラボ', cx, cy + 37);
+    ctx.fillText('SOUND: OtoLogic / 効果音ラボ', cx, cy + 27);
 
     ctx.font = '8px monospace';
     ctx.fillStyle = '#484f58';
-    ctx.fillText('VER 3.0 (TERRAIN & RETRO SHOOTER MECHANICS)', cx, cy + 49);
+    ctx.fillText('VER 3.0 (TERRAIN & RETRO SHOOTER MECHANICS)', cx, cy + 40);
 
     ctx.restore();
   }

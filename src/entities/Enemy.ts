@@ -101,9 +101,10 @@ export class Enemy {
   public trail: { x: number; y: number }[] = [];
   public leader?: Enemy;
   public segmentIndex = 0;
-  // ボス専用3態ダイナミックAIパラメータ（左右大旋回・前進急停止後退・ホバリング）
-  public bossPhase: 'HOVER_BARRAGE' | 'WIDE_SWEEP' | 'DIVE_FORWARD_RETREAT' = 'HOVER_BARRAGE';
+  // ボス専用ダイナミックAIパラメータ（左右大旋回・深部急降下後退・画面突き抜けループ・ホバリング）
+  public bossPhase: 'HOVER_BARRAGE' | 'WIDE_SWEEP' | 'DEEP_DIVE_RETREAT' | 'DIVE_THROUGH' = 'HOVER_BARRAGE';
   public bossPhaseTimer = 0;
+  public bossDiveVariant = 0;
 
   private animFrame = 0;
   private animTimer = 0;
@@ -647,34 +648,72 @@ export class Enemy {
               this.y = this.formationY + Math.sin(angle * 2) * 35;
 
               if (this.bossPhaseTimer >= 4.8) {
-                this.bossPhase = 'DIVE_FORWARD_RETREAT';
+                // ★ ユーザー要望：ボス、時々10秒に一回くらいでいいので画面中央下の方まで来て戻る、あるいは画面下にまっすぐ降りてそのまま下に消えて上から戻る
+                // 周期（2.6s + 4.8s + 3.4s ≒ 10.8秒）で、画面中央下部への急降下突進と、画面下突き抜けループを交互に発動！
+                this.bossPhase = (this.bossDiveVariant % 2 === 0) ? 'DEEP_DIVE_RETREAT' : 'DIVE_THROUGH';
+                this.bossDiveVariant++;
                 this.bossPhaseTimer = 0;
               }
               break;
             }
 
-            case 'DIVE_FORWARD_RETREAT': {
-              // 3. 前後に動くダイブ＆後退（3.6秒間：自機へ向けてぐっと前進接近し、急停止して後退！）
-              // 0.0〜1.3s: 前進急接近（y: formationY -> 280）
-              // 1.3〜2.1s: 自機の目の前で急ブレーキ静止＆拡散射撃
-              // 2.1〜3.4s: 逆噴射で急後退（y: 280 -> formationY）
+            case 'DEEP_DIVE_RETREAT': {
+              // ★ 突進パターン1：画面中央下部（自機目前 y=560）まで猛突進して威嚇後、上空へ急上昇して戻る！
               const t = this.bossPhaseTimer;
-              const forwardY = 270;
-              if (t < 1.3) {
-                const ratio = t / 1.3;
+              const forwardY = 560; // 画面中央下部、下で待機する自機（y=600〜650）の目前まで迫る！
+              const targetX = CANVAS_WIDTH / 2 - this.width / 2;
+
+              if (t < 1.4) {
+                // 0.0〜1.4s: 画面中央下部へ急加速で猛突進！
+                const ratio = t / 1.4;
                 const ease = Math.sin((ratio * Math.PI) / 2);
                 this.y = this.formationY + (forwardY - this.formationY) * ease;
-                this.x = this.formationX + (playerX - this.formationX) * 0.4 * ease;
-              } else if (t < 2.1) {
-                // 自機の目の前で急停止！
-                this.y = forwardY + Math.sin((t - 1.3) * 8) * 8;
+                this.x = this.formationX + (targetX - this.formationX) * ease;
+              } else if (t < 2.0) {
+                // 1.4〜2.0s: 画面中央下部で威嚇ホバリング（激しく震動しながら滞空し、居座りを強制排除！）
+                this.y = forwardY + Math.sin((t - 1.4) * 16) * 10;
+                this.x = targetX + Math.sin((t - 1.4) * 14) * 25;
               } else if (t < 3.4) {
-                const ratio = (t - 2.1) / 1.3;
+                // 2.0〜3.4s: 上空の定位置（formationY）へ急上昇して帰還！
+                const ratio = (t - 2.0) / 1.4;
                 const ease = Math.sin((ratio * Math.PI) / 2);
                 this.y = forwardY - (forwardY - this.formationY) * ease;
-                this.x = this.formationX + Math.sin(t * 3) * 20;
+                this.x = targetX + Math.sin(t * 4) * 30 * (1 - ratio);
               } else {
                 this.y = this.formationY;
+                this.x = this.formationX;
+                this.bossPhase = 'HOVER_BARRAGE';
+                this.bossPhaseTimer = 0;
+              }
+              break;
+            }
+
+            case 'DIVE_THROUGH': {
+              // ★ 突進パターン2：画面下にまっすぐ降りてそのまま下に消えて上から戻る！
+              const t = this.bossPhaseTimer;
+              const targetX = CANVAS_WIDTH / 2 - this.width / 2;
+
+              if (t < 1.6) {
+                // 0.0〜1.6s: 画面中央下へ一直線に高速急降下し、画面外下端まで突き抜ける！
+                const diveSpeed = 520;
+                this.y += diveSpeed * dt;
+                this.x += (targetX - this.x) * 4.0 * dt;
+
+                // 画面最下部を完全に突き抜けて消えたら、画面最上部（y = -this.height - 40）へワープ！
+                if (this.y > CANVAS_HEIGHT + this.height + 20) {
+                  this.y = -this.height - 40;
+                  this.x = targetX;
+                }
+              } else if (t < 3.0) {
+                // 1.6〜3.0s: 画面上から定位置（formationY）へとスムーズに着陸降下！
+                const returnRatio = Math.min(1, (t - 1.6) / 1.4);
+                const ease = Math.sin((returnRatio * Math.PI) / 2);
+                const startTopY = -this.height - 40;
+                this.y = startTopY + (this.formationY - startTopY) * ease;
+                this.x = targetX + Math.sin(t * 3) * 15 * (1 - returnRatio);
+              } else {
+                this.y = this.formationY;
+                this.x = this.formationX;
                 this.bossPhase = 'HOVER_BARRAGE';
                 this.bossPhaseTimer = 0;
               }
