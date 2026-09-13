@@ -218,6 +218,7 @@ export class GameManager {
     if (input.justEscape) {
       if (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR') {
         this.state = 'PAUSED';
+        this.screenShake = 0;
         this.pauseMenuSelection = 'RESUME';
         this.sound.pauseBGM();
         input.clearTransientInputs();
@@ -381,7 +382,9 @@ export class GameManager {
   // パズルフェーズ（1個降下：集中してドッキング！）
   // ==========================================
   private spawnTetrominoes(): void {
-    const types: TetrominoType[] = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
+    // ★ ユーザー要望：「oミノは、決して落ちてこない、でいいよ。つかえないから。最初のだけoミノってことで。」
+    // 降下テトリミノからOミノを完全に排除し、砲門・翼・拡張パーツとして機能する6種（I, J, L, S, T, Z）のみを投下
+    const types: TetrominoType[] = ['I', 'J', 'L', 'S', 'T', 'Z'];
     this.fallingPieces = [];
 
     // 画面上部から緩やかに斜めドリフト降下
@@ -558,72 +561,77 @@ export class GameManager {
   private spawnAlienFleet(): void {
     this.enemies = [];
 
+    // ★ ユーザー要望：ドッキングして即死ぬ時がある。ムーンクレスタのようにstage1とか出したあと、ちょっとして敵を出す
+    // ドッキング直後に敵が自機に体当たりして即死するのを防ぐため、開幕に1.5秒のセーフティディレイを設ける
+    const START_DELAY = 1.5;
+
     switch (this.stage) {
       case 1:
         // 【WAVE 1：ムーンクレスタ Stage 1&2・コールドアイ＆スーパーアイ（純粋なムーンクレスタ面）】
         // ユーザー要望：基本は一種類の敵を出す。順番に別の種類の敵が出る
-        // フェーズ1（t=0〜）：コールドアイ4機（上部スイングから階段状ダイブ、撃破で2つに分裂）
+        // フェーズ1（t=1.5〜）：コールドアイ4機（上部スイングから階段状ダイブ、撃破で2つに分裂）
+        // 点が生まれて拡大するムーンクレスタ1面風の演出で実体化！
         for (let i = 0; i < 4; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, 0));
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, START_DELAY));
         }
-        // フェーズ2（t=9.0〜）：増援コールドアイ4機（上空から滑空して編隊形成）
+        // フェーズ2（t=10.5〜）：増援コールドアイ4機（上空から滑空して編隊形成）
         for (let i = 0; i < 4; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, 9.0));
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, START_DELAY + 9.0));
         }
-        // フェーズ3（t=17.0〜）：スーパーアイ8機（左右壁面バウンドの電光石火ダイブ）
+        // フェーズ3（t=18.5〜）：スーパーアイ8機（左右壁面バウンドの電光石火ダイブ）
         for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('MINI_EYE', 'MOON_SUPER_EYE', i, 0, 17.0 + i * 0.4));
+          this.enemies.push(new Enemy('MINI_EYE', 'MOON_SUPER_EYE', i, 0, START_DELAY + 17.0 + i * 0.4));
         }
         break;
 
       case 2:
         // 【WAVE 2：グラディウス開幕突進編隊 ＆ ギャラガ流星編隊】
         // ユーザー要望：敵を混ぜずに順番に出す。ギャラガ風味の体当たり急降下！
-        // フェーズ1（t=0〜）：グラディウス開幕突進編隊（まっすぐ突撃→反転離脱）
+        // フェーズ1（t=1.5〜）：グラディウス開幕突進編隊（まっすぐ突撃→反転離脱）
         for (let k = 0; k < (this.difficulty === 'HARD' ? 14 : 10); k++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, k * 0.3));
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, START_DELAY + k * 0.3));
         }
-        // フェーズ2（t=6.5〜）：第二波グラディウス突進編隊
+        // フェーズ2（t=8.0〜）：第二波グラディウス突進編隊
         for (let k = 0; k < (this.difficulty === 'HARD' ? 12 : 8); k++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, 6.5 + k * 0.3));
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, START_DELAY + 6.5 + k * 0.3));
         }
-        // フェーズ3（t=13.0〜）：ギャラガS字流星編隊（編隊着任後、果敢に自機へ体当たり急降下ダイブ！）
+        // フェーズ3（t=14.5〜）：ギャラガS字流星編隊（編隊着任後、果敢に自機へ体当たり急降下ダイブ！）
         for (let k = 0; k < (this.difficulty === 'HARD' ? 18 : 12); k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, 0.4, 'S_CURVE_LEFT_TO_RIGHT', k));
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, START_DELAY + 0.4, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
         break;
 
       case 3:
         // 【WAVE 3：スターフォース名物「ガリ」＆ 90度直角旋回機 ＆ 左右ワープランナー】
         // ユーザー要望：敵を混ぜずに順番に出す
-        // フェーズ1（t=0〜）：スターフォース「ガリ」第一波（深く急降下→急停止スウィング→超高速ダッシュ）
+        // フェーズ1（t=1.5〜）：スターフォース「ガリ」第一波（深く急降下→急停止スウィング→超高速ダッシュ）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, i * 0.4));
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, START_DELAY + i * 0.4));
         }
-        // フェーズ2（t=7.5〜）：左右ループ走査機（画面端から反対端へループワープする巡航機）
+        // フェーズ2（t=9.0〜）：左右ループ走査機（画面端から反対端へループワープする巡航機）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, 7.5 + i * 0.35));
+          this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, START_DELAY + 7.5 + i * 0.35));
         }
-        // フェーズ3（t=14.0〜）：スターフォース名物 左右端落下→自機Yで90度直角旋回突進！
+        // フェーズ3（t=15.5〜）：スターフォース名物 左右端落下→自機Yで90度直角旋回突進！
         for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, 14.0 + i * 0.38));
+          this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, START_DELAY + 14.0 + i * 0.38));
         }
         break;
 
       case 4:
         // 【WAVE 4：索敵急加速ミサイル ＆ フォー・フライ】
         // ユーザー要望：敵を混ぜずに順番に出す。ザコは基本一撃死！
-        // フェーズ1（t=0〜）：索敵急加速ミサイル（フワリと横移動後、突如バーニア点火で急加速）
+        // フェーズ1（t=1.5〜）：索敵急加速ミサイル（フワリと横移動後、突如バーニア点火で急加速）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 18 : 12); i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, i * 0.32));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, START_DELAY + i * 0.32));
         }
-        // フェーズ2（t=7.0〜）：ムーンクレスタ名物「フォー・フライ」（カミソリ急降下ジグザグ）
+        // フェーズ2（t=8.5〜）：ムーンクレスタ名物「フォー・フライ」（カミソリ急降下ジグザグ）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, 7.0 + i * 0.3));
+          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, START_DELAY + 7.0 + i * 0.3));
         }
-        // フェーズ3（t=14.0〜）：索敵急加速ミサイル 第二波
+        // フェーズ3（t=15.5〜）：索敵急加速ミサイル 第二波
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 14.0 + i * 0.3));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, START_DELAY + 14.0 + i * 0.3));
         }
         break;
 
@@ -1400,6 +1408,7 @@ export class GameManager {
     this.sound.playGameOver(); // ムーンクレスタ風 哀愁下降アルペジオ！
     this.state = 'GAMEOVER';
     this.stateTimer = 1.0;
+    this.screenShake = 0; // ユーザー要望：死んだあとセレクト画面やタイトル画面が揺れるのを確実に止める
     this.gameOverSelection = 'CONTINUE';
     this.showTransitionText('GAME OVER');
   }
@@ -1426,6 +1435,7 @@ export class GameManager {
       this.state = 'TITLE';
       this.stage = 1;
       this.score = 0;
+      this.screenShake = 0;
       this.fallingPieces = [];
       this.battlePiece = null;
       this.detachedPieces = [];
@@ -1451,6 +1461,7 @@ export class GameManager {
     } else if (this.pauseMenuSelection === 'RESTART_WAVE') {
       this.sound.stopBossLfo();
       this.state = 'PLAYING';
+      this.screenShake = 0;
       this.fallingPieces = [];
       this.battlePiece = null;
       this.detachedPieces = [];
@@ -1468,6 +1479,7 @@ export class GameManager {
       this.state = 'TITLE';
       this.stage = 1;
       this.score = 0;
+      this.screenShake = 0;
       this.fallingPieces = [];
       this.battlePiece = null;
       this.detachedPieces = [];
@@ -1714,7 +1726,10 @@ export class GameManager {
       ctx.restore();
     }
 
-    // 8. タイトル・ゲームオーバーオーバーレイ
+    // ゲーム内描画の終了：screenShakeの揺れをここで解除（メニューやHUD、オーバーレイに揺れを絶対に波及させない）
+    ctx.restore();
+
+    // 8. タイトル・ゲームオーバーオーバーレイ（画面揺れの影響を一切受けない）
     this.drawOverlays(ctx);
   }
 
@@ -1933,8 +1948,6 @@ export class GameManager {
       }
       ctx.restore();
     }
-
-    ctx.restore(); // screenShakeのctx.save()に対応
   }
 
   // かっこいいタイトルロゴ描画（超大型 Galaxtris ＋ 差をつけたリズミカルなカタカナ：ギャラクトリス）

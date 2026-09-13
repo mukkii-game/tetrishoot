@@ -286,9 +286,11 @@ export class Player {
       right: boolean;
       up: boolean;
       down: boolean;
-      mouseX: number | null;
-      mouseY: number | null;
-      hasMouseMoved: boolean;
+      mouseX?: number | null;
+      mouseY?: number | null;
+      mouseDeltaX?: number;
+      mouseDeltaY?: number;
+      hasMouseMoved?: boolean;
     }
   ): void {
     const bounds = this.getBoundingBox();
@@ -314,10 +316,19 @@ export class Player {
       this.vy *= 0.7071;
     }
 
-    // ユーザー要望：マウス移動による自機操作はカット（キーボード操作に専念、マウスの意図しない介入を防止）
-    // 位置更新（即時停止・ブレなし）
+    // キーボード入力による移動
     this.anchorX += this.vx * dt;
     this.anchorY += this.vy * dt;
+
+    // ★ ユーザー要望：マウスでも動かせるようにする。
+    // 「ただし、カーソルに合うのではなく、そのベクトルにうごくだけ」
+    // カーソル位置へワープ・スナップするのではなく、マウスを振った量・方向（相対移動ベクトル）をそのまま自機に加算！
+    if (inputs.mouseDeltaX !== undefined && inputs.mouseDeltaX !== 0) {
+      this.anchorX += inputs.mouseDeltaX;
+    }
+    if (inputs.mouseDeltaY !== undefined && inputs.mouseDeltaY !== 0) {
+      this.anchorY += inputs.mouseDeltaY;
+    }
 
     // 画面外境界クランプ（滑らかな当たり）
     const minAnchorX = minScreenX - (bounds.minX - this.anchorX);

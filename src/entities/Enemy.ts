@@ -110,6 +110,7 @@ export class Enemy {
   private timeAlive = 0;
   private patternTimer = 0;
   private flashTime = 0;
+  public spawnAnimationTimer = 0; // 点から拡大して出現するアニメーションタイマー
 
   private circleCenterX = CANVAS_WIDTH / 2;
   private circleCenterY = CANVAS_HEIGHT * 0.38;
@@ -461,6 +462,13 @@ export class Enemy {
     this.timeAlive += dt;
     this.patternTimer += dt;
     if (this.flashTime > 0) this.flashTime -= dt;
+
+    // ★ ユーザー要望：ムーンクレスタ1面風の登場演出
+    // 「何もないところから点が生まれてそれが拡大して敵になるようなムーンクレスタ一面のような登場」
+    // patternTimerが0以上になった最初の0.6秒間で点が拡大して実体化する
+    if (this.patternTimer >= 0 && this.spawnAnimationTimer < 0.6) {
+      this.spawnAnimationTimer += dt;
+    }
 
     if (this.patternTimer < 0) {
       // 出現待機中は初期画面外位置に留める
@@ -1267,6 +1275,20 @@ export class Enemy {
     let s = isGiant ? 2.8 : 1.4;
     if (this.isBoss) {
       s *= 2.0; // ボスの表示サイズを2倍に！
+    }
+
+    // ★ ユーザー要望：ムーンクレスタ1面風の登場演出
+    // 「何もないところから点が生まれてそれが拡大して敵になるようなムーンクレスタ一面のような登場」
+    if ((this.pattern === 'MOON_COLD_EYE' || this.pattern === 'MOON_SUPER_EYE') && this.spawnAnimationTimer < 0.6) {
+      const p = Math.min(1.0, this.spawnAnimationTimer / 0.6);
+      // 0.0〜0.6秒にかけて小さな点（0.08）から徐々に拡大（1.0）
+      const spawnScale = 0.08 + 0.92 * (p * p);
+      s *= spawnScale;
+      // 生まれる瞬間のピクセル閃光
+      if (p < 0.7 && Math.floor(this.timeAlive * 30) % 2 === 0) {
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 16;
+      }
     }
 
     ctx.translate(cx, cy);

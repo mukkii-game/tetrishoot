@@ -22,6 +22,8 @@ export class Input {
 
   public mouseX: number | null = null;
   public mouseY: number | null = null;
+  public mouseDeltaX = 0;
+  public mouseDeltaY = 0;
   public isMouseDown = false;
   public justMouseDown = false;
   public hasMouseMoved = false;
@@ -132,8 +134,20 @@ export class Input {
       const scaleX = this.canvas.width / rect.width;
       const scaleY = this.canvas.height / rect.height;
 
-      this.mouseX = (e.clientX - rect.left) * scaleX;
-      this.mouseY = (e.clientY - rect.top) * scaleY;
+      const newMouseX = (e.clientX - rect.left) * scaleX;
+      const newMouseY = (e.clientY - rect.top) * scaleY;
+
+      // 前回の位置との差分ベクトルを累積（カーソルワープではなく、動かした方向・移動量だけ自機を動かす）
+      if (this.mouseX !== null && this.mouseY !== null) {
+        this.mouseDeltaX += newMouseX - this.mouseX;
+        this.mouseDeltaY += newMouseY - this.mouseY;
+      } else if (e.movementX !== undefined && e.movementY !== undefined) {
+        this.mouseDeltaX += e.movementX * scaleX;
+        this.mouseDeltaY += e.movementY * scaleY;
+      }
+
+      this.mouseX = newMouseX;
+      this.mouseY = newMouseY;
       this.hasMouseMoved = true;
     });
 
@@ -156,6 +170,8 @@ export class Input {
       this.hasMouseMoved = false;
       this.mouseX = null;
       this.mouseY = null;
+      this.mouseDeltaX = 0;
+      this.mouseDeltaY = 0;
     });
   }
 
@@ -170,6 +186,8 @@ export class Input {
     this.justLeft = false;
     this.justRight = false;
     this.justEscape = false;
+    this.mouseDeltaX = 0;
+    this.mouseDeltaY = 0;
   }
 
   public resetPerFrame(): void {
@@ -184,5 +202,7 @@ export class Input {
     this.justTab = false;
     this.justEnter = false;
     this.selectedPieceIndex = null;
+    this.mouseDeltaX = 0;
+    this.mouseDeltaY = 0;
   }
 }
