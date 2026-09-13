@@ -287,8 +287,8 @@ export class Enemy {
     } else if (pattern === 'MOON_SPLIT_FLOAT') {
       this.x = this.formationX;
       this.y = -40;
-      this.vx = (Math.random() > 0.5 ? 1 : -1) * 80;
-      this.vy = 45; // ゆっくりカクカク不規則降下
+      this.vx = (Math.random() > 0.5 ? 1 : -1) * 150;
+      this.vy = 110; // スピーディなカクカク不規則降下
     } else if (pattern === 'MOON_COLD_EYE') {
       // ★ ムーンクレスタ完全再現：コールドアイ
       // 4機が初期フレームから上部に並んで配置（spawnDelay=0 なら即座に画面内 y=90 に出現）
@@ -328,6 +328,29 @@ export class Enemy {
       this.y = -40;
       this.vx = formationCol < 4 ? 140 : -140;
       this.vy = 130;
+    } else if (pattern === 'METEOR_STRAIGHT') {
+      this.x = 40 + Math.random() * (CANVAS_WIDTH - 80);
+      this.y = -50;
+      this.vx = (Math.random() - 0.5) * 120;
+      this.vy = 260 + Math.random() * 80; // 高速直線落下
+    } else if (pattern === 'FLYBY_CROSS') {
+      const fromLeft = formationCol % 2 === 0;
+      this.x = fromLeft ? -50 : CANVAS_WIDTH + 50;
+      this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.45);
+      this.vx = fromLeft ? 380 : -380;
+      this.vy = (Math.random() - 0.5) * 60;
+    } else if (pattern === 'VANGUARD_CRUISE') {
+      this.x = Math.random() * (CANVAS_WIDTH - this.width);
+      this.y = 70 + (formationRow % 3) * 40;
+      this.moonState = 'HOVER';
+      this.movingRight = Math.random() > 0.5;
+      this.vx = (this.movingRight ? 1 : -1) * 160;
+      this.vy = 0;
+    } else if (pattern === 'TERRAIN_LAUNCH') {
+      this.x = Math.random() > 0.5 ? -40 : CANVAS_WIDTH + 40;
+      this.y = 100 + Math.random() * (CANVAS_HEIGHT * 0.5);
+      this.vx = this.x < 0 ? 200 : -200;
+      this.vy = (Math.random() - 0.5) * 80;
     } else {
       this.x = -100;
       this.y = -100;
@@ -360,6 +383,12 @@ export class Enemy {
       } else if (this.pattern === 'METEOR_FALL') {
         this.x = this.formationX;
         this.y = -60;
+      } else if (this.pattern === 'METEOR_STRAIGHT') {
+        this.x = this.formationX;
+        this.y = -60;
+      } else if (this.pattern === 'FLYBY_CROSS') {
+        this.x = this.vx > 0 ? -60 : CANVAS_WIDTH + 60;
+        this.y = this.formationY;
       } else if (this.pattern === 'ZIGZAG_DIVE') {
         this.x = this.formationX;
         this.y = -50;
@@ -372,6 +401,12 @@ export class Enemy {
       } else if (this.pattern === 'MOON_SUPER_EYE') {
         this.x = this.formationX;
         this.y = -40;
+      } else if (this.pattern === 'VANGUARD_CRUISE') {
+        this.x = this.formationX;
+        this.y = -50;
+      } else if (this.pattern === 'TERRAIN_LAUNCH') {
+        this.x = this.vx > 0 ? -50 : CANVAS_WIDTH + 50;
+        this.y = this.formationY;
       } else {
         this.x = -100;
         this.y = -100;
@@ -555,16 +590,23 @@ export class Enemy {
         break;
       }
 
-      // ★ ムーンクレスタ風：カクカク不規則移動で左右に揺れながら降下
+      // ★ ムーンクレスタ風：フォー・フライ等のカクカク不規則移動＆積極的急降下スウィング！
       case 'MOON_SPLIT_FLOAT': {
         this.y += this.vy * dt;
-        // 不規則なカクカクステップ移動
-        const stepPeriod = Math.floor(this.timeAlive * 3.5);
+        // 鋭くリズミカルなステップ移動（スピードを160px/sにアップ）
+        const stepPeriod = Math.floor(this.timeAlive * 4.5);
         const dir = (stepPeriod % 2 === 0) ? 1 : -1;
         this.x += dir * Math.abs(this.vx) * dt;
 
         if (this.x < 30) this.vx = Math.abs(this.vx);
         if (this.x > CANVAS_WIDTH - 30 - this.width) this.vx = -Math.abs(this.vx);
+
+        // 周期的にプレイヤーに向かってスウィープ加速！
+        if (Math.sin(this.timeAlive * 2.5) > 0.8) {
+          this.vy = 160;
+        } else {
+          this.vy = 110;
+        }
 
         if (this.y > CANVAS_HEIGHT + 30) {
           this.y = -40;

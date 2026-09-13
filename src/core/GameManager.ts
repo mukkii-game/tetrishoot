@@ -17,7 +17,7 @@ import { Sound } from './Sound';
 import { Starfield } from './Starfield';
 import { TerrainManager } from './Terrain';
 
-export type GameState = 'TITLE' | 'PLAYING' | 'STAGE_CLEAR' | 'GAMEOVER' | 'VICTORY';
+export type GameState = 'TITLE' | 'PLAYING' | 'PAUSED' | 'STAGE_CLEAR' | 'GAMEOVER' | 'VICTORY';
 export type GamePhase = 'TETRIS' | 'SHOOTING';
 
 // 落ちてくるブロックの状態（ドッキング用：自律浮遊＋弾ヒットで回転）
@@ -87,6 +87,7 @@ export class GameManager {
   // バトル中に落ちてくる救済テトリミノ（Oミノのみになった時の緊急ドッキング）
   public battlePiece: FallingPieceItem | null = null;
   public gameOverSelection: 'CONTINUE' | 'TITLE' = 'CONTINUE';
+  public pauseMenuSelection: 'RESUME' | 'RESTART_WAVE' | 'TITLE' = 'RESUME';
   private rescueSpawnCooldown = 0;
 
   private deathDelay = 0; // 自機爆発アニメーション用ディレイ
@@ -210,23 +211,29 @@ export class GameManager {
       this.sound.toggleMute();
     }
 
-    // ESCキーでいつでもタイトル画面に戻る
-    if (input.justEscape && (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR')) {
-      this.sound.stopBGM();
-      this.state = 'TITLE';
-      this.fallingPieces = [];
-      this.battlePiece = null;
-      this.enemies = [];
-      this.playerBullets = [];
-      input.resetPerFrame();
-      return;
+    // ESCキーでポーズ画面へ移行 / ポーズ解除
+    if (input.justEscape) {
+      if (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR') {
+        this.state = 'PAUSED';
+        this.pauseMenuSelection = 'RESUME';
+        this.sound.playHit();
+        input.resetPerFrame();
+        return;
+      } else if (this.state === 'PAUSED') {
+        this.state = 'PLAYING';
+        this.sound.playHit();
+        input.resetPerFrame();
+        return;
+      }
     }
 
-    this.starfield.update(dt, this.phase === 'SHOOTING' ? 2.4 : 1.2);
-    this.particles.update(dt);
+    if (this.state !== 'PAUSED') {
+      this.starfield.update(dt, this.phase === 'SHOOTING' ? 2.4 : 1.2);
+      this.particles.update(dt);
 
-    if (this.transitionAlpha > 0) {
-      this.transitionAlpha -= dt * 0.9;
+      if (this.transitionAlpha > 0) {
+        this.transitionAlpha -= dt * 0.9;
+      }
     }
 
     switch (this.state) {
@@ -238,6 +245,37 @@ export class GameManager {
 
       case 'PLAYING':
         this.updatePlaying(dt, input);
+        break;
+
+      case 'PAUSED':
+        // 上下キーまたはW/Sキーで選択切り替え
+        if (input.justRotate) {
+          if (this.pauseMenuSelection === 'RESUME') this.pauseMenuSelection = 'TITLE';
+          else if (this.pauseMenuSelection === 'RESTART_WAVE') this.pauseMenuSelection = 'RESUME';
+          else if (this.pauseMenuSelection === 'TITLE') this.pauseMenuSelection = 'RESTART_WAVE';
+          this.sound.playHit();
+        } else if (input.justDrop) {
+          if (this.pauseMenuSelection === 'RESUME') this.pauseMenuSelection = 'RESTART_WAVE';
+          else if (this.pauseMenuSelection === 'RESTART_WAVE') this.pauseMenuSelection = 'TITLE';
+          else if (this.pauseMenuSelection === 'TITLE') this.pauseMenuSelection = 'RESUME';
+          this.sound.playHit();
+        }
+
+        // マウス位置での選択
+        if (input.mouseY !== null) {
+          if (input.mouseY >= 360 && input.mouseY <= 405) {
+            this.pauseMenuSelection = 'RESUME';
+          } else if (input.mouseY >= 420 && input.mouseY <= 465) {
+            this.pauseMenuSelection = 'RESTART_WAVE';
+          } else if (input.mouseY >= 480 && input.mouseY <= 525) {
+            this.pauseMenuSelection = 'TITLE';
+          }
+        }
+
+        // スペースキー、Enterキー、またはマウスクリックで決定
+        if (input.shoot || input.justEnter || (input.isMouseDown && input.mouseY !== null && input.mouseY >= 360 && input.mouseY <= 530)) {
+          this.handlePauseConfirm();
+        }
         break;
 
       case 'STAGE_CLEAR':
@@ -531,16 +569,25 @@ export class GameManager {
         break;
 
       case 4:
-        // 【WAVE 4：ムーンクレスタ Stage 3&4・フォー・フライ＆メテオシャワー】（ザコ48機）
-        // 十字型エイリアン「フォー・フライ」の不規則カクカク飛来＋天頂から燃えるメテオ群！
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('FOUR_FLY', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 1, 0.2 + i * 0.2));
+        // 【WAVE 4：ムーンクレスタ Stage 3&4・フォー・フライ＆怒涛のメテオストーム＆超高速フライバイ】（ザコ52機）
+        // 1. 初手：フォー・フライが待機時間ゼロ（t=0）で即座に急降下カミソリ襲撃！
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, i * 0.15));
         }
-        for (let i = 0; i < 20; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.5 + i * 0.12));
+        // 2. 超高速メテオが火花を散らして天頂から連続直進落下！
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.4 + i * 0.18));
         }
-        for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 1.4 + i * 0.2));
+        // 3. 電光石火の横切りフライバイ部隊が画面を交差急襲！
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', i % 2 === 0 ? 0 : 7, 0, 1.0 + i * 0.25));
+        }
+        // 4. 不規則カクカク飛行のフォー・フライ＆コールドアイが波状攻撃
+        for (let i = 0; i < 10; i++) {
+          this.enemies.push(new Enemy('FOUR_FLY', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 1, 1.8 + i * 0.2));
+        }
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 2.5 + i * 0.25));
         }
         break;
 
@@ -1198,6 +1245,39 @@ export class GameManager {
     }
   }
 
+  // ユーザー要望：ESCキーでポーズし「ゲームに戻る」「waveの最初から」「タイトルに戻る」の3択
+  private handlePauseConfirm(): void {
+    this.sound.playHit();
+    if (this.pauseMenuSelection === 'RESUME') {
+      this.state = 'PLAYING';
+    } else if (this.pauseMenuSelection === 'RESTART_WAVE') {
+      this.state = 'PLAYING';
+      this.fallingPieces = [];
+      this.battlePiece = null;
+      this.detachedPieces = [];
+      this.playerBullets = [];
+      this.enemies = [];
+      this.bossSpawned = false;
+      this.bossDying = false;
+      this.currentBoss = null;
+      this.player.isDead = false;
+      this.player.initInitialPiece();
+      this.startTetrisPhase(); // 現在のWaveの最初（ドッキング）からリスタート！
+    } else if (this.pauseMenuSelection === 'TITLE') {
+      this.sound.stopBGM();
+      this.state = 'TITLE';
+      this.stage = 1;
+      this.score = 0;
+      this.fallingPieces = [];
+      this.battlePiece = null;
+      this.detachedPieces = [];
+      this.playerBullets = [];
+      this.enemies = [];
+      this.player.isDead = false;
+      this.player.initInitialPiece();
+    }
+  }
+
   // ★ ユーザー要望：Oミノだけになった時の救済テトリミノ投下
   private spawnRescuePiece(): void {
     const candidateTypes: TetrominoType[] = ['T', 'L', 'J', 'I', 'S', 'Z'];
@@ -1450,6 +1530,69 @@ export class GameManager {
       // 4. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
       this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 635);
 
+      ctx.restore();
+    } else if (this.state === 'PAUSED') {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 5, 16, 0.85)';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      ctx.textAlign = 'center';
+      ctx.font = '900 42px monospace';
+      ctx.fillStyle = '#00f0ff';
+      ctx.shadowColor = '#00f0ff';
+      ctx.shadowBlur = 18;
+      ctx.fillText('PAUSE', CANVAS_WIDTH / 2, 260);
+
+      ctx.font = 'bold 18px monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowBlur = 0;
+      ctx.fillText(`CURRENT: WAVE ${this.stage}   SCORE: ${this.score}`, CANVAS_WIDTH / 2, 315);
+
+      const isResume = this.pauseMenuSelection === 'RESUME';
+      const isRestart = this.pauseMenuSelection === 'RESTART_WAVE';
+      const isTitle = this.pauseMenuSelection === 'TITLE';
+
+      // 1. ゲームに戻る (RESUME)
+      ctx.font = '900 22px monospace';
+      if (isResume) {
+        ctx.fillStyle = '#ffff00';
+        ctx.shadowColor = '#ffff00';
+        ctx.shadowBlur = 12;
+        ctx.fillText('> ゲームに戻る (RESUME) <', CANVAS_WIDTH / 2, 390);
+      } else {
+        ctx.fillStyle = '#888888';
+        ctx.shadowBlur = 0;
+        ctx.fillText('  ゲームに戻る (RESUME)  ', CANVAS_WIDTH / 2, 390);
+      }
+
+      // 2. waveの最初から (RESTART WAVE)
+      if (isRestart) {
+        ctx.fillStyle = '#ffff00';
+        ctx.shadowColor = '#ffff00';
+        ctx.shadowBlur = 12;
+        ctx.fillText(`> WAVEの最初から (RESTART WAVE ${this.stage}) <`, CANVAS_WIDTH / 2, 450);
+      } else {
+        ctx.fillStyle = '#888888';
+        ctx.shadowBlur = 0;
+        ctx.fillText(`  WAVEの最初から (RESTART WAVE ${this.stage})  `, CANVAS_WIDTH / 2, 450);
+      }
+
+      // 3. タイトルに戻る (RETURN TO TITLE)
+      if (isTitle) {
+        ctx.fillStyle = '#ffff00';
+        ctx.shadowColor = '#ffff00';
+        ctx.shadowBlur = 12;
+        ctx.fillText('> タイトルに戻る (TITLE) <', CANVAS_WIDTH / 2, 510);
+      } else {
+        ctx.fillStyle = '#888888';
+        ctx.shadowBlur = 0;
+        ctx.fillText('  タイトルに戻る (TITLE)  ', CANVAS_WIDTH / 2, 510);
+      }
+
+      ctx.shadowBlur = 0;
+      ctx.font = '13px monospace';
+      ctx.fillStyle = '#8b949e';
+      ctx.fillText('UP/DOWN: SELECT   SPACE / ENTER / CLICK: DECIDE   ESC: RESUME', CANVAS_WIDTH / 2, 590);
       ctx.restore();
     } else if (this.state === 'GAMEOVER') {
       ctx.save();
