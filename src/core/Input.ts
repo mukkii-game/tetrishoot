@@ -15,6 +15,8 @@ export class Input {
   public justRotate = false;
   public justDrop = false;
   public justTab = false;
+  public enter = false;
+  public justEnter = false;
   public selectedPieceIndex: number | null = null;
 
   public mouseX: number | null = null;
@@ -62,6 +64,11 @@ export class Input {
           if (!this.shoot) this.justRotate = true;
           this.shoot = true;
           break;
+        case 'Enter':
+        case 'NumpadEnter':
+          if (!this.enter) this.justEnter = true;
+          this.enter = true;
+          break;
         case 'Tab':
           this.justTab = true;
           break;
@@ -108,6 +115,10 @@ export class Input {
         case 'Space':
           this.shoot = false;
           break;
+        case 'Enter':
+        case 'NumpadEnter':
+          this.enter = false;
+          break;
         case 'Escape':
           this.escape = false;
           break;
@@ -118,12 +129,13 @@ export class Input {
       const rect = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width / rect.width;
       const scaleY = this.canvas.height / rect.height;
+
       this.mouseX = (e.clientX - rect.left) * scaleX;
       this.mouseY = (e.clientY - rect.top) * scaleY;
       this.hasMouseMoved = true;
     });
 
-    this.canvas.addEventListener('mousedown', (e) => {
+    window.addEventListener('mousedown', (e) => {
       if (e.button === 0) {
         this.isMouseDown = true;
         this.shoot = true;
@@ -152,6 +164,7 @@ export class Input {
     this.justRotate = false;
     this.justDrop = false;
     this.justTab = false;
+    this.justEnter = false;
     this.selectedPieceIndex = null;
   }
 }

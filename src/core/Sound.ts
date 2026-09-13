@@ -23,14 +23,14 @@ export class Sound {
     return this.isMuted;
   }
 
-  // 1. ムーンクレスタ風 開始ファンファーレ（超高速上昇アルペジオ: ピロリロリロリロ〜〜ン♪）
+  // 1. ムーンクレスタ ゲーム開始ファンファーレ（実機準拠の高速上昇アルペジオ: ピロリロリロリロ〜〜ン♪）
   public playStartJingle(): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
-    // C大調/ペンタトニックの超高速駆け上がり
+    // ムーンクレスタ実機準拠の超高速ペンタトニック上昇音階
     const notes = [
       261.63, 329.63, 392.00, 523.25,
       659.25, 783.99, 1046.50, 1318.51,
@@ -40,21 +40,22 @@ export class Sound {
     notes.forEach((freq, idx) => {
       const osc = this.ctx!.createOscillator();
       const gain = this.ctx!.createGain();
-      const startTime = now + idx * 0.045;
+      const startTime = now + idx * 0.042;
       const isLast = idx === notes.length - 1;
-      const dur = isLast ? 0.45 : 0.04;
+      const dur = isLast ? 0.48 : 0.04;
 
       osc.type = 'square';
       osc.frequency.setValueAtTime(freq, startTime);
 
       if (isLast) {
-        // 頂点で少しヴィブラート
+        // 頂点で澄んだ美しいピッチヴィブラート
         osc.frequency.setValueAtTime(freq, startTime);
-        osc.frequency.linearRampToValueAtTime(freq * 1.02, startTime + 0.15);
-        osc.frequency.linearRampToValueAtTime(freq, startTime + 0.3);
+        osc.frequency.linearRampToValueAtTime(freq * 1.025, startTime + 0.12);
+        osc.frequency.linearRampToValueAtTime(freq * 0.985, startTime + 0.24);
+        osc.frequency.linearRampToValueAtTime(freq, startTime + 0.36);
       }
 
-      gain.gain.setValueAtTime(0.18, startTime);
+      gain.gain.setValueAtTime(0.20, startTime);
       gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
 
       osc.connect(gain);
@@ -95,30 +96,36 @@ export class Sound {
     osc.stop(now + 0.11);
   }
 
-  // 4. ムーンクレスタ合体成功チャープ音（ピロピロピロピロ！）
+  // 4. ムーンクレスタ ドッキング成功音（ピロリロリロリロピロピロ〜ン！）
   public playDock(): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
-    const freqs = [523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98];
+    // ムーンクレスタ実機準拠のドッキング成功チャープ（急上昇→高音反復トリル）
+    const freqs = [
+      523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98, 2093.00,
+      1567.98, 2093.00
+    ];
     freqs.forEach((freq, idx) => {
       const osc = this.ctx!.createOscillator();
       const gain = this.ctx!.createGain();
-      const st = now + idx * 0.035;
+      const st = now + idx * 0.038;
+      const isLast = idx >= freqs.length - 2;
+      const dur = isLast ? 0.20 : 0.055;
 
       osc.type = 'square';
       osc.frequency.setValueAtTime(freq, st);
 
-      gain.gain.setValueAtTime(0.18, st);
-      gain.gain.exponentialRampToValueAtTime(0.005, st + 0.07);
+      gain.gain.setValueAtTime(0.20, st);
+      gain.gain.exponentialRampToValueAtTime(0.005, st + dur);
 
       osc.connect(gain);
       gain.connect(this.ctx!.destination);
 
       osc.start(st);
-      osc.stop(st + 0.08);
+      osc.stop(st + dur + 0.01);
     });
   }
 
@@ -352,10 +359,10 @@ export class Sound {
     this.initContext();
 
     let step = 0;
-    // 8-bitチップチューンフレーズ
-    const tetrisNotes = [523, 659, 784, 659, 523, 784, 659, 523];
+    // ドッキング時はムーンクレスタ風の静寂と推進エンジンパルス、シューティング時は緊張感あるベースライン
+    const tetrisNotes = [130.81, 164.81, 196.00, 164.81];
     const shootBass = [130, 130, 195, 130, 164, 130, 174, 195];
-    const tempo = phase === 'tetris' ? 170 : 125;
+    const tempo = phase === 'tetris' ? 220 : 125;
 
     this.bgmIntervalId = window.setInterval(() => {
       if (this.isMuted || !this.ctx) return;
@@ -363,11 +370,11 @@ export class Sound {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
 
-      osc.type = 'square';
+      osc.type = phase === 'tetris' ? 'triangle' : 'square';
       const freq = phase === 'tetris' ? tetrisNotes[step % tetrisNotes.length] : shootBass[step % shootBass.length];
       osc.frequency.setValueAtTime(freq, now);
-      gain.gain.setValueAtTime(phase === 'tetris' ? 0.025 : 0.038, now);
-      gain.gain.exponentialRampToValueAtTime(0.002, now + 0.11);
+      gain.gain.setValueAtTime(phase === 'tetris' ? 0.018 : 0.038, now);
+      gain.gain.exponentialRampToValueAtTime(0.002, now + 0.14);
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);

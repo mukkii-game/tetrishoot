@@ -80,8 +80,10 @@ export class GameManager {
   public hitStopTimer = 0;
   public terrainHitCooldown = 0;
 
-  // バトル中に時々落ちてくる回転不可ブロック（要望⑤により一時休止）
+  // バトル中に落ちてくる救済テトリミノ（Oミノのみになった時の緊急ドッキング）
   public battlePiece: FallingPieceItem | null = null;
+  public gameOverSelection: 'CONTINUE' | 'TITLE' = 'CONTINUE';
+  private rescueSpawnCooldown = 0;
 
   private deathDelay = 0; // 自機爆発アニメーション用ディレイ
   private stateTimer = 0;
@@ -235,9 +237,37 @@ export class GameManager {
         break;
 
       case 'GAMEOVER':
+        this.stateTimer -= dt;
+        if (this.stateTimer <= 0) {
+          // 上下キーまたはW/Sキーで選択項目をトグル
+          if (input.justRotate || input.justDrop) {
+            this.gameOverSelection = this.gameOverSelection === 'CONTINUE' ? 'TITLE' : 'CONTINUE';
+            this.sound.playHit();
+          }
+
+          // マウスクリックでの選択＆決定
+          if (input.isMouseDown && input.mouseY !== null) {
+            if (input.mouseY >= 450 && input.mouseY <= 505) {
+              this.gameOverSelection = 'CONTINUE';
+              this.handleGameOverConfirm();
+              break;
+            } else if (input.mouseY >= 515 && input.mouseY <= 570) {
+              this.gameOverSelection = 'TITLE';
+              this.handleGameOverConfirm();
+              break;
+            }
+          }
+
+          // スペースキーまたはEnterキーで決定
+          if (input.shoot || input.justEnter) {
+            this.handleGameOverConfirm();
+          }
+        }
+        break;
+
       case 'VICTORY':
         this.stateTimer -= dt;
-        if (this.stateTimer <= 0 && (input.shoot || input.isMouseDown)) {
+        if (this.stateTimer <= 0 && (input.shoot || input.justEnter || input.isMouseDown)) {
           this.startNewGame();
         }
         break;
@@ -651,6 +681,93 @@ export class GameManager {
       }
     }
 
+    // ★ ユーザー要望：Oミノだけになった時は、シューティング中でも上からテトリミノが落ちてきてドッキングできるように！
+    if (this.player.isOnlyOMino()) {
+      if (!this.battlePiece || this.battlePiece.settled) {
+        this.rescueSpawnCooldown -= dt;
+        if (this.rescueSpawnCooldown <= 0) {
+          this.spawnRescuePiece();
+          this.rescueSpawnCooldown = 1.6;
+        }
+      }
+    } else {
+      this.rescueSpawnCooldown = 0.5;
+    }
+
+    // シューティング中の救済落下テトリミノ更新＆ドッキング判定
+    if (this.battlePiece && !this.battlePiece.settled) {
+      this.battlePiece.fallTimer += dt;
+      this.battlePiece.vy = 52 + Math.sin(this.battlePiece.fallTimer * 2.2) * 14;
+      this.battlePiece.x += this.battlePiece.vx * dt;
+      this.battlePiece.y += this.battlePiece.vy * dt;
+
+      // 左右画面端バウンド
+      if (this.battlePiece.x < 20) {
+        this.battlePiece.x = 20;
+        this.battlePiece.vx = Math.abs(this.battlePiece.vx);
+      } else if (this.battlePiece.x > CANVAS_WIDTH - 20 - BLOCK_SIZE * 3) {
+        this.battlePiece.x = CANVAS_WIDTH - 20 - BLOCK_SIZE * 3;
+        this.battlePiece.vx = -Math.abs(this.battlePiece.vx);
+      }
+
+      this.battlePiece.gx = Math.round(this.battlePiece.x / BLOCK_SIZE);
+      this.battlePiece.gy = Math.round(this.battlePiece.y / BLOCK_SIZE);
+
+      // 弾ヒットによる回転！
+      const pieceBounds = this.battlePiece.piece.getBoundingBox(this.battlePiece.x, this.battlePiece.y);
+      const pieceCenterX = (pieceBounds.minX + pieceBounds.maxX) / 2;
+
+      for (let bi = this.playerBullets.length - 1; bi >= 0; bi--) {
+        const pb = this.playerBullets[bi];
+        if (pb.isDead) continue;
+
+        if (
+          pb.x >= pieceBounds.minX - 4 &&
+          pb.x <= pieceBounds.maxX + 4 &&
+          pb.y >= pieceBounds.minY - 4 &&
+          pb.y <= pieceBounds.maxY + 4
+        ) {
+          pb.isDead = true;
+          this.particles.emitSparks(pb.x, pb.y, this.battlePiece.piece.color, 10);
+          this.sound.playHit();
+
+          if (pb.x < pieceCenterX) {
+            this.battlePiece.piece.rotate();
+          } else {
+            this.battlePiece.piece.rotateCounter();
+          }
+        }
+      }
+
+      // 自機との近接ドッキング判定！
+      const playerBounds = this.player.getBoundingBox();
+      const isClose =
+        pieceBounds.maxX >= playerBounds.minX - 12 &&
+        pieceBounds.minX <= playerBounds.maxX + 12 &&
+        pieceBounds.maxY >= playerBounds.minY - 12 &&
+        pieceBounds.minY <= playerBounds.maxY + 12;
+
+      if (isClose) {
+        const dockRes = this.player.tryDockFromPixel(this.battlePiece.piece, this.battlePiece.x, this.battlePiece.y);
+        if (dockRes.docked) {
+          this.battlePiece.settled = true;
+          this.sound.playDock();
+          this.particles.emitDockRing(this.battlePiece.x + BLOCK_SIZE, this.battlePiece.y + BLOCK_SIZE, this.battlePiece.piece.color);
+          this.score += 600;
+          this.showTransitionText('DOCK SUCCESS!', 1.2);
+          this.battlePiece = null;
+          this.rescueSpawnCooldown = 3.0;
+        }
+      }
+
+      // 画面下端を抜けた場合
+      if (this.battlePiece && this.battlePiece.y > CANVAS_HEIGHT + 20) {
+        this.battlePiece.settled = true;
+        this.battlePiece = null;
+        this.rescueSpawnCooldown = 0.8;
+      }
+    }
+
     // 地形（洞窟壁）のスクロール更新
     this.terrain.update(dt, this.phase === 'SHOOTING' ? 140 : 60);
 
@@ -930,8 +1047,68 @@ export class GameManager {
     this.sound.stopBGM();
     this.sound.playGameOver(); // ムーンクレスタ風 哀愁下降アルペジオ！
     this.state = 'GAMEOVER';
-    this.stateTimer = 2.2;
+    this.stateTimer = 1.0;
+    this.gameOverSelection = 'CONTINUE';
     this.showTransitionText('GAME OVER');
+  }
+
+  // ユーザー要望：2面で死んだらコンティニューできるように、タイトルに戻るとコンティニューの2択
+  private handleGameOverConfirm(): void {
+    if (this.gameOverSelection === 'CONTINUE') {
+      this.sound.playPhaseAlert('tetris');
+      this.state = 'PLAYING';
+      this.fallingPieces = [];
+      this.battlePiece = null;
+      this.detachedPieces = [];
+      this.playerBullets = [];
+      this.enemies = [];
+      this.bossSpawned = false;
+      this.bossDying = false;
+      this.currentBoss = null;
+      this.player.isDead = false;
+      this.player.initInitialPiece();
+      this.startTetrisPhase(); // 現在のステージ（2面など）のドッキングから再開！
+    } else {
+      this.sound.stopBGM();
+      this.state = 'TITLE';
+      this.stage = 1;
+      this.score = 0;
+      this.fallingPieces = [];
+      this.battlePiece = null;
+      this.detachedPieces = [];
+      this.playerBullets = [];
+      this.enemies = [];
+      this.player.isDead = false;
+      this.player.initInitialPiece();
+    }
+  }
+
+  // ★ ユーザー要望：Oミノだけになった時の救済テトリミノ投下
+  private spawnRescuePiece(): void {
+    const candidateTypes: TetrominoType[] = ['T', 'L', 'J', 'I', 'S', 'Z'];
+    const pType = candidateTypes[Math.floor(Math.random() * candidateTypes.length)];
+    const piece = new TetrominoPiece(pType);
+    const rots = Math.floor(Math.random() * 4);
+    for (let r = 0; r < rots; r++) piece.rotate();
+
+    // 自機の横位置付近に投下
+    const spawnX = Math.max(60, Math.min(CANVAS_WIDTH - 140, this.player.anchorX + (Math.random() - 0.5) * 80));
+
+    this.battlePiece = {
+      index: 0,
+      piece,
+      x: spawnX,
+      y: -45,
+      vx: (Math.random() > 0.5 ? 1 : -1) * 35,
+      vy: 55,
+      gx: Math.round(spawnX / BLOCK_SIZE),
+      gy: -2,
+      settled: false,
+      fallTimer: 0,
+    };
+
+    this.sound.playPhaseAlert('tetris');
+    this.showTransitionText('RESCUE DOCKING!', 1.2);
   }
 
   // 要望③：Oミノから切り離されたパーツを浮遊物として戦場に放出し、再回収可能にする
@@ -1006,6 +1183,36 @@ export class GameManager {
       const blink = Math.sin(Date.now() / 220) > -0.5;
       if (blink) {
         drawMoonCrestaText(ctx, `WAVE ${this.stage}`, CANVAS_WIDTH / 2, 70, 32, '#ff3366');
+      }
+
+      // ★ ユーザー要望：Oミノ救済テトリミノの描画＆「ドッキングせよ！」の誘導表示
+      if (this.battlePiece && !this.battlePiece.settled) {
+        for (const cell of this.battlePiece.piece.cells) {
+          const px = this.battlePiece.x + cell.gx * BLOCK_SIZE;
+          const py = this.battlePiece.y + cell.gy * BLOCK_SIZE;
+          this.battlePiece.piece.drawCell(ctx, px, py);
+        }
+
+        const bounds = this.battlePiece.piece.getBoundingBox(this.battlePiece.x, this.battlePiece.y);
+        ctx.save();
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(bounds.minX - 2, bounds.minY - 2, bounds.maxX - bounds.minX + 4, bounds.maxY - bounds.minY + 4);
+        ctx.restore();
+
+        const dockBlink = Math.sin(Date.now() / 150) > -0.2;
+        if (dockBlink) {
+          drawMoonCrestaText(ctx, 'DOCK!', (bounds.minX + bounds.maxX) / 2, bounds.minY - 14, 18, '#ffff00');
+        }
+      }
+
+      // Oミノのみの場合は画面上部に緊急救済テトリミノ警告
+      if (this.player.isOnlyOMino()) {
+        const alertBlink = Math.sin(Date.now() / 180) > 0;
+        if (alertBlink) {
+          drawMoonCrestaText(ctx, 'RESCUE DOCKING!', CANVAS_WIDTH / 2, 110, 20, '#00f0ff');
+        }
       }
     }
 
@@ -1126,7 +1333,7 @@ export class GameManager {
       ctx.restore();
     } else if (this.state === 'GAMEOVER') {
       ctx.save();
-      ctx.fillStyle = 'rgba(20, 0, 0, 0.85)';
+      ctx.fillStyle = 'rgba(20, 0, 0, 0.88)';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
       ctx.textAlign = 'center';
@@ -1134,18 +1341,47 @@ export class GameManager {
       ctx.fillStyle = '#ff2244';
       ctx.shadowColor = '#ff0033';
       ctx.shadowBlur = 20;
-      ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, 300);
+      ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, 260);
 
       ctx.font = 'bold 20px monospace';
       ctx.fillStyle = '#ffffff';
       ctx.shadowBlur = 0;
-      ctx.fillText(`FINAL SCORE: ${this.score}`, CANVAS_WIDTH / 2, 360);
-      ctx.fillText(`REACHED STAGE: ${this.stage} / ${MAX_STAGES}`, CANVAS_WIDTH / 2, 400);
+      ctx.fillText(`SCORE: ${this.score}`, CANVAS_WIDTH / 2, 320);
+      ctx.fillText(`STAGE: ${this.stage} / ${MAX_STAGES}`, CANVAS_WIDTH / 2, 360);
 
       if (this.stateTimer <= 0) {
-        ctx.font = '16px monospace';
-        ctx.fillStyle = '#ffee00';
-        ctx.fillText('PRESS SPACE TO RETRY', CANVAS_WIDTH / 2, 480);
+        const isContinue = this.gameOverSelection === 'CONTINUE';
+        const isTitle = this.gameOverSelection === 'TITLE';
+
+        // 1. CONTINUE 選択肢
+        ctx.font = '900 24px monospace';
+        if (isContinue) {
+          ctx.fillStyle = '#ffff00';
+          ctx.shadowColor = '#ffff00';
+          ctx.shadowBlur = 12;
+          ctx.fillText(`> CONTINUE (STAGE ${this.stage}) <`, CANVAS_WIDTH / 2, 475);
+        } else {
+          ctx.fillStyle = '#777777';
+          ctx.shadowBlur = 0;
+          ctx.fillText(`  CONTINUE (STAGE ${this.stage})  `, CANVAS_WIDTH / 2, 475);
+        }
+
+        // 2. RETURN TO TITLE 選択肢
+        if (isTitle) {
+          ctx.fillStyle = '#ffff00';
+          ctx.shadowColor = '#ffff00';
+          ctx.shadowBlur = 12;
+          ctx.fillText('> RETURN TO TITLE <', CANVAS_WIDTH / 2, 535);
+        } else {
+          ctx.fillStyle = '#777777';
+          ctx.shadowBlur = 0;
+          ctx.fillText('  RETURN TO TITLE  ', CANVAS_WIDTH / 2, 535);
+        }
+
+        ctx.shadowBlur = 0;
+        ctx.font = '14px monospace';
+        ctx.fillStyle = '#8b949e';
+        ctx.fillText('UP/DOWN: SELECT   SPACE / ENTER / CLICK: DECIDE', CANVAS_WIDTH / 2, 610);
       }
       ctx.restore();
     } else if (this.state === 'VICTORY') {

@@ -199,19 +199,22 @@ export class Player {
     const minScreenY = 60; // 上部HUD下
     const maxScreenY = CANVAS_HEIGHT - 10;
 
-    const ACCEL = 1400; // 俊敏な立ち上がり加速度
-    const MAX_SPEED = PLAYER_SPEED * 1.35; // スピード感のある最高速
-    const FRICTION = 0.92; // 離した時の自然で滑らかなスーッと流れる慣性ドリフト
+    // ユーザー要望：慣性移動を一旦止めて、ピタッと止まるダイレクト操作へ
+    this.vx = 0;
+    this.vy = 0;
 
-    let inputAx = 0;
-    let inputAy = 0;
+    if (inputs.left) this.vx -= PLAYER_SPEED;
+    if (inputs.right) this.vx += PLAYER_SPEED;
+    if (inputs.up) this.vy -= PLAYER_SPEED;
+    if (inputs.down) this.vy += PLAYER_SPEED;
 
-    if (inputs.left) inputAx -= ACCEL;
-    if (inputs.right) inputAx += ACCEL;
-    if (inputs.up) inputAy -= ACCEL;
-    if (inputs.down) inputAy += ACCEL;
+    // 斜め移動時の等速化
+    if (this.vx !== 0 && this.vy !== 0) {
+      this.vx *= 0.7071;
+      this.vy *= 0.7071;
+    }
 
-    // マウス操作時はマウス位置へ向かって滑らかに追従加速
+    // マウス操作時はマウス位置へ直接追従
     if (inputs.hasMouseMoved && inputs.mouseX !== null && inputs.mouseY !== null) {
       const targetAnchorX = inputs.mouseX - width / 2;
       const targetAnchorY = inputs.mouseY - height / 2;
@@ -219,35 +222,14 @@ export class Player {
       const diffY = targetAnchorY - this.anchorY;
       const dist = Math.hypot(diffX, diffY);
 
-      if (dist > 6) {
-        inputAx = (diffX / dist) * ACCEL * 1.3;
-        inputAy = (diffY / dist) * ACCEL * 1.3;
+      if (dist > 3) {
+        const mouseSpeed = Math.min(dist / dt, PLAYER_SPEED);
+        this.vx = (diffX / dist) * mouseSpeed;
+        this.vy = (diffY / dist) * mouseSpeed;
       }
     }
 
-    // 加速度適用
-    this.vx += inputAx * dt;
-    this.vy += inputAy * dt;
-
-    // 入力がない軸は滑らかな指数減衰
-    if (inputAx === 0) {
-      this.vx *= Math.pow(FRICTION, dt * 60);
-      if (Math.abs(this.vx) < 1.0) this.vx = 0;
-    }
-    if (inputAy === 0) {
-      this.vy *= Math.pow(FRICTION, dt * 60);
-      if (Math.abs(this.vy) < 1.0) this.vy = 0;
-    }
-
-    // 速度制限
-    const currentSpeed = Math.hypot(this.vx, this.vy);
-    if (currentSpeed > MAX_SPEED) {
-      const scale = MAX_SPEED / currentSpeed;
-      this.vx *= scale;
-      this.vy *= scale;
-    }
-
-    // 位置更新（浮動小数点で滑らかに更新）
+    // 位置更新（即時停止・ブレなし）
     this.anchorX += this.vx * dt;
     this.anchorY += this.vy * dt;
 
@@ -281,11 +263,27 @@ export class Player {
     }
   }
 
+  // 自機のパーツがOミノ（コア）のみになっているか判定
+  public isOnlyOMino(): boolean {
+    return !this.isDead && this.pieces.length > 0 && this.pieces.every(p => p.piece.type === 'O');
+  }
+
   // ショット発射処理（1つの銃口につき画面内最大2発制限：ギャラガ・ムーンクレスタ仕様）
   public shootBullets(existingBullets: PlayerBullet[] = []): PlayerBullet[] {
     const bullets: PlayerBullet[] = [];
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
+
+    // ★ ユーザー要望：Oミノだけになった時は、救済ブロックを回転させたり最低限の迎撃ができるよう中央緊急ショットを発射！
+    if (this.isOnlyOMino()) {
+      const emergencyCount = existingBullets.filter(b => !b.isDead && b.gunId === 'o_core_emergency').length;
+      if (emergencyCount < 2) {
+        const bx = this.anchorX + BLOCK_SIZE;
+        const by = this.anchorY;
+        bullets.push(new PlayerBullet(bx, by, -Math.PI / 2, '#ffea00', 'o_core_emergency'));
+      }
+      return bullets;
+    }
 
     const occupiedMap = new Set<string>();
     for (const cell of this.getOccupiedCells()) {
@@ -303,7 +301,7 @@ export class Player {
     for (let pieceIdx = 0; pieceIdx < this.pieces.length; pieceIdx++) {
       const attached = this.pieces[pieceIdx];
       const piece = attached.piece;
-      if (piece.type === 'O') continue; // Oブロックは弾が出ない
+      if (piece.type === 'O') continue; // 通常はOブロック自体からは弾が出ない
 
       for (let portIdx = 0; portIdx < piece.gunPorts.length; portIdx++) {
         const gun = piece.gunPorts[portIdx];
