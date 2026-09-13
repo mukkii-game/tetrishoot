@@ -50,6 +50,7 @@ export class GameManager {
   public phase: GamePhase = 'TETRIS';
   public stage = 1;
   public score = 0;
+  public highScore = 0;
   public difficulty: 'NORMAL' | 'HARD' = 'NORMAL';
 
   public player: Player;
@@ -102,6 +103,7 @@ export class GameManager {
   private transitionAlpha = 0;
   private transitionText = '';
   private transitionScale = 1.0;
+  private fireLockout = 0; // ゲーム開始直後の誤射防止猶予タイマー
 
   constructor(sound: Sound) {
     this.sound = sound;
@@ -109,6 +111,9 @@ export class GameManager {
     this.starfield = new Starfield();
     this.particles = new ParticleManager();
     this.terrain = new TerrainManager();
+    // ハイスコアをlocalStorageから復元
+    const saved = localStorage.getItem('galaxtris_hiscore');
+    if (saved) this.highScore = parseInt(saved, 10) || 0;
   }
 
   public startNewGame(): void {
@@ -123,6 +128,7 @@ export class GameManager {
     this.particles.clear();
     this.detachedPieces = [];
     this.state = 'PLAYING';
+    this.fireLockout = 0.5; // ゲーム開始直後の誤射防止（0.5秒間発射不可）
     this.sound.playStartJingle(); // ムーンクレスタ風 開始ファンファーレ！
     this.startTetrisPhase();
   }
@@ -475,8 +481,11 @@ export class GameManager {
     // 1. 自機の操作（エクセリオン風慣性移動）
     this.player.updateMovement(dt, input);
 
+    // 発射ロックアウト減算（ゲーム開始直後の誤射防止）
+    if (this.fireLockout > 0) this.fireLockout -= dt;
+
     // 2. 自機ショット発射（弾を撃って落下中ミノに当てる！）
-    if ((input.shoot || input.isMouseDown) && this.player.fireCooldown <= 0) {
+    if ((input.shoot || input.isMouseDown) && this.player.fireCooldown <= 0 && this.fireLockout <= 0) {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
@@ -1501,6 +1510,7 @@ export class GameManager {
     this.state = 'STAGE_CLEAR';
     this.stateTimer = 2.5;
     this.score += 1000 * this.stage;
+    this.saveHighScore();
     this.showTransitionText(`STAGE ${this.stage} CLEAR!`);
   }
 
@@ -1515,6 +1525,7 @@ export class GameManager {
     this.stateTimer = 1.0;
     this.screenShake = 0; // ユーザー要望：死んだあとセレクト画面やタイトル画面が揺れるのを確実に止める
     this.gameOverSelection = 'CONTINUE';
+    this.saveHighScore();
     this.showTransitionText('GAME OVER');
   }
 
@@ -1744,7 +1755,7 @@ export class GameManager {
 
         const dockBlink = Math.sin(Date.now() / 150) > -0.2;
         if (dockBlink) {
-          drawMoonCrestaText(ctx, 'DOCK!', (bounds.minX + bounds.maxX) / 2, bounds.minY - 14, 18, '#ffff00');
+          drawMoonCrestaText(ctx, 'DOCKING!', (bounds.minX + bounds.maxX) / 2, bounds.minY - 14, 18, '#ffff00');
         }
       }
     }
@@ -1810,30 +1821,15 @@ export class GameManager {
         ctx.lineWidth = 1.5;
         ctx.strokeText(this.transitionText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
       } else if (isStageBanner) {
-        // 超特大の迫力アーケードフォント
-        const fontSize = Math.floor(64 * this.transitionScale);
-        ctx.font = `900 ${fontSize}px "Impact", "Arial Black", monospace`;
+        // ムーンクレスタ風：シンプルな白文字ステージ表示
+        const fontSize = Math.floor(40 * this.transitionScale);
+        ctx.font = `900 ${fontSize}px "DotGothic16", "Courier New", monospace`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-
-        // 立体シャドウ
-        ctx.fillStyle = '#440011';
-        ctx.fillText(this.transitionText, CANVAS_WIDTH / 2 + 4, CANVAS_HEIGHT / 2 + 4);
-
-        // ネオンレッド発光
-        const grad = ctx.createLinearGradient(0, CANVAS_HEIGHT / 2 - 35, 0, CANVAS_HEIGHT / 2 + 35);
-        grad.addColorStop(0, '#ffffff');
-        grad.addColorStop(0.3, '#ff3366');
-        grad.addColorStop(1, '#ff0033');
-
-        ctx.fillStyle = grad;
-        ctx.shadowColor = '#ff2255';
-        ctx.shadowBlur = 24;
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 8;
         ctx.fillText(this.transitionText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2.5;
-        ctx.strokeText(this.transitionText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
       } else {
         const fontSize = Math.floor(28 * this.transitionScale);
         ctx.font = `900 ${fontSize}px monospace`;
@@ -1859,35 +1855,94 @@ export class GameManager {
     this.drawOverlays(ctx);
   }
 
+  /** ハイスコア保存（更新があればlocalStorageへ永続化） */
+  private saveHighScore(): void {
+    if (this.score > this.highScore) {
+      this.highScore = this.score;
+      try { localStorage.setItem('galaxtris_hiscore', String(this.highScore)); } catch {}
+    }
+  }
+
   private drawArcadeHUD(ctx: CanvasRenderingContext2D): void {
+    // 毎フレームハイスコアをリアルタイム更新
+    if (this.score > this.highScore) {
+      this.highScore = this.score;
+    }
+
     ctx.save();
     ctx.textBaseline = 'top';
+    const hudFont = '900 20px "DotGothic16", "Courier New", monospace';
+    const numFont = '900 24px "DotGothic16", "Courier New", monospace';
+    const cyanColor = '#00f0ff';
 
-    // 左上: STAGE X / 10
+    // ── 左上: 1'ST (スコア) ──
     ctx.textAlign = 'left';
-    ctx.font = '900 24px "DotGothic16", "Courier New", monospace';
-    // ブラウン管シアン蛍光体グロー
-    ctx.shadowColor = '#00f0ff';
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = '#38f8f8';
-    ctx.fillText(`STAGE ${this.stage} / ${MAX_STAGES}`, 20, 16);
-    // コアハイライト
+    // ラベル: 水色
+    ctx.font = hudFont;
+    ctx.shadowColor = cyanColor;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = cyanColor;
+    ctx.fillText("1'ST", 16, 8);
     ctx.shadowBlur = 0;
+    // 数値: 真っ白
+    ctx.font = numFont;
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(`STAGE ${this.stage} / ${MAX_STAGES}`, 20, 16);
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 6;
+    ctx.fillText(`${this.score}`, 16, 28);
+    ctx.shadowBlur = 0;
 
-    // 右上: SCORE: X
-    ctx.textAlign = 'right';
-    ctx.font = '900 24px "DotGothic16", "Courier New", monospace';
-    // ブラウン管イエロー蛍光体グロー
-    ctx.shadowColor = '#ffea00';
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = '#ffee00';
-    ctx.fillText(`SCORE: ${this.score}`, CANVAS_WIDTH - 20, 16);
-    // コアハイライト
+    // ── 中央上: HI-SCORE ──
+    ctx.textAlign = 'center';
+    // ラベル: 水色
+    ctx.font = hudFont;
+    ctx.shadowColor = cyanColor;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = cyanColor;
+    ctx.fillText('HI-SCORE', CANVAS_WIDTH / 2, 8);
     ctx.shadowBlur = 0;
+    // 数値: 真っ白
+    ctx.font = numFont;
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(`SCORE: ${this.score}`, CANVAS_WIDTH - 20, 16);
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 6;
+    ctx.fillText(`${this.highScore}`, CANVAS_WIDTH / 2, 28);
+    ctx.shadowBlur = 0;
+
+    // ── テトリスフェーズ中: ムーンクレスタ忠実再現 ──
+    // 原作と同じく「レバーとボタンでドッキングせよ」＋タイマーを中央に控えめに表示
+    if (this.phase === 'TETRIS' && this.state === 'PLAYING') {
+      const hasFallingPiece = this.fallingPieces.some(p => !p.settled);
+
+      if (hasFallingPiece) {
+        // 「レバーとボタンでドッキングせよ」— ムーンクレスタ原作通り白文字・中央
+        ctx.textAlign = 'center';
+        ctx.font = '900 16px "DotGothic16", "Courier New", monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 2;
+        ctx.fillText('レバーとボタンでドッキングせよ', CANVAS_WIDTH / 2, 130);
+        ctx.shadowBlur = 0;
+
+        // タイマー（原作通り「27: 0」形式、白文字・中央、ドッキングせよの直下）
+        const sec = Math.floor(this.dockingTimer);
+        const dec = Math.floor((this.dockingTimer - sec) * 10);
+        const timerStr = `${sec}: ${dec}`;
+        ctx.font = '900 20px "DotGothic16", "Courier New", monospace';
+        // 残り10秒以下で赤く警告（原作リスペクトの緊張感）
+        if (this.dockingTimer <= 10) {
+          ctx.fillStyle = '#ff2244';
+          ctx.shadowColor = '#ff0033';
+          ctx.shadowBlur = 4;
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 2;
+        }
+        ctx.fillText(timerStr, CANVAS_WIDTH / 2, 155);
+        ctx.shadowBlur = 0;
+      }
+    }
 
     ctx.restore();
   }
