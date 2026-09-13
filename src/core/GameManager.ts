@@ -419,7 +419,7 @@ export class GameManager {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
-        this.sound.playShoot();
+        this.sound.playShoot(newBullets[0]?.pieceType);
         this.player.fireCooldown = PLAYER_FIRE_INTERVAL;
       }
     }
@@ -594,9 +594,9 @@ export class GameManager {
         break;
 
       case 3:
-        // 【WAVE 3：スターフォース名物「ガリ」＆ 左右ワープランナー】
+        // 【WAVE 3：スターフォース名物「ガリ」＆ 90度直角旋回機 ＆ 左右ワープランナー】
         // ユーザー要望：敵を混ぜずに順番に出す
-        // フェーズ1（t=0〜）：スターフォース「ガリ」第一波（急降下→急停止スウィング→超高速ダッシュ）
+        // フェーズ1（t=0〜）：スターフォース「ガリ」第一波（深く急降下→急停止スウィング→超高速ダッシュ）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
           this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, i * 0.4));
         }
@@ -604,9 +604,9 @@ export class GameManager {
         for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
           this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, 7.5 + i * 0.35));
         }
-        // フェーズ3（t=14.0〜）：スターフォース「ガリ」第二波の怒濤の強襲
+        // フェーズ3（t=14.0〜）：スターフォース名物 左右端落下→自機Yで90度直角旋回突進！
         for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 2 + (i % 5), 0, 14.0 + i * 0.35));
+          this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, 14.0 + i * 0.38));
         }
         break;
 
@@ -629,7 +629,7 @@ export class GameManager {
 
       case 5:
         // 【WAVE 5：ギャラガ＆沙羅曼蛇（斜めスクロール！宇宙浮遊要塞・高速侵攻）】（ザコ56機）
-        // 左右対角線から交差突撃する大編隊＋地表ミサイル＋斜め高速メテオ！
+        // 左右対角線から交差突撃する大編隊＋地表ミサイル＋斜め高速メテオ＋スターフォース90度直角機！
         for (let k = 0; k < 16; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.15, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.15, 'INFINITY_DIVE_RIGHT', k));
@@ -639,6 +639,9 @@ export class GameManager {
         }
         for (let i = 0; i < 10; i++) {
           this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 6), 0, 1.2 + i * 0.2));
+        }
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, 1.4 + i * 0.25));
         }
         for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 8); i++) {
           this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, 1.5 + i * 0.25));
@@ -808,6 +811,12 @@ export class GameManager {
       this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SWEEP_FROM_LEFT', 2, 1, 0.3));
       this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SWEEP_FROM_RIGHT', 6, 1, 0.3));
     }
+
+    // ★ ユーザー要望：ボス出現音（LFO 1 / LFO 2 をボス種別によってカテゴリ分け）
+    // カテゴリ1: UFO_MOTHERSHIP, SPACE_SERPENT_HEAD（重厚低音）
+    // カテゴリ2: GIANT_YELLOW, GIANT_RED, GIGA_COLD_EYE（電子パルス警報）
+    const lfoCategory = (bossRank === 'UFO_MOTHERSHIP' || bossRank === 'SPACE_SERPENT_HEAD') ? 1 : 2;
+    this.sound.startBossLfo(lfoCategory);
   }
 
   private updateShootingPhase(dt: number, input: Input): void {
@@ -832,7 +841,7 @@ export class GameManager {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
-        this.sound.playShoot();
+        this.sound.playShoot(newBullets[0]?.pieceType);
         this.player.fireCooldown = PLAYER_FIRE_INTERVAL;
       }
     }
@@ -1078,13 +1087,14 @@ export class GameManager {
 
       if (dist < item.radius + 28) {
         item.isDead = true;
-        this.sound.playDock();
+        // ★ ユーザー要望：Arcade-Shooter01-6(Score) アイテム取得音
+        this.sound.playItemScore();
         this.particles.emitDockRing(item.x, item.y, '#00ffff');
 
         if (item.type === 'BARRIER_ORB') {
-          // 8秒間の完全無敵レインボーバリア展開！
-          this.player.barrierTimer = 8.0;
-          this.showTransitionText('BARRIER ACTIVATED!', 1.2);
+          // ★ ユーザー要望：5秒間の完全無敵レインボーバリア展開！
+          this.player.barrierTimer = 5.0;
+          this.showTransitionText('BARRIER (5 SEC)!', 1.2);
           this.score += 1000;
         } else if (item.type === 'RESCUE_CAPSULE') {
           // 緊急救済テトリミノを即時投下
@@ -1109,6 +1119,11 @@ export class GameManager {
       const justDived = e.update(dt, this.formationOffsetAngle, this.player.anchorX, this.player.anchorY, canDive);
       if (justDived) {
         this.sound.playDiveSiren();
+      }
+      // ★ ユーザー要望：高速で突っ込んでくるメテオタイプの敵の突っ込んでくる時にレーザー音を出す
+      if (e.justFiredLaser) {
+        this.sound.playMeteorLaser();
+        e.justFiredLaser = false;
       }
       if (e.isDead) {
         this.enemies.splice(i, 1);
@@ -1181,7 +1196,8 @@ export class GameManager {
         if (siloHit) {
           pb.isDead = true;
           this.particles.emitSparks(siloHit.x, siloHit.y, '#ffff00', 8);
-          this.sound.playHit();
+          // ★ ユーザー要望：Arcade-Shooter01-2(Damage) 敵ダメージ音
+          this.sound.playEnemyDamage();
           if (siloHit.score >= 400) {
             this.sound.playExplosion(false);
             this.particles.emitExplosion(siloHit.x, siloHit.y, '#ff4400', 18);
@@ -1205,7 +1221,8 @@ export class GameManager {
           if (enemy.isBoss || enemy === this.currentBoss) {
             this.sound.playBossHit();
           } else {
-            this.sound.playHit();
+            // ★ ユーザー要望：Arcade-Shooter01-2(Damage) 敵ダメージ音
+            this.sound.playEnemyDamage();
           }
 
           const killed = enemy.hit(1);
@@ -1255,6 +1272,7 @@ export class GameManager {
 
               this.enemies.push(eye1, eye2);
               this.score += enemy.scoreValue;
+              this.sound.stopBossLfo();
               this.currentBoss = null;
               this.hitStopTimer = 0.08;
               this.screenShake = 16;
@@ -1283,6 +1301,7 @@ export class GameManager {
                 enemy.height
               );
               this.score += enemy.scoreValue;
+              this.sound.stopBossLfo();
               this.currentBoss = null;
               this.bossDying = true;
               this.bossDeathTimer = 0;
@@ -1371,6 +1390,7 @@ export class GameManager {
 
   private clearStage(): void {
     this.sound.stopBGM();
+    this.sound.stopBossLfo();
     this.sound.playVictory();
     this.state = 'STAGE_CLEAR';
     this.stateTimer = 2.5;
@@ -1380,6 +1400,7 @@ export class GameManager {
 
   private triggerGameOver(): void {
     this.sound.stopBGM();
+    this.sound.stopBossLfo();
     this.sound.playGameOver(); // ムーンクレスタ風 哀愁下降アルペジオ！
     this.state = 'GAMEOVER';
     this.stateTimer = 1.0;
@@ -1389,6 +1410,7 @@ export class GameManager {
 
   // ユーザー要望：2面で死んだらコンティニューできるように、タイトルに戻るとコンティニューの2択
   private handleGameOverConfirm(): void {
+    this.sound.stopBossLfo();
     if (this.gameOverSelection === 'CONTINUE') {
       this.sound.playPhaseAlert('tetris');
       this.state = 'PLAYING';
@@ -1426,7 +1448,12 @@ export class GameManager {
     if (this.pauseMenuSelection === 'RESUME') {
       this.state = 'PLAYING';
       this.sound.resumeBGM();
+      if (this.currentBoss && !this.currentBoss.isDead && !this.bossDying) {
+        const lfoCategory = (this.currentBoss.rank === 'UFO_MOTHERSHIP' || this.currentBoss.rank === 'SPACE_SERPENT_HEAD') ? 1 : 2;
+        this.sound.startBossLfo(lfoCategory);
+      }
     } else if (this.pauseMenuSelection === 'RESTART_WAVE') {
+      this.sound.stopBossLfo();
       this.state = 'PLAYING';
       this.fallingPieces = [];
       this.battlePiece = null;
@@ -1441,6 +1468,7 @@ export class GameManager {
       this.startTetrisPhase(); // 現在のWaveの最初（ドッキング）からリスタート！
     } else if (this.pauseMenuSelection === 'TITLE') {
       this.sound.stopBGM();
+      this.sound.stopBossLfo();
       this.state = 'TITLE';
       this.stage = 1;
       this.score = 0;
@@ -2074,8 +2102,12 @@ export class GameManager {
     ctx.fillText('© 2026 MUKKII ALL RIGHTS RESERVED', cx, cy + 24);
 
     ctx.font = '9px monospace';
-    ctx.fillStyle = '#556677';
-    ctx.fillText('VER 3.0 (TERRAIN & EXERION MECHANICS)', cx, cy + 38);
+    ctx.fillStyle = '#6e7681';
+    ctx.fillText('SOUND: OtoLogic / 効果音ラボ', cx, cy + 37);
+
+    ctx.font = '8px monospace';
+    ctx.fillStyle = '#484f58';
+    ctx.fillText('VER 3.0 (TERRAIN & RETRO SHOOTER MECHANICS)', cx, cy + 49);
 
     ctx.restore();
   }

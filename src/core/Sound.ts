@@ -1,24 +1,70 @@
-// ムーンクレスタ風 往年チップチューン音源（Web Audio API）
+import { shoot_arc_b64, damage_arc_b64, score_arc_b64, boss_lfo1_b64, boss_lfo2_b64 } from '../audio/audioData';
+
+// ムーンクレスタ風 往年チップチューン音源（Web Audio API）＋ OtoLogic効果音
 export class Sound {
   private ctx: AudioContext | null = null;
   public isMuted = false;
   private bgmIntervalId: number | null = null;
   private currentBgmPhase: 'tetris' | 'shooting' | 'none' = 'none';
 
+  // OtoLogic音声バッファ
+  private shootBuffer: AudioBuffer | null = null;
+  private damageBuffer: AudioBuffer | null = null;
+  private scoreBuffer: AudioBuffer | null = null;
+  private bossLfo1Buffer: AudioBuffer | null = null;
+  private bossLfo2Buffer: AudioBuffer | null = null;
+
+  // ボスLFO再生用ループノード
+  private activeBossLfoSource: AudioBufferSourceNode | null = null;
+  private activeBossLfoGain: GainNode | null = null;
+
+  constructor() {
+    // 遅延デコード（ユーザー操作時に初期化）
+  }
+
   private initContext(): void {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioCtx();
+      this.loadOtoLogicBuffers();
     }
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
   }
 
+  private loadOtoLogicBuffers(): void {
+    if (!this.ctx) return;
+    const decode = (b64: string, callback: (buf: AudioBuffer) => void) => {
+      try {
+        const bin = atob(b64);
+        const len = bin.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = bin.charCodeAt(i);
+        }
+        this.ctx!.decodeAudioData(bytes.buffer.slice(0), buf => {
+          callback(buf);
+        }, err => {
+          console.warn('Audio decode failed:', err);
+        });
+      } catch (e) {
+        console.warn('Base64 decode failed:', e);
+      }
+    };
+
+    decode(shoot_arc_b64, buf => { this.shootBuffer = buf; });
+    decode(damage_arc_b64, buf => { this.damageBuffer = buf; });
+    decode(score_arc_b64, buf => { this.scoreBuffer = buf; });
+    decode(boss_lfo1_b64, buf => { this.bossLfo1Buffer = buf; });
+    decode(boss_lfo2_b64, buf => { this.bossLfo2Buffer = buf; });
+  }
+
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
     if (this.isMuted) {
       this.stopBGM();
+      this.stopBossLfo();
     }
     return this.isMuted;
   }
@@ -69,22 +115,61 @@ export class Sound {
   // 2. ゲームオーバー（ユーザー要望により無音に）
   public playGameOver(): void {
     this.stopBGM();
+    this.stopBossLfo();
   }
 
-  // 3. ムーンクレスタ風 ショット音（ピシューン！と響く矩形波レーザー）
-  public playShoot(): void {
+  // 3. ショット音
+  // ユーザー要望：
+  // 「Arcade-Shooter01-1(Shoot) 玉発射音
+  //  これだけだと単調かも。テトリミノにより音が違う、今使ってるのと2種類あってもいい」
+  public playShoot(pieceType?: string): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
 
+    // I, L, J, T, S, Z ミノにより発射音の音色・ピッチバリエーションを展開
+    // I, T, S は OtoLogicのリアルアーケードショット音 (Arcade-Shooter01-1)
+    // L, J, Z, O は レトロ矩形波レーザー音（ピッチを変えて音色に変化を付加）
+    const useOtoLogicSample = pieceType === 'I' || pieceType === 'T' || pieceType === 'S';
+
+    if (useOtoLogicSample && this.shootBuffer) {
+      try {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.shootBuffer;
+        // テトリミノに応じたピッチの微差（Iは高め、Tは標準、Sは鋭く）
+        if (pieceType === 'I') src.playbackRate.value = 1.15;
+        else if (pieceType === 'S') src.playbackRate.value = 1.05;
+        else src.playbackRate.value = 0.95;
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.22, this.ctx.currentTime);
+        src.connect(gain);
+        gain.connect(this.ctx.destination);
+        src.start(0);
+        return;
+      } catch {
+        // フォールバック
+      }
+    }
+
+    // レトロチップチューン音（ピッチを変調）
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
     osc.type = 'square';
-    // 鋭い周波数急降下ピッチベンド
-    osc.frequency.setValueAtTime(1400, now);
-    osc.frequency.exponentialRampToValueAtTime(180, now + 0.1);
+    let startFreq = 1400;
+    let endFreq = 180;
+    if (pieceType === 'L' || pieceType === 'J') {
+      startFreq = 1750;
+      endFreq = 240;
+    } else if (pieceType === 'Z') {
+      startFreq = 1100;
+      endFreq = 140;
+    }
+
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.1);
 
     gain.gain.setValueAtTime(0.15, now);
     gain.gain.exponentialRampToValueAtTime(0.005, now + 0.1);
@@ -224,6 +309,147 @@ export class Sound {
 
     osc.start(now);
     osc.stop(now + 0.09);
+  }
+
+  // ★ ユーザー要望：Arcade-Shooter01-2(Damage) 敵ダメージに使う
+  public playEnemyDamage(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    if (this.damageBuffer) {
+      try {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.damageBuffer;
+        src.playbackRate.value = 0.95 + Math.random() * 0.12;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.24, this.ctx.currentTime);
+        src.connect(gain);
+        gain.connect(this.ctx.destination);
+        src.start(0);
+        return;
+      } catch {
+        // fallback
+      }
+    }
+    this.playHit();
+  }
+
+  // ★ ユーザー要望：Arcade-Shooter01-6(Score) アイテム採った時（5秒間無敵等）
+  public playItemScore(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    if (this.scoreBuffer) {
+      try {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.scoreBuffer;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.28, this.ctx.currentTime);
+        src.connect(gain);
+        gain.connect(this.ctx.destination);
+        src.start(0);
+        return;
+      } catch {
+        // fallback
+      }
+    }
+
+    // フォールバック：軽快なレトロ上昇チャイム
+    const now = this.ctx.currentTime;
+    const notes = [587.33, 880.00, 1174.66, 1760.00];
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      const st = now + idx * 0.045;
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, st);
+      gain.gain.setValueAtTime(0.18, st);
+      gain.gain.exponentialRampToValueAtTime(0.005, st + 0.09);
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+      osc.start(st);
+      osc.stop(st + 0.1);
+    });
+  }
+
+  // ★ ユーザー要望：レーザー 高速で突っ込んでくるメテオタイプの敵の突っ込んでくる時に出す
+  public playMeteorLaser(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const dur = 0.18;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(2600, now);
+    osc.frequency.exponentialRampToValueAtTime(280, now + dur);
+
+    gain.gain.setValueAtTime(0.20, now);
+    gain.gain.exponentialRampToValueAtTime(0.002, now + dur);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + dur + 0.01);
+  }
+
+  // ★ ユーザー要望：
+  // 「Arcade-Shooter01-4(LFO) ボス出現中の音1
+  //   Arcade-Shooter01-5(LFO) ボス出現中の音2 ボスにより替える なんとなくカテゴリ分けして」
+  public startBossLfo(category: 1 | 2): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+    this.stopBossLfo();
+
+    const buf = category === 1 ? this.bossLfo1Buffer : this.bossLfo2Buffer;
+    if (!buf) return;
+
+    try {
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+
+      const gain = this.ctx.createGain();
+      // 程よい音量バランス（BGMや効果音を邪魔せず不気味な威圧感を出す）
+      gain.gain.setValueAtTime(category === 1 ? 0.22 : 0.18, this.ctx.currentTime);
+
+      src.connect(gain);
+      gain.connect(this.ctx.destination);
+      src.start(0);
+
+      this.activeBossLfoSource = src;
+      this.activeBossLfoGain = gain;
+    } catch (e) {
+      console.warn('startBossLfo error:', e);
+    }
+  }
+
+  public stopBossLfo(): void {
+    if (this.activeBossLfoSource) {
+      try {
+        this.activeBossLfoSource.stop();
+        this.activeBossLfoSource.disconnect();
+      } catch {
+        // ignore
+      }
+      this.activeBossLfoSource = null;
+    }
+    if (this.activeBossLfoGain) {
+      try {
+        this.activeBossLfoGain.disconnect();
+      } catch {
+        // ignore
+      }
+      this.activeBossLfoGain = null;
+    }
   }
 
   // ★ ユーザー要望：R-TYPEのフォースをぶち当てているような「ジャシシッ！」「ガガッ」という重厚な破壊ヒット音
@@ -447,6 +673,7 @@ export class Sound {
       clearInterval(this.bgmIntervalId);
       this.bgmIntervalId = null;
     }
+    this.stopBossLfo();
   }
 
   public resumeBGM(): void {
@@ -463,5 +690,6 @@ export class Sound {
       this.bgmIntervalId = null;
     }
     this.currentBgmPhase = 'none';
+    this.stopBossLfo();
   }
 }

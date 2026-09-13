@@ -11,8 +11,9 @@ export class PlayerBullet {
   public color: string;
   public isDead = false;
   public gunId: string;
+  public pieceType?: string;
 
-  constructor(x: number, y: number, angle = -Math.PI / 2, color = '#00ffff', gunId = '') {
+  constructor(x: number, y: number, angle = -Math.PI / 2, color = '#00ffff', gunId = '', pieceType?: string) {
     this.x = x;
     this.y = y;
     this.angle = angle;
@@ -22,6 +23,7 @@ export class PlayerBullet {
     this.vy = Math.sin(angle) * BULLET_SPEED;
     this.color = color;
     this.gunId = gunId;
+    this.pieceType = pieceType;
   }
 
   public update(dt: number): void {

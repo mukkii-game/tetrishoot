@@ -370,7 +370,7 @@ export class Player {
       if (emergencyCount < 1) {
         const bx = this.anchorX + BLOCK_SIZE;
         const by = this.anchorY;
-        bullets.push(new PlayerBullet(bx, by, -Math.PI / 2, '#ffea00', 'o_core_emergency'));
+        bullets.push(new PlayerBullet(bx, by, -Math.PI / 2, '#ffea00', 'o_core_emergency', 'O'));
       }
       return bullets;
     }
@@ -419,7 +419,7 @@ export class Player {
         const bx = this.anchorX + (attached.relGx + gun.cellGx + 0.5 + gun.dirX * 0.5) * BLOCK_SIZE;
         const by = this.anchorY + (attached.relGy + gun.cellGy + 0.5 + gun.dirY * 0.5) * BLOCK_SIZE;
 
-        bullets.push(new PlayerBullet(bx, by, gun.angle, piece.color, gunId));
+        bullets.push(new PlayerBullet(bx, by, gun.angle, piece.color, gunId, piece.type));
         bulletCountPerGun[gunId] = currentCount + 1;
       }
     }

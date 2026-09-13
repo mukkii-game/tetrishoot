@@ -21,6 +21,7 @@ export type AlienRank =
   | 'GRADIUS_FAN'      // ★ グラディウス／沙羅曼蛇：開幕編隊（突進・反転離脱）
   | 'DART_MISSILE'     // ★ 索敵加速ミサイル（水平浮遊後、縦・横へ急加速）
   | 'SIDE_WARP_RUNNER' // ★ ユーザー要望：左右ループ走査機（画面端から反対側へワープして周回突撃）
+  | 'STARFORCE_CORNER' // ★ スターフォース名物：左右端を真下へ落下後、自機Y座標で90度曲がって突撃
   | 'GIGA_COLD_EYE'    // ★ 超ド級分裂目玉ボス
   | 'SPACE_SERPENT_HEAD' // ★ 多関節スペースドラゴン（頭部）
   | 'SERPENT_BODY';    // ★ 多関節スペースドラゴン（胴体節）
@@ -53,6 +54,7 @@ export type FlightPattern =
   | 'XEVIOUS_TOROID'      // ★ ゼビウス風：直角クランク移動で画面をクロス
   | 'STARFORCE_SWOOP'     // ★ スターフォース風：超高速ダイナミック全画面ダイブ＆旋回
   | 'STARFORCE_GARI_MOVE' // ★ スターフォース・ガリの動き（急降下→急停止→鋭角急加速）
+  | 'STARFORCE_CORNER_DIVE' // ★ スターフォース：端を落下→自機Yで90度曲がって突撃
   | 'GRADIUS_FLEET'       // ★ グラディウス開幕編隊（突撃後、急旋回して斜め離脱）
   | 'DELAYED_DART'        // ★ 索敵加速ミサイル（微動後、一気に高速直進）
   | 'SIDE_WRAP_SWEEP'     // ★ ユーザー要望：左右ループ周回（右端に行くと左から、左端に行くと右から連続突撃）
@@ -85,6 +87,10 @@ export class Enemy {
   public diveDelay = 0;
   public movingRight = true;
   public eyeLookX = 0;
+
+  // スターフォース90度直角旋回・メテオレーザー通知用
+  public turned90 = false;
+  public justFiredLaser = false;
 
   // ストリーム曲線編隊パラメータ
   public curveType?: CurvePathType;
@@ -260,6 +266,12 @@ export class Enemy {
         this.maxHp = 1;
         this.scoreValue = 500; // 左右ループ走査機
         break;
+      case 'STARFORCE_CORNER':
+        this.width = 28;
+        this.height = 28;
+        this.maxHp = 1;
+        this.scoreValue = 450; // スターフォース90度直角旋回機
+        break;
       case 'GIGA_COLD_EYE':
         this.width = 112;
         this.height = 96;
@@ -417,6 +429,14 @@ export class Enemy {
       this.y = 90 + (formationRow % 5) * 48;
       this.vx = (fromLeft ? 1 : -1) * (240 + Math.random() * 60);
       this.vy = 28; // 緩やかに降りながら左右を高速ループ！
+    } else if (pattern === 'STARFORCE_CORNER_DIVE') {
+      // ★ スターフォース名物：左右端を落下し自機Yで90度曲がって突進
+      const startLeft = formationCol % 2 === 0;
+      this.x = startLeft ? 28 : CANVAS_WIDTH - 28 - this.width;
+      this.y = -40;
+      this.vx = 0;
+      this.vy = 280;
+      this.turned90 = false;
     } else if (pattern === 'TERRAIN_LAUNCH') {
       this.x = Math.random() > 0.5 ? -40 : CANVAS_WIDTH + 40;
       this.y = 100 + Math.random() * (CANVAS_HEIGHT * 0.5);
@@ -437,6 +457,7 @@ export class Enemy {
     canDive: boolean
   ): boolean {
     let justStartedDive = false;
+    const prevPatternTimer = this.patternTimer;
     this.timeAlive += dt;
     this.patternTimer += dt;
     if (this.flashTime > 0) this.flashTime -= dt;
@@ -484,6 +505,13 @@ export class Enemy {
         this.y = -100;
       }
       return false;
+    }
+
+    // メテオ系敵が画面内へ突入開始した瞬間にレーザー音を鳴らす
+    if (prevPatternTimer < 0 && this.patternTimer >= 0) {
+      if (this.pattern === 'METEOR_STRAIGHT' || this.pattern === 'METEOR_DIAGONAL') {
+        this.justFiredLaser = true;
+      }
     }
 
     if (this.animTimer >= 0.22) {
@@ -937,6 +965,7 @@ export class Enemy {
           this.y = -50;
           this.x = 40 + Math.random() * (CANVAS_WIDTH - 80);
           this.vy = 420 + Math.random() * 80;
+          this.justFiredLaser = true;
         }
         if (this.x < -40) this.x = CANVAS_WIDTH + 30;
         else if (this.x > CANVAS_WIDTH + 40) this.x = -30;
@@ -953,28 +982,30 @@ export class Enemy {
           this.y = -40 + Math.random() * 80;
           this.vx = (fromLeft ? 1 : -1) * (260 + Math.random() * 100);
           this.vy = 320 + Math.random() * 80;
+          this.justFiredLaser = true;
         }
         break;
       }
 
       // ★ ユーザー要望：スターフォースの「ガリ」の動き！
-      // 画面上部から猛スピードで急降下→自機前で急停止スウィング→角度を変えて超高速ダッシュ！
+      // 「ガリはもう少し画面下部まで突っ込んできて」
+      // 画面上部から猛スピードで画面下部（自機直前：y >= 500）まで深く急降下→急停止スウィング→角度を変えて超高速ダッシュ！
       case 'STARFORCE_GARI_MOVE': {
-        const t = this.patternTimer % 4.2;
-        if (t < 0.9) {
-          // フェーズ1: 超高速ストレート急降下
-          this.y += 340 * dt;
-        } else if (t < 1.7) {
+        const t = this.patternTimer % 4.6;
+        if (t < 1.25) {
+          // フェーズ1: 画面下部（自機の目前）まで超高速ストレート急降下！
+          this.y += 440 * dt;
+        } else if (t < 2.1) {
           // フェーズ2: 自機直前でキュキュッと急停止＆小刻みな横スウィング（ガリの真骨頂！）
-          this.x += Math.sin((t - 0.9) * 16) * 140 * dt;
-        } else if (t < 3.2) {
+          this.x += Math.sin((t - 1.25) * 18) * 150 * dt;
+        } else if (t < 3.6) {
           // フェーズ3: 自機の方向を狙って電光石火の斜め急加速ダッシュ！
-          if (t - dt < 1.7) {
+          if (t - dt < 2.1) {
             const dx = playerX - this.x;
             const dy = playerY - this.y;
             const dist = Math.hypot(dx, dy) || 1;
-            this.vx = (dx / dist) * 380;
-            this.vy = Math.max(160, (dy / dist) * 380);
+            this.vx = (dx / dist) * 440;
+            this.vy = Math.max(180, (dy / dist) * 440);
           }
           this.x += this.vx * dt;
           this.y += this.vy * dt;
@@ -987,8 +1018,37 @@ export class Enemy {
         // 画面下・外に出たら上空から再突入！死ぬまでループ
         if (this.y > CANVAS_HEIGHT + 40 || this.x < -80 || this.x > CANVAS_WIDTH + 80) {
           this.y = -40;
-          this.x = Math.max(40, Math.min(CANVAS_WIDTH - 60, playerX + (Math.random() - 0.5) * 160));
+          this.x = Math.max(40, Math.min(CANVAS_WIDTH - 60, playerX + (Math.random() - 0.5) * 180));
           this.patternTimer = 0;
+          this.vx = 0;
+          this.vy = 400;
+        }
+        break;
+      }
+
+      // ★ ユーザー要望：スターフォース名物：左右端をまっすぐ落ちてきて、自機と縦座標が合うと90度曲がって突っ込んでくる！
+      case 'STARFORCE_CORNER_DIVE': {
+        if (!this.turned90) {
+          // フェーズ1: 画面左右端を真下へ垂直急降下
+          this.y += this.vy * dt;
+          // 自機のY座標と縦座標が合ったら90度直角旋回！
+          if (this.y >= playerY - 12) {
+            this.turned90 = true;
+            this.vy = 0;
+            const toRight = this.x < CANVAS_WIDTH / 2;
+            this.vx = (toRight ? 1 : -1) * 440; // 自機へ向かって水平フル加速！
+          }
+        } else {
+          // フェーズ2: 横方向へ電光石火の突進！
+          this.x += this.vx * dt;
+        }
+
+        // 画面外へ抜けたら左右端上空から再突入
+        if (this.x < -60 || this.x > CANVAS_WIDTH + 60 || this.y > CANVAS_HEIGHT + 40) {
+          this.turned90 = false;
+          const startLeft = Math.random() > 0.5;
+          this.x = startLeft ? 28 : CANVAS_WIDTH - 28 - this.width;
+          this.y = -40;
           this.vx = 0;
           this.vy = 280;
         }
@@ -1645,6 +1705,39 @@ export class Enemy {
         // ワープ航行推進スラスター
         ctx.fillStyle = f === 0 ? '#ffaa00' : '#ffffff';
         ctx.fillRect(this.vx > 0 ? -15 : 11, -3, 4, 6);
+        break;
+      }
+
+      // ★ スターフォース名物：90度直角旋回機（STARFORCE_CORNER）
+      case 'STARFORCE_CORNER': {
+        ctx.save();
+        // 進行方向に向かって機首を向ける
+        const moveAngle = this.turned90 ? (this.vx > 0 ? 0 : Math.PI) : Math.PI / 2;
+        ctx.rotate(moveAngle);
+
+        // 鋭利なデルタ翼戦闘機
+        ctx.fillStyle = '#00d0ff';
+        ctx.beginPath();
+        ctx.moveTo(13, 0);
+        ctx.lineTo(-11, -9);
+        ctx.lineTo(-6, 0);
+        ctx.lineTo(-11, 9);
+        ctx.closePath();
+        ctx.fill();
+
+        // コア装甲
+        ctx.fillStyle = '#ff0055';
+        ctx.fillRect(-5, -4, 8, 8);
+
+        // コア発光チップ
+        ctx.fillStyle = f === 0 ? '#ffea00' : '#ffffff';
+        ctx.fillRect(-2, -2, 4, 4);
+
+        // バーニア噴射
+        ctx.fillStyle = f === 0 ? '#ffaa00' : '#ffffff';
+        ctx.fillRect(-10, -2, 3, 4);
+
+        ctx.restore();
         break;
       }
 
