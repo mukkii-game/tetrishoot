@@ -2,9 +2,9 @@
 export const CANVAS_WIDTH = 540;
 export const CANVAS_HEIGHT = 720;
 
-export const BLOCK_SIZE = 30; // 1ブロックのピクセル幅・高さ
-export const GRID_COLS = Math.floor(CANVAS_WIDTH / BLOCK_SIZE); // 18列 (0 ~ 17)
-export const GRID_ROWS = Math.floor(CANVAS_HEIGHT / BLOCK_SIZE); // 24行 (0 ~ 23)
+export const BLOCK_SIZE = 20; // 1ブロックのピクセル幅・高さ（ムーンクレスタ2号機サイズ：Oミノ40x40）
+export const GRID_COLS = Math.floor(CANVAS_WIDTH / BLOCK_SIZE); // 27列
+export const GRID_ROWS = Math.floor(CANVAS_HEIGHT / BLOCK_SIZE); // 36行
 
 // ステージ設定
 export const MAX_STAGES = 10;

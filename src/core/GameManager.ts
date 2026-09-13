@@ -150,15 +150,26 @@ export class GameManager {
     this.bossDying = false;
     this.bossDeathTimer = 0;
 
-    // 要望②：Wave 3, 6等は「右スクロール面」！それ以外は「上スクロール面」
-    const isRightScroll = this.stage === 3 || this.stage === 6;
+    // ユーザー要望：
+    // 「ムーンクレスタフォロワーと、ギャラガフォロワーと、取りあえず交互に出して。沙羅曼蛇フォロワーもときどきまぜる 地形のある面で」
+    // Wave 1: ムーンクレスタ（コールドアイ分裂＆スーパーアイ深宇宙）
+    // Wave 2: ギャラガ（S字＆8の字ストリーム編隊・急降下ダイブ）
+    // Wave 3: 沙羅曼蛇（縦スクロール・バンガード岩盤ブロック洞窟突破）
+    // Wave 4: ムーンクレスタ（フォー・フライ＆怒涛のメテオゾーン）
+    // Wave 5: ギャラガ（クロススプリット大交差＆大型母船中ボス）
+    // Wave 6: 沙羅曼蛇（横スクロール・右方向バンガードブロック回廊）
+    // Wave 7: ムーンクレスタ（アトミック・ファントム＆ベータ・ファントム強襲）
+    // Wave 8: ギャラガ（インフィニティ大編隊＆四方包囲網）
+    // Wave 9: 沙羅曼蛇（上下激動・高密度バンガードブロック迷宮）
+    // Wave 10: 最終決戦（全フォロワー総力戦カタストロフィ）
+
+    const isSalamander = this.stage === 3 || this.stage === 6 || this.stage === 9;
+    const isRightScroll = this.stage === 6; // Wave 6は横スクロール沙羅曼蛇
     const direction = isRightScroll ? 'RIGHT' : 'UP';
     this.starfield.direction = direction;
 
-    // 地形有効化（グラディウス・サラマンダー風の狭窄洞窟）
-    // Wave 2以降、あるいは全ウェーブで地形を適用
-    const enableTerrain = this.stage >= 2;
-    this.terrain.reset(direction, enableTerrain);
+    // 地形は「沙羅曼蛇フォロワー面」で有効化！
+    this.terrain.reset(direction, isSalamander);
 
     // ギャラガ＆ムーンクレスタ風 多彩な大編隊をスポーン！
     this.spawnAlienFleet();
@@ -421,168 +432,146 @@ export class GameManager {
 
     switch (this.stage) {
       case 1:
-        // 【WAVE 1：ギャラガ＆ムーンクレスタ導入編】（ザコ44機！）
-        // 美しいS字カーブ、そしてムーンクレスタ名物・不規則に揺れ撃つと2つに分裂するSPLITTING_EYE！
-        // 序盤の退屈な空き時間を解消し、切れ目なく敵が次々押し寄せるメリハリ構成に最適化
+        // 【WAVE 1：ムーンクレスタ Stage 1&2・コールドアイ＆スーパーアイ】（ザコ32機）
+        // 撃つと2つのスーパーアイにパッと分裂するコールドアイ＋最初から降下するスーパーアイ！
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 0, 0.2 + i * 0.22));
+        }
+        for (let i = 0; i < 16; i++) {
+          this.enemies.push(new Enemy('MINI_EYE', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 1, 0.8 + i * 0.18));
+        }
+        break;
+
+      case 2:
+        // 【WAVE 2：ギャラガ・S字＆8の字大流星編隊】（ザコ44機）
+        // 左上・右上から流麗な曲線を描いて飛来し、隊列から急降下ダイブ！
         for (let k = 0; k < 18; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.05, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
         for (let k = 0; k < 16; k++) {
           this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 0.45, 'FIGURE_EIGHT', k));
         }
-        // ★ ムーンクレスタ分裂敵（間髪入れずに降下）
-        for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 0.8 + i * 0.25));
-        }
-        break;
-
-      case 2:
-        // 【WAVE 2：ゼビウスクランク＆左右クロスストリーム】（ザコ56機！）
-        // 左右から交差して降下する大編隊＋ゼビウス風直角クランクのトーロイド！狭窄地形も初登場！
-        for (let k = 0; k < 20; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.2, 'S_CURVE_LEFT_TO_RIGHT', k));
-        }
-        for (let k = 0; k < 16; k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 5 + (k % 4), 2, 0.5, 'S_CURVE_RIGHT_TO_LEFT', k));
-        }
-        // ★ ゼビウス風トーロイド
-        for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 2 + (i % 5), 1, 1.0 + i * 0.25));
-        }
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 0, 2.0 + i * 0.3));
+        for (let k = 0; k < 10; k++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 3, 0.8, 'INFINITY_DIVE_LEFT', k));
         }
         break;
 
       case 3:
-        // 【WAVE 3：★右スクロール洞窟突破！スターフォース旋回＆噴水迎撃】（ザコ54機！）
-        // 右スクロールで上下に天井と床の鍾乳石！高速ダイブするスターフォース敵と噴水編隊！
+        // 【WAVE 3：沙羅曼蛇 1・縦スクロール バンガード岩盤迷宮突破】（ザコ40機）
+        // カクカクしたバンガード山鳴り地形！狭まる岩盤の隙間をクランク移動するトーロイド＆スターフォース強襲！
         for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.4 + i * 0.2));
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 6), 1, 0.5 + i * 0.22));
         }
-        for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 6), 1, 0.8 + i * 0.2));
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.8 + i * 0.2));
         }
-        for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 4) * 2, 2, 1.2 + i * 0.15));
-        }
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 1.8 + i * 0.3));
+        for (let i = 0; i < 10; i++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'SURPRISE_FROM_BOTTOM', 1 + (i % 5) * 2, 2, 1.2 + i * 0.16));
         }
         break;
 
       case 4:
-        // 【WAVE 4：ムーンクレスタ名物・激震メテオゾーン！】（ザコ56機！）
-        // 天頂から大量の硬い隕石メテオが燃えながら高速乱舞落下！左右横断部隊と挟撃！
-        for (let i = 0; i < 28; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.4 + i * 0.12));
+        // 【WAVE 4：ムーンクレスタ Stage 3&4・フォー・フライ＆メテオシャワー】（ザコ48機）
+        // 十字型エイリアン「フォー・フライ」の不規則カクカク飛来＋天頂から燃えるメテオ群！
+        for (let i = 0; i < 16; i++) {
+          this.enemies.push(new Enemy('FOUR_FLY', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 1, 0.2 + i * 0.2));
         }
-        for (let i = 0; i < 14; i++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_LEFT', 2, 0, 1.6 + i * 0.12));
-          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_RIGHT', 7, 1, 2.4 + i * 0.12));
+        for (let i = 0; i < 24; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.5 + i * 0.12));
+        }
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 1.6 + i * 0.25));
         }
         break;
 
       case 5:
-        // 【WAVE 5：中ボス前哨戦 ＆ 左右X字クロススプリット大交差】（ザコ60機！）
-        // 左右上空から対角線に超高速で交差突進する怒涛のスプリット部隊＋インフィニティ宙返り！
+        // 【WAVE 5：ギャラガ・クロススプリット突撃＆インフィニティ宙返り】（ザコ56機）
+        // 左右対角線から交差突撃する大編隊＋大型イエロー司令機の中ボス前哨戦！
         for (let k = 0; k < 18; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.2, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.2, 'INFINITY_DIVE_RIGHT', k));
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.15, 'INFINITY_DIVE_LEFT', k));
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.15, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'CROSS_SPLIT', 1, 0, 1.2 + i * 0.13));
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'CROSS_SPLIT', 7, 0, 1.2 + i * 0.13));
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'CROSS_SPLIT', 1 + (i % 7), 0, 0.9 + i * 0.12));
+        }
+        for (let i = 0; i < 6; i++) {
+          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 0, 1.8 + i * 0.2));
         }
         break;
 
       case 6:
-        // 【WAVE 6：四方包囲網（左右横断＋下噴出＋メテオのトリプル猛攻）】（ザコ64機！）
-        // 上からメテオ、下から噴出、左右から大型艦スイープが同時に押し寄せる！
-        for (let i = 0; i < 20; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.4 + i * 0.13));
+        // 【WAVE 6：沙羅曼蛇 2・横スクロール 右方向バンガード岩盤回廊】（ザコ50機）
+        // 天井と床から突き出るバンガードブロック岩！高速で旋回するトーロイドとスターフォース！
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 6), 1, 0.3 + i * 0.2));
         }
-        for (let i = 0; i < 20; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 7) * 2, 2, 1.0 + i * 0.11));
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.6 + i * 0.18));
         }
-        for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 2.0 + i * 0.15));
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 2.8 + i * 0.15));
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_RIGHT', 7, 0, 1.2 + i * 0.15));
         }
         break;
 
       case 7:
-        // 【WAVE 7：カミソリ急降下ジグザグストーム ＆ インフィニティ大乱舞】（ザコ68機！）
-        // 左右に激しく身をよじりながら切り込むジグザグ編隊の大群！
-        for (let k = 0; k < 20; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 3, 0.15, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 3, 0.15, 'INFINITY_DIVE_RIGHT', k));
+        // 【WAVE 7：ムーンクレスタ Stage 5&7・アトミック・ファントム＆ベータ・ファントム】（ザコ58機）
+        // 鋭角急加速突撃のアトミック・ファントム＋コウモリ翼の強敵ベータ・ファントム大乱舞！
+        for (let i = 0; i < 20; i++) {
+          this.enemies.push(new Enemy('ATOMIC_PHANTOM', 'ZIGZAG_DIVE', 1 + (i % 8), 1, 0.2 + i * 0.14));
         }
-        for (let i = 0; i < 24; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'ZIGZAG_DIVE', 1 + (i % 8), 1, 1.0 + i * 0.11));
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('BETA_PHANTOM', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 0, 0.6 + i * 0.16));
         }
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 2, 0, 0.4));
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 4, 0, 0.4));
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 6, 0, 0.4));
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 3, 0, 0.6));
+        for (let i = 0; i < 20; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 1.0 + i * 0.12));
+        }
         break;
 
       case 8:
-        // 【WAVE 8：流星雨メテオシャワー ＆ 地獄の噴水編隊】（ザコ76機！）
-        // 上空からは怒涛のメテオ群、下からは息つく暇もない噴水エイリアン！
-        for (let i = 0; i < 30; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.3 + i * 0.1));
+        // 【WAVE 8：ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】（ザコ66機）
+        // 画面全方位から押し寄せるギャプラス風ストリーム大編隊！
+        for (let k = 0; k < 22; k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.12, 'INFINITY_DIVE_LEFT', k));
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.12, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < 30; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.8 + i * 0.1));
-        }
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 0, 2.2 + i * 0.12));
+        for (let i = 0; i < 22; i++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'ZIGZAG_DIVE', 1 + (i % 8), 2, 0.8 + i * 0.11));
         }
         break;
 
       case 9:
-        // 【WAVE 9：全方位総攻撃前夜（全パターン同時展開・フルキャスト）】（ザコ86機！）
-        // メテオ、ジグザグ、スプリット、左右スイープ、下噴出の全方位同時波状攻撃！
-        for (let k = 0; k < 20; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 6), 3, 0.15, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 5), 3, 0.15, 'INFINITY_DIVE_RIGHT', k));
+        // 【WAVE 9：沙羅曼蛇 3・極限バンガード迷宮要塞】（ザコ72機）
+        // 左右から大きくせり出す山鳴りブロック回廊＋全方位エイリアン迎撃！
+        for (let i = 0; i < 24; i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 0.3 + i * 0.15));
         }
-        for (let i = 0; i < 20; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.5 + i * 0.11));
+        for (let i = 0; i < 24; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.6 + i * 0.14));
         }
-        for (let i = 0; i < 20; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'ZIGZAG_DIVE', 1 + (i % 8), 2, 1.0 + i * 0.11));
-        }
-        for (let i = 0; i < 13; i++) {
-          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_LEFT', 2, 0, 1.8 + i * 0.12));
-          this.enemies.push(new Enemy('GIANT_RED', 'SWEEP_FROM_RIGHT', 7, 0, 1.8 + i * 0.12));
+        for (let i = 0; i < 24; i++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'SURPRISE_FROM_BOTTOM', 1 + (i % 6) * 2, 2, 1.0 + i * 0.12));
         }
         break;
 
       case 10:
       default:
-        // 【WAVE 10：最終決戦・怒涛のギャラクティク・カタストロフィ！】（ザコ100機超え！）
-        // 上・下・左・右から息つく暇もない怒涛の総力戦！
-        for (let k = 0; k < 24; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 3, 0.1, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 3, 0.1, 'INFINITY_DIVE_RIGHT', k));
+        // 【WAVE 10：最終決戦・オールスター総力戦カタストロフィ】（ザコ90機超え！）
+        // ムーンクレスタ怪獣・ギャラガ編隊・沙羅曼蛇部隊が総結集する究極のラストバトル！
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('BETA_PHANTOM', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 0, 0.2 + i * 0.15));
         }
-        for (let i = 0; i < 24; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.3 + i * 0.09));
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('ATOMIC_PHANTOM', 'ZIGZAG_DIVE', 1 + (i % 8), 1, 0.4 + i * 0.13));
         }
-        for (let i = 0; i < 24; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SURPRISE_FROM_BOTTOM', 1 + (i % 8), 2, 0.6 + i * 0.09));
+        for (let k = 0; k < 20; k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.1, 'INFINITY_DIVE_LEFT', k));
         }
-        for (let i = 0; i < 14; i++) {
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 1, 0, 1.4 + i * 0.11));
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_RIGHT', 7, 0, 1.4 + i * 0.11));
+        for (let i = 0; i < 20; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.6 + i * 0.1));
         }
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 2, 0, 0.4));
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 4, 0, 0.4));
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 6, 0, 0.4));
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 3, 0, 0.5));
-        this.enemies.push(new Enemy('GIANT_RED', 'FORMATION_LOOP', 5, 0, 0.5));
+        for (let i = 0; i < 16; i++) {
+          this.enemies.push(new Enemy('FOUR_FLY', 'CROSS_SPLIT', 1 + (i % 7), 0, 1.0 + i * 0.12));
+        }
         break;
     }
   }

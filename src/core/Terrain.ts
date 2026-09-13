@@ -98,6 +98,13 @@ export class TerrainManager {
         w1 = Math.max(0, w1 - half);
         w2 = Math.max(0, w2 - half);
       }
+
+      // ユーザー要望：SNKのバンガードのようなブロックによるカクカクした山鳴り地形
+      // BLOCK_SIZE (20px) 単位で階段状・山鳴りブロックに量子化
+      const blockSize = 20;
+      w1 = Math.floor(w1 / blockSize) * blockSize;
+      w2 = Math.floor(w2 / blockSize) * blockSize;
+
       return { w1: Math.max(0, w1), w2: Math.max(0, w2) };
     } else {
       const baseReach = 110;
@@ -113,6 +120,11 @@ export class TerrainManager {
         w1 = Math.max(0, w1 - half);
         w2 = Math.max(0, w2 - half);
       }
+
+      const blockSize = 20;
+      w1 = Math.floor(w1 / blockSize) * blockSize;
+      w2 = Math.floor(w2 / blockSize) * blockSize;
+
       return { w1: Math.max(0, w1), w2: Math.max(0, w2) };
     }
   }
@@ -151,60 +163,94 @@ export class TerrainManager {
     return false;
   }
 
+  // ★ SNK『バンガード (Vanguard)』風：ブロックによるカクカクした山鳴り地形描画
   public draw(ctx: CanvasRenderingContext2D): void {
     if (!this.enabled) return;
 
     ctx.save();
-    const step = 8;
+    const blockSize = 20; // バンガード風のブロック単位
 
     if (this.direction === 'UP') {
-      for (let y = 0; y < CANVAS_HEIGHT; y += step) {
-        const { w1, w2 } = this.getWallThickness(y);
+      // Y方向に20pxブロック単位で階段状に描画
+      const startY = -((this.scrollOffset) % blockSize);
+      for (let y = startY; y < CANVAS_HEIGHT + blockSize; y += blockSize) {
+        const { w1, w2 } = this.getWallThickness(y + blockSize / 2);
 
+        // 左壁：ブロックの列（横にも20px刻みでブロックを並べる）
         if (w1 > 0) {
-          ctx.fillStyle = '#1e142e';
-          ctx.fillRect(0, y, w1, step);
-          ctx.fillStyle = '#e86a17';
-          ctx.fillRect(w1 - 4, y, 4, step);
-          ctx.fillStyle = '#ffaa44';
-          ctx.fillRect(w1 - 2, y + 2, 2, step - 4);
+          for (let bx = 0; bx < w1; bx += blockSize) {
+            const bw = Math.min(blockSize, w1 - bx);
+            this.drawVanguardBlock(ctx, bx, y, bw, blockSize, '#552200', '#aa4400', '#ff8800');
+          }
         }
 
+        // 右壁：ブロックの列
         if (w2 > 0) {
           const rx = CANVAS_WIDTH - w2;
-          ctx.fillStyle = '#1e142e';
-          ctx.fillRect(rx, y, w2, step);
-          ctx.fillStyle = '#e86a17';
-          ctx.fillRect(rx, y, 4, step);
-          ctx.fillStyle = '#ffaa44';
-          ctx.fillRect(rx, y + 2, 2, step - 4);
+          for (let bx = rx; bx < CANVAS_WIDTH; bx += blockSize) {
+            const bw = Math.min(blockSize, CANVAS_WIDTH - bx);
+            this.drawVanguardBlock(ctx, bx, y, bw, blockSize, '#552200', '#aa4400', '#ff8800');
+          }
         }
       }
     } else {
-      for (let x = 0; x < CANVAS_WIDTH; x += step) {
-        const { w1, w2 } = this.getWallThickness(x);
+      // X方向に20pxブロック単位で階段状に描画
+      const startX = -((this.scrollOffset) % blockSize);
+      for (let x = startX; x < CANVAS_WIDTH + blockSize; x += blockSize) {
+        const { w1, w2 } = this.getWallThickness(x + blockSize / 2);
 
+        // 上壁
         if (w1 > 0) {
-          ctx.fillStyle = '#1a2634';
-          ctx.fillRect(x, 0, step, w1);
-          ctx.fillStyle = '#29adff';
-          ctx.fillRect(x, w1 - 4, step, 4);
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(x + 2, w1 - 2, step - 4, 2);
+          for (let by = 0; by < w1; by += blockSize) {
+            const bh = Math.min(blockSize, w1 - by);
+            this.drawVanguardBlock(ctx, x, by, blockSize, bh, '#002255', '#0055aa', '#00aaff');
+          }
         }
 
+        // 下壁
         if (w2 > 0) {
           const by = CANVAS_HEIGHT - w2;
-          ctx.fillStyle = '#1a2634';
-          ctx.fillRect(x, by, step, w2);
-          ctx.fillStyle = '#29adff';
-          ctx.fillRect(x, by, step, 4);
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(x + 2, by, step - 4, 2);
+          for (let y = by; y < CANVAS_HEIGHT; y += blockSize) {
+            const bh = Math.min(blockSize, CANVAS_HEIGHT - y);
+            this.drawVanguardBlock(ctx, x, y, blockSize, bh, '#002255', '#0055aa', '#00aaff');
+          }
         }
       }
     }
 
     ctx.restore();
+  }
+
+  // バンガード風の立体感・輪郭線のあるレトロアーケードブロック描画
+  private drawVanguardBlock(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    baseColor: string,
+    edgeColor: string,
+    highlightColor: string
+  ): void {
+    // ブロック内部
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(x, y, w, h);
+
+    // ブロック外枠
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+    // 上・左ハイライト（立体感）
+    if (w > 2 && h > 2) {
+      ctx.fillStyle = highlightColor;
+      ctx.fillRect(x + 1, y + 1, w - 2, 2);
+      ctx.fillRect(x + 1, y + 1, 2, h - 2);
+
+      // 右・下シャドウ
+      ctx.fillStyle = edgeColor;
+      ctx.fillRect(x + w - 2, y + 2, 2, h - 3);
+      ctx.fillRect(x + 2, y + h - 2, w - 3, 2);
+    }
   }
 }

@@ -1,16 +1,19 @@
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../config';
 
 export type AlienRank =
-  | 'GREEN_DRONE'      // 小型グリーン
-  | 'RED_GUARD'        // 小型レッド
-  | 'YELLOW_COMMANDER' // 小型イエロー
+  | 'GREEN_DRONE'      // 小型グリーン（ギャラガ）
+  | 'RED_GUARD'        // 小型レッド（ギャラガ）
+  | 'YELLOW_COMMANDER' // 小型イエロー（ギャラガ）
   | 'GIANT_RED'        // 倍サイズ大型レッド
   | 'GIANT_YELLOW'     // 倍サイズ大型イエロー
   | 'UFO_MOTHERSHIP'   // 超大型ボスUFO
-  | 'METEOR_ROCK'      // ★ ムーンクレスタ名物：隕石メテオ（硬くて回転しながら急降下！）
-  | 'SPLITTING_EYE'    // ★ ムーンクレスタ名物：撃つと2つに分裂する不規則移動の目玉怪獣
-  | 'MINI_EYE'         // ★ 分裂した小型目玉
-  | 'TOROID_SCOUT';    // ★ ゼビウス風トーロイド
+  | 'METEOR_ROCK'      // ★ ムーンクレスタ：メテオ（硬くて回転しながら急降下）
+  | 'SPLITTING_EYE'    // ★ ムーンクレスタ：コールドアイ（撃つと2つのスーパーアイに分裂）
+  | 'MINI_EYE'         // ★ ムーンクレスタ：スーパーアイ（分裂小型目玉）
+  | 'FOUR_FLY'         // ★ ムーンクレスタ：フォー・フライ（十字型エイリアン）
+  | 'ATOMIC_PHANTOM'   // ★ ムーンクレスタ：アトミック・ファントム
+  | 'BETA_PHANTOM'     // ★ ムーンクレスタ：ベータ・ファントム（コウモリ型翼）
+  | 'TOROID_SCOUT';    // ★ 沙羅曼蛇・ゼビウス風トーロイド
 
 export type CurvePathType =
   | 'FIGURE_EIGHT'         // ギャラガ8の字ループ
@@ -154,6 +157,24 @@ export class Enemy {
         this.height = 22;
         this.maxHp = 1;
         this.scoreValue = 250;
+        break;
+      case 'FOUR_FLY':
+        this.width = 36;
+        this.height = 36;
+        this.maxHp = 1;
+        this.scoreValue = 300;
+        break;
+      case 'ATOMIC_PHANTOM':
+        this.width = 40;
+        this.height = 36;
+        this.maxHp = 1;
+        this.scoreValue = 400;
+        break;
+      case 'BETA_PHANTOM':
+        this.width = 44;
+        this.height = 36;
+        this.maxHp = 2; // タフなコウモリ型
+        this.scoreValue = 600;
         break;
       case 'TOROID_SCOUT':
         this.width = 32;
@@ -722,7 +743,80 @@ export class Enemy {
         break;
       }
 
-      // ★ ゼビウス風トーロイド（幾何学的菱形リング）
+      // ★ ムーンクレスタ：フォー・フライ（十字型・4枚羽エイリアン）
+      case 'FOUR_FLY': {
+        ctx.fillStyle = f === 0 ? '#ffea00' : '#ff0033';
+        // 中央コア
+        ctx.fillRect(-6, -6, 12, 12);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-3, -3, 6, 6);
+        ctx.fillStyle = '#0055ff';
+        ctx.fillRect(-1, -1, 2, 2);
+
+        // 4枚の羽（羽ばたきアニメ）
+        ctx.fillStyle = f === 0 ? '#00ee44' : '#ffea00';
+        if (f === 0) {
+          ctx.fillRect(-14, -4, 8, 8); // 左
+          ctx.fillRect(6, -4, 8, 8);  // 右
+          ctx.fillRect(-4, -14, 8, 8); // 上
+          ctx.fillRect(-4, 6, 8, 8);  // 下
+        } else {
+          ctx.fillRect(-12, -12, 7, 7); // 左上
+          ctx.fillRect(5, -12, 7, 7);  // 右上
+          ctx.fillRect(-12, 5, 7, 7);  // 左下
+          ctx.fillRect(5, 5, 7, 7);   // 右下
+        }
+        break;
+      }
+
+      // ★ ムーンクレスタ：アトミック・ファントム（鋭角突撃怪獣）
+      case 'ATOMIC_PHANTOM': {
+        ctx.fillStyle = '#ff0044';
+        ctx.fillRect(-12, -8, 24, 16);
+        ctx.fillStyle = '#ffea00';
+        ctx.fillRect(-8, -12, 16, 6); // 角
+        ctx.fillRect(-8, 8, 16, 4);   // 尾翼
+
+        // 複眼
+        ctx.fillStyle = '#00f0ff';
+        ctx.fillRect(-7, -4, 5, 6);
+        ctx.fillRect(2, -4, 5, 6);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-5, -2, 2, 3);
+        ctx.fillRect(4, -2, 2, 3);
+
+        // 左右の牙
+        ctx.fillStyle = f === 0 ? '#ffffff' : '#ffcc00';
+        ctx.fillRect(-15, 0, 4, 7);
+        ctx.fillRect(11, 0, 4, 7);
+        break;
+      }
+
+      // ★ ムーンクレスタ：ベータ・ファントム（コウモリ・大型翼エイリアン）
+      case 'BETA_PHANTOM': {
+        // コウモリのような大翼
+        ctx.fillStyle = '#ff3300';
+        ctx.fillRect(-16, -6, 32, 10);
+        ctx.fillStyle = '#ffea00';
+        if (f === 0) {
+          ctx.fillRect(-20, -10, 8, 14);
+          ctx.fillRect(12, -10, 8, 14);
+        } else {
+          ctx.fillRect(-20, -4, 8, 14);
+          ctx.fillRect(12, -4, 8, 14);
+        }
+
+        // 胴体と頭部
+        ctx.fillStyle = '#0055ff';
+        ctx.fillRect(-7, -10, 14, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-4, -6, 8, 6);
+        ctx.fillStyle = '#ff0000';
+        ctx.fillRect(-2, -4, 4, 3); // 凶悪な赤目
+        break;
+      }
+
+      // ★ 沙羅曼蛇・ゼビウス風トーロイド（幾何学的菱形リング）
       case 'TOROID_SCOUT': {
         ctx.rotate(this.timeAlive * 4); // 高速回転リング
         ctx.fillStyle = '#cccccc';

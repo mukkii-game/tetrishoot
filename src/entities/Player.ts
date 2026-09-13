@@ -340,12 +340,19 @@ export class Player {
   }
 
   // Oミノ（中心コア）から地続き（隣接）になっているかをBFSで検証
+  // ユーザー新ルール：自機はOミノが本体。もしOミノが2つ以上あったら、Oミノが0にならない限り死なない。
   // Oミノから切り離されたパーツを配列で取り出して返す（落下・回収用）
   public checkConnectivity(): AttachedPiece[] {
-    // Oミノ（コア）を探す
-    const coreIndex = this.pieces.findIndex(p => p.piece.type === 'O');
-    if (coreIndex === -1) {
-      // Oミノが破壊された＝ゲームオーバー
+    // すべてのOミノ（コア）のインデックスを取得
+    const coreIndices: number[] = [];
+    for (let i = 0; i < this.pieces.length; i++) {
+      if (this.pieces[i].piece.type === 'O') {
+        coreIndices.push(i);
+      }
+    }
+
+    if (coreIndices.length === 0) {
+      // すべてのOミノが破壊された＝ゲームオーバー
       this.isDead = true;
       return [];
     }
@@ -389,10 +396,13 @@ export class Player {
       }
     }
 
-    // BFSでコアから到達可能なピースを探索
+    // BFSですべてのOミノから到達可能なピースをマーク（マルチコア地続き探索）
     const visited = new Set<number>();
-    const queue = [coreIndex];
-    visited.add(coreIndex);
+    const queue: number[] = [];
+    for (const ci of coreIndices) {
+      visited.add(ci);
+      queue.push(ci);
+    }
 
     while (queue.length > 0) {
       const curr = queue.shift()!;
@@ -443,8 +453,11 @@ export class Player {
             const destroyedType = piece.type;
             this.pieces.splice(i, 1);
 
-            // コア（Oミノ）が破壊された場合、即ゲームオーバー
-            if (destroyedType === 'O') {
+            // 残っているOミノの数をカウント
+            const remainingOCount = this.pieces.filter(p => p.piece.type === 'O').length;
+
+            // Oミノが0個になった場合のみ、ゲームオーバー！
+            if (remainingOCount === 0) {
               this.isDead = true;
               const bounds = this.getBoundingBox();
               const centerX = (bounds.minX + bounds.maxX) / 2 || px;
@@ -453,7 +466,7 @@ export class Player {
               return { hit: true, pieceDestroyed: true, pieceType: destroyedType };
             }
 
-            // 残ったパーツの連結性検証：Oミノから切り離されたパーツは浮遊・落下！
+            // まだOミノが残っていれば生存！Oミノ群から切り離されたパーツを浮遊・回収へ
             const detachedPieces = this.checkConnectivity();
 
             if (this.pieces.length === 0) {
