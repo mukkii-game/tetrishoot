@@ -1,6 +1,6 @@
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../config';
 
-export type ScrollDirection = 'UP' | 'RIGHT';
+export type ScrollDirection = 'UP' | 'RIGHT' | 'DIAGONAL_UP_RIGHT';
 
 export class TerrainManager {
   public direction: ScrollDirection = 'UP';
@@ -136,10 +136,18 @@ export class TerrainManager {
       const { w1, w2 } = this.getWallThickness(y);
       if (x < w1) return true;
       if (x > CANVAS_WIDTH - w2) return true;
-    } else {
+    } else if (this.direction === 'RIGHT') {
       const { w1, w2 } = this.getWallThickness(x);
       if (y < w1) return true;
       if (y > CANVAS_HEIGHT - w2) return true;
+    } else if (this.direction === 'DIAGONAL_UP_RIGHT') {
+      // 斜めスクロール：対角線に沿った山鳴り地形判定
+      const diagCoord = (x + y) * 0.707;
+      const { w1, w2 } = this.getWallThickness(diagCoord);
+      // 左下壁（xが小さくyが大きい領域）
+      if (x + (CANVAS_HEIGHT - y) < w1 * 1.4) return true;
+      // 右上壁（xが大きくyが小さい領域）
+      if ((CANVAS_WIDTH - x) + y < w2 * 1.4) return true;
     }
     return false;
   }
@@ -193,7 +201,7 @@ export class TerrainManager {
           }
         }
       }
-    } else {
+    } else if (this.direction === 'RIGHT') {
       // X方向に20pxブロック単位で階段状に描画
       const startX = -((this.scrollOffset) % blockSize);
       for (let x = startX; x < CANVAS_WIDTH + blockSize; x += blockSize) {
@@ -213,6 +221,27 @@ export class TerrainManager {
           for (let y = by; y < CANVAS_HEIGHT; y += blockSize) {
             const bh = Math.min(blockSize, CANVAS_HEIGHT - y);
             this.drawVanguardBlock(ctx, x, y, blockSize, bh, '#002255', '#0055aa', '#00aaff');
+          }
+        }
+      }
+    } else if (this.direction === 'DIAGONAL_UP_RIGHT') {
+      // 斜めスクロール：段々畑状に斜めバンガードブロックを描画
+      const start = -((this.scrollOffset) % blockSize);
+      for (let y = start; y < CANVAS_HEIGHT + blockSize; y += blockSize) {
+        const { w1, w2 } = this.getWallThickness(y + blockSize / 2);
+        // 左側段々畑
+        if (w1 > 0) {
+          for (let bx = 0; bx < w1; bx += blockSize) {
+            const bw = Math.min(blockSize, w1 - bx);
+            this.drawVanguardBlock(ctx, bx, y, bw, blockSize, '#330044', '#770088', '#cc00ff');
+          }
+        }
+        // 右側段々畑
+        if (w2 > 0) {
+          const rx = CANVAS_WIDTH - w2;
+          for (let bx = rx; bx < CANVAS_WIDTH; bx += blockSize) {
+            const bw = Math.min(blockSize, CANVAS_WIDTH - bx);
+            this.drawVanguardBlock(ctx, bx, y, bw, blockSize, '#330044', '#770088', '#cc00ff');
           }
         }
       }

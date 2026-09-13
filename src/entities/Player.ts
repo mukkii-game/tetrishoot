@@ -16,6 +16,7 @@ export class Player {
   public vy = 0; // エクセリオン風慣性速度Y
   public pieces: AttachedPiece[] = [];
   public fireCooldown = 0;
+  public barrierTimer = 0;
   public isDead = false;
 
   constructor() {
@@ -258,6 +259,10 @@ export class Player {
       this.fireCooldown -= dt;
     }
 
+    if (this.barrierTimer > 0) {
+      this.barrierTimer -= dt;
+    }
+
     for (const attached of this.pieces) {
       attached.piece.update(dt);
     }
@@ -316,8 +321,8 @@ export class Player {
           continue;
         }
 
-        // 銃口固有のID（パーツインデックス＋銃口インデックス）
-        const gunId = `p${pieceIdx}_g${portIdx}`;
+        // 銃口固有のID（各ピースのユニークID＋銃口インデックスで確実に1銃口あたり2発管理）
+        const gunId = `${piece.id}_g${portIdx}`;
         const currentCount = bulletCountPerGun[gunId] || 0;
 
         // 画面内2発制限（2発存在している銃口からは新規発射しない）
@@ -434,6 +439,12 @@ export class Player {
     py: number,
     particles: ParticleManager
   ): { hit: boolean; pieceDestroyed: boolean; pieceType?: TetrominoType; detachedPieces?: AttachedPiece[] } {
+    // バリア稼働中は完全無敵（体当たり・弾を弾き返す）
+    if (this.barrierTimer > 0) {
+      particles.emitSparks(px, py, '#00ffff', 8);
+      return { hit: false, pieceDestroyed: false };
+    }
+
     for (let i = this.pieces.length - 1; i >= 0; i--) {
       const attached = this.pieces[i];
       const piece = attached.piece;
@@ -536,5 +547,39 @@ export class Player {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+
+    // バリアシールドリング描画（回転ネオンリング＋プラズマ粒子）
+    if (this.barrierTimer > 0) {
+      ctx.save();
+      const centerX = (bounds.minX + bounds.maxX) / 2;
+      const centerY = (bounds.minY + bounds.maxY) / 2;
+      const radius = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) * 0.75 + 14;
+
+      const t = Date.now() / 150;
+      const hue = Math.floor((t * 60) % 360);
+
+      ctx.translate(centerX, centerY);
+      ctx.rotate(t * 0.8);
+
+      ctx.strokeStyle = `hsl(${hue}, 100%, 65%)`;
+      ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+      ctx.shadowBlur = 16;
+      ctx.lineWidth = 3.5;
+
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 内側の逆回転点線リング
+      ctx.rotate(-t * 1.6);
+      ctx.strokeStyle = '#ffffff';
+      ctx.setLineDash([8, 8]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius - 6, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
   }
 }

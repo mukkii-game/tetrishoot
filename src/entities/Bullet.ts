@@ -28,7 +28,7 @@ export class PlayerBullet {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
-    if (this.y < -50 || this.y > CANVAS_HEIGHT + 50 || this.x < -50 || this.x > CANVAS_WIDTH + 50) {
+    if (this.y < 0 || this.y > CANVAS_HEIGHT + 20 || this.x < -20 || this.x > CANVAS_WIDTH + 20) {
       this.isDead = true;
     }
   }

@@ -13,7 +13,13 @@ export type AlienRank =
   | 'FOUR_FLY'         // ★ ムーンクレスタ：フォー・フライ（十字型エイリアン）
   | 'ATOMIC_PHANTOM'   // ★ ムーンクレスタ：アトミック・ファントム
   | 'BETA_PHANTOM'     // ★ ムーンクレスタ：ベータ・ファントム（コウモリ型翼）
-  | 'TOROID_SCOUT';    // ★ 沙羅曼蛇・ゼビウス風トーロイド
+  | 'TOROID_SCOUT'     // ★ 沙羅曼蛇・ゼビウス風トーロイド
+  | 'VANGUARD_POD'     // ★ SNKバンガード：特定高度を往復巡航し急降下
+  | 'TERRAIN_MISSILE'  // ★ コナミ・スクランブル：地形から横・縦に噴射突進
+  | 'FAST_FLYBY'       // ★ 高速横断フライバイ
+  | 'GIGA_COLD_EYE'    // ★ 超ド級分裂目玉ボス
+  | 'SPACE_SERPENT_HEAD' // ★ 多関節スペースドラゴン（頭部）
+  | 'SERPENT_BODY';    // ★ 多関節スペースドラゴン（胴体節）
 
 export type CurvePathType =
   | 'FIGURE_EIGHT'         // ギャラガ8の字ループ
@@ -33,13 +39,18 @@ export type FlightPattern =
   | 'KAMIKAZE_DIVE'
   | 'RETURNING'
   | 'METEOR_FALL'         // ★ ムーンクレスタ風：隕石・メテオ群（上から高速降下）
+  | 'METEOR_STRAIGHT'     // ★ ムーンクレスタ風：超高速直線メテオ
   | 'ZIGZAG_DIVE'         // ★ ムーンクレスタ風：カミソリ急降下（電光石火の左右切り返し）
   | 'CROSS_SPLIT'         // ★ 左右斜め上から中央交差突入
   | 'MOON_SPLIT_FLOAT'    // ★ ムーンクレスタ風：カクカク不規則に左右に振れながら降下
   | 'MOON_COLD_EYE'       // ★ ムーンクレスタ完全再現：コールドアイ（上部横スイング＆階段状ジグザグ急降下）
   | 'MOON_SUPER_EYE'      // ★ ムーンクレスタ完全再現：スーパーアイ（左右高速ダイアゴナルバウンド）
   | 'XEVIOUS_TOROID'      // ★ ゼビウス風：直角クランク移動で画面をクロス
-  | 'STARFORCE_SWOOP';    // ★ スターフォース風：超高速ダイナミック全画面ダイブ＆旋回
+  | 'STARFORCE_SWOOP'     // ★ スターフォース風：超高速ダイナミック全画面ダイブ＆旋回
+  | 'VANGUARD_CRUISE'     // ★ SNKバンガード：画面上部往復から急降下ダイブ
+  | 'TERRAIN_LAUNCH'      // ★ スクランブル：壁から横へ加速発射
+  | 'FLYBY_CROSS'         // ★ 水平全速フライバイ
+  | 'SERPENT_SLITHER';    // ★ スペースドラゴン蛇行運動
 
 export class Enemy {
   public id: string;
@@ -70,6 +81,11 @@ export class Enemy {
   public curveType?: CurvePathType;
   public streamDelay = 0; // 連隊内の順番ディレイ (0.12秒刻み)
   public streamProgress = 0;
+
+  // 多関節ドラゴン用パラメータ
+  public trail: { x: number; y: number }[] = [];
+  public leader?: Enemy;
+  public segmentIndex = 0;
 
   private animFrame = 0;
   private animTimer = 0;
@@ -190,11 +206,55 @@ export class Enemy {
         this.maxHp = 1;
         this.scoreValue = 350;
         break;
+      case 'VANGUARD_POD':
+        this.width = 36;
+        this.height = 32;
+        this.maxHp = 2; // 耐久2発のタフな巡航ポッド
+        this.scoreValue = 450;
+        break;
+      case 'TERRAIN_MISSILE':
+        this.width = 28;
+        this.height = 20;
+        this.maxHp = 1;
+        this.scoreValue = 300;
+        break;
+      case 'FAST_FLYBY':
+        this.width = 34;
+        this.height = 24;
+        this.maxHp = 1;
+        this.scoreValue = 500;
+        break;
+      case 'GIGA_COLD_EYE':
+        this.width = 112;
+        this.height = 96;
+        this.maxHp = 45; // 超ド級巨大目玉
+        this.scoreValue = 8000;
+        break;
+      case 'SPACE_SERPENT_HEAD':
+        this.width = 72;
+        this.height = 64;
+        this.maxHp = 40; // 多関節ドラゴン頭部
+        this.scoreValue = 10000;
+        break;
+      case 'SERPENT_BODY':
+        this.width = 48;
+        this.height = 48;
+        this.maxHp = 999; // 頭部破壊で連鎖爆散
+        this.scoreValue = 1000;
+        break;
     }
     if (this.isBoss) {
-      // ユーザー要望：ボスの大きさを2倍に巨大化！
-      this.width *= 2;
-      this.height *= 2;
+      // ユーザー要望：ボスの当たり判定を見かけのピクセルサイズに厳密補正（余分な拡大なし）
+      if (this.rank === 'GIANT_RED') {
+        this.width = 80;
+        this.height = 72;
+      } else if (this.rank === 'GIANT_YELLOW') {
+        this.width = 88;
+        this.height = 76;
+      } else if (this.rank === 'UFO_MOTHERSHIP') {
+        this.width = 130;
+        this.height = 80;
+      }
     }
     if (customHp !== undefined) {
       this.maxHp = customHp;
@@ -629,6 +689,105 @@ export class Enemy {
         }
         break;
       }
+
+      // ★ SNKバンガード風ポッド：画面上部（特定高度）を左右巡航し、突如急降下ダイブ！
+      case 'VANGUARD_CRUISE': {
+        if (this.moonState === 'HOVER') {
+          this.x += (this.movingRight ? 160 : -160) * dt;
+          if (this.x < 30) {
+            this.x = 30;
+            this.movingRight = true;
+          } else if (this.x > CANVAS_WIDTH - 30 - this.width) {
+            this.x = CANVAS_WIDTH - 30 - this.width;
+            this.movingRight = false;
+          }
+
+          // 2.5秒後、または自機が直下に近づいた際にダイブ移行
+          if (this.patternTimer > 2.2 && canDive) {
+            this.moonState = 'DIVE';
+            this.diveTargetX = playerX;
+            this.diveTargetY = playerY;
+            const diffX = this.diveTargetX - this.x;
+            const diffY = this.diveTargetY - this.y;
+            const dist = Math.hypot(diffX, diffY) || 1;
+            this.vx = (diffX / dist) * 280;
+            this.vy = Math.max(160, (diffY / dist) * 280);
+            justStartedDive = true;
+          }
+        } else {
+          // 急降下ダイブ中
+          this.x += this.vx * dt;
+          this.y += this.vy * dt;
+          if (this.y > CANVAS_HEIGHT + 30) {
+            this.y = 80 + Math.random() * 100;
+            this.x = Math.random() * (CANVAS_WIDTH - this.width);
+            this.moonState = 'HOVER';
+            this.patternTimer = 0;
+          }
+        }
+        break;
+      }
+
+      // ★ コナミ・スクランブル風ミサイル：壁や端から横・斜めへ推進加速！
+      case 'TERRAIN_LAUNCH': {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        // 徐々に速度アップ
+        this.vx *= 1.015;
+        this.vy *= 1.01;
+
+        if (this.x < -60 || this.x > CANVAS_WIDTH + 60 || this.y > CANVAS_HEIGHT + 60 || this.y < -60) {
+          this.isDead = true;
+        }
+        break;
+      }
+
+      // ★ 超高速直進メテオ：斜め上から一直線に火花を散らして切り裂く
+      case 'METEOR_STRAIGHT': {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        if (this.y > CANVAS_HEIGHT + 50 || this.x < -50 || this.x > CANVAS_WIDTH + 50) {
+          this.isDead = true;
+        }
+        break;
+      }
+
+      // ★ 超高速フライバイ：画面横外から一瞬で全画面を突き抜ける
+      case 'FLYBY_CROSS': {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        if (this.x < -80 || this.x > CANVAS_WIDTH + 80) {
+          this.isDead = true;
+        }
+        break;
+      }
+
+      // ★ スペースドラゴン蛇行運動（頭部がサイン波で画面を這い回り、胴体セグメントが追従）
+      case 'SERPENT_SLITHER': {
+        if (this.rank === 'SPACE_SERPENT_HEAD') {
+          this.patternTimer += dt;
+          this.x = CANVAS_WIDTH / 2 + Math.sin(this.patternTimer * 1.8) * 190 - this.width / 2;
+          this.y = 130 + Math.cos(this.patternTimer * 0.9) * 75 + Math.sin(this.patternTimer * 2.7) * 45;
+
+          // 胴体追従用の軌跡履歴を更新
+          this.trail.unshift({ x: this.x + (this.width - 48) / 2, y: this.y + (this.height - 48) / 2 });
+          if (this.trail.length > 120) {
+            this.trail.pop();
+          }
+        } else if (this.rank === 'SERPENT_BODY' && this.leader) {
+          // リーダー頭部の過去座標インデックスを取り出して追従
+          const delayIndex = this.segmentIndex * 8;
+          if (this.leader.trail.length > delayIndex) {
+            const pos = this.leader.trail[delayIndex];
+            this.x = pos.x;
+            this.y = pos.y;
+          }
+          if (this.leader.isDead) {
+            this.isDead = true;
+          }
+        }
+        break;
+      }
     }
 
     return justStartedDive;
@@ -708,10 +867,24 @@ export class Enemy {
     ctx.translate(cx, cy);
     ctx.scale(s, s);
 
+    const hpRatio = this.hp / this.maxHp;
+    const isLowHp = (this.isBoss || isGiant || this.rank === 'GIGA_COLD_EYE' || this.rank === 'SPACE_SERPENT_HEAD') && this.maxHp > 3 && hpRatio <= 0.5;
+    const isCriticalHp = isLowHp && hpRatio <= 0.25;
+
     if (isHitFlashing) {
-      // 被弾時：四角形ではなく、ボスの機体形状そのものを白色＋発光で点滅させる！
+      // 被弾時：白色＋強い発光
       ctx.shadowColor = '#ffffff';
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 14;
+    } else if (isCriticalHp) {
+      // ユーザー要望：死にそうになったら赤・黄色点滅（危険状態ストロボ）
+      const strobeColor = Math.floor(this.timeAlive * 16) % 2 === 0 ? '#ff0033' : '#ffff00';
+      ctx.shadowColor = strobeColor;
+      ctx.shadowBlur = 18;
+    } else if (isLowHp) {
+      // HP 50%以下：黄色点滅
+      const strobeColor = Math.floor(this.timeAlive * 8) % 2 === 0 ? '#ffea00' : '#ff7700';
+      ctx.shadowColor = strobeColor;
+      ctx.shadowBlur = 10;
     }
 
     switch (this.rank) {
@@ -996,20 +1169,118 @@ export class Enemy {
         ctx.fillRect(-2, -2, 4, 4); // コア発光
         break;
       }
+      // ★ SNKバンガード風：往復巡航ポッド（VANGUARD_POD）
+      case 'VANGUARD_POD': {
+        ctx.fillStyle = '#00e5ff';
+        ctx.fillRect(-12, -8, 24, 16);
+        ctx.fillStyle = '#ffaa00';
+        ctx.fillRect(-14, -4, 4, 8);
+        ctx.fillRect(10, -4, 4, 8);
+        ctx.fillStyle = f === 0 ? '#ff0055' : '#ffffff';
+        ctx.fillRect(-4, -4, 8, 8);
+        break;
+      }
+
+      // ★ コナミ・スクランブル風：地表ミサイル（TERRAIN_MISSILE）
+      case 'TERRAIN_MISSILE': {
+        // 水平または斜めに噴射しながら飛ぶ弾頭
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-10, -5, 20, 10);
+        ctx.fillStyle = '#ff0033';
+        ctx.fillRect(6, -6, 5, 12); // 先端ノーズ
+        // 後部ロケット噴射炎
+        ctx.fillStyle = f === 0 ? '#ffaa00' : '#ffea00';
+        ctx.fillRect(-15, -3, 5, 6);
+        break;
+      }
+
+      // ★ 高速フライバイ横切り機（FAST_FLYBY）
+      case 'FAST_FLYBY': {
+        ctx.fillStyle = '#ff3366';
+        ctx.fillRect(-12, -4, 24, 8);
+        ctx.fillStyle = '#00ffff';
+        ctx.fillRect(-6, -7, 12, 14);
+        ctx.fillStyle = f === 0 ? '#ffff00' : '#ffffff';
+        ctx.fillRect(-2, -2, 4, 4);
+        break;
+      }
+
+      // ★ 超ド級ボス：ギガ・コールドアイ（GIGA_COLD_EYE）
+      case 'GIGA_COLD_EYE': {
+        // 巨大な赤い頭冠・装甲シェル
+        ctx.fillStyle = '#cc0022';
+        ctx.fillRect(-24, -20, 48, 14);
+        ctx.fillRect(-26, -6, 52, 22);
+
+        // 頭頂の三連ゴールドスパイク
+        ctx.fillStyle = '#ffea00';
+        ctx.fillRect(-18, -26, 8, 7);
+        ctx.fillRect(-4, -28, 8, 9);
+        ctx.fillRect(10, -26, 8, 7);
+
+        // 左右の側翼
+        ctx.fillStyle = f === 0 ? '#ffaa00' : '#ff0044';
+        ctx.fillRect(-30, -8, 6, 16);
+        ctx.fillRect(24, -8, 6, 16);
+
+        // 超巨大な白目
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-18, -10, 36, 20);
+
+        // 瞳孔（見つめる巨大目玉）
+        const eyeShift = Math.max(-6, Math.min(6, Math.round(this.eyeLookX * 6)));
+        ctx.fillStyle = '#00e5ff';
+        ctx.fillRect(-8 + eyeShift, -8, 16, 16);
+        ctx.fillStyle = '#000033';
+        ctx.fillRect(-4 + eyeShift, -5, 8, 10);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-2 + eyeShift, -6, 4, 4);
+
+        // 巨大な牙
+        ctx.fillStyle = '#ffea00';
+        ctx.fillRect(-20, 16, 8, 8);
+        ctx.fillRect(-5, 16, 10, 8);
+        ctx.fillRect(12, 16, 8, 8);
+        break;
+      }
+
+      // ★ 多関節ボス：スペースサーペント頭部（SPACE_SERPENT_HEAD）
+      case 'SPACE_SERPENT_HEAD': {
+        // ドラゴン風ヘッド
+        ctx.fillStyle = '#00cc66';
+        ctx.fillRect(-18, -14, 36, 28);
+        ctx.fillStyle = '#00ff88';
+        ctx.fillRect(-12, -10, 24, 20);
+        // 角
+        ctx.fillStyle = '#ffea00';
+        ctx.fillRect(-16, -20, 6, 8);
+        ctx.fillRect(10, -20, 6, 8);
+        // 燃える赤い眼
+        ctx.fillStyle = f === 0 ? '#ff0033' : '#ff5500';
+        ctx.fillRect(-10, -6, 6, 6);
+        ctx.fillRect(4, -6, 6, 6);
+        // 牙
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-12, 12, 4, 6);
+        ctx.fillRect(-2, 12, 4, 5);
+        ctx.fillRect(8, 12, 4, 6);
+        break;
+      }
+
+      // ★ 多関節ボス：スペースサーペント胴体（SERPENT_BODY）
+      case 'SERPENT_BODY': {
+        const segHue = (this.segmentIndex * 24) % 360;
+        ctx.fillStyle = `hsl(${segHue}, 85%, 45%)`;
+        ctx.fillRect(-12, -12, 24, 24);
+        ctx.fillStyle = `hsl(${segHue}, 90%, 65%)`;
+        ctx.fillRect(-7, -7, 14, 14);
+        ctx.fillStyle = f === 0 ? '#ffff00' : '#ffffff';
+        ctx.fillRect(-3, -3, 6, 6);
+        break;
+      }
     }
 
-    if (this.isBoss || (isGiant && this.maxHp > 1)) {
-      const hpRatio = Math.max(0, this.hp / this.maxHp);
-      const barWidth = Math.max(36, this.width * 0.6);
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillRect(-barWidth / 2, -this.height / 2 - 12, barWidth, 5);
-      ctx.fillStyle = hpRatio > 0.3 ? '#00ff88' : '#ff0033';
-      ctx.fillRect(-barWidth / 2, -this.height / 2 - 12, barWidth * hpRatio, 5);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(-barWidth / 2, -this.height / 2 - 12, barWidth, 5);
-    }
-
+    // ユーザー要望：ボスのHPゲージは完全に撤廃（死にそうになったら赤・黄色点滅ストロボで表現）
     ctx.restore();
   }
 }

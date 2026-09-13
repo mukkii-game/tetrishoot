@@ -5,6 +5,7 @@ import {
   MAX_STAGES,
   PLAYER_FIRE_INTERVAL,
 } from '../config';
+import { FieldItem } from '../entities/Item';
 import { ParticleManager } from '../effects/Particle';
 import { PlayerBullet } from '../entities/Bullet';
 import { Enemy } from '../entities/Enemy';
@@ -57,6 +58,9 @@ export class GameManager {
 
   // 切断されて落下中のパーツ（再回収可能）
   public detachedPieces: DetachedFloatingPiece[] = [];
+
+  // 洞窟や敵から出現するフィールドアイテム（無敵バリア・救済カプセル）
+  public fieldItems: FieldItem[] = [];
 
   // パズルフェーズ：落ちてくるブロック（1つずつ集中してドッキング）
   public fallingPieces: FallingPieceItem[] = [];
@@ -158,20 +162,34 @@ export class GameManager {
     // Wave 2: ギャラガ（S字＆8の字ストリーム編隊・急降下ダイブ）
     // Wave 3: 沙羅曼蛇（縦スクロール・バンガード岩盤ブロック洞窟突破）
     // Wave 4: ムーンクレスタ（フォー・フライ＆怒涛のメテオゾーン）
-    // Wave 5: ギャラガ（クロススプリット大交差＆大型母船中ボス）
+    // Wave 5: ギャラガ＆沙羅曼蛇（斜めスクロール！宇宙浮遊要塞・高速侵攻）
     // Wave 6: 沙羅曼蛇（横スクロール・右方向バンガードブロック回廊）
     // Wave 7: ムーンクレスタ（アトミック・ファントム＆ベータ・ファントム強襲）
     // Wave 8: ギャラガ（インフィニティ大編隊＆四方包囲網）
     // Wave 9: 沙羅曼蛇（上下激動・高密度バンガードブロック迷宮）
     // Wave 10: 最終決戦（全フォロワー総力戦カタストロフィ）
 
-    const isSalamander = this.stage === 3 || this.stage === 6 || this.stage === 9;
-    const isRightScroll = this.stage === 6; // Wave 6は横スクロール沙羅曼蛇
-    const direction = isRightScroll ? 'RIGHT' : 'UP';
+    const isSalamander = this.stage === 3 || this.stage === 5 || this.stage === 6 || this.stage === 9;
+    let direction: 'UP' | 'RIGHT' | 'DIAGONAL_UP_RIGHT' = 'UP';
+    if (this.stage === 5) {
+      direction = 'DIAGONAL_UP_RIGHT';
+    } else if (this.stage === 6) {
+      direction = 'RIGHT';
+    }
     this.starfield.direction = direction;
 
     // 地形は「沙羅曼蛇フォロワー面」で有効化！
     this.terrain.reset(direction, isSalamander);
+
+    // 洞窟内・ステージ開始時にフィールドアイテムを配置
+    this.fieldItems = [];
+    if (isSalamander) {
+      // 洞窟内にバリアオーブや救済カプセルを配置
+      this.fieldItems.push(new FieldItem(CANVAS_WIDTH * 0.5, -120, 'BARRIER_ORB'));
+      this.fieldItems.push(new FieldItem(CANVAS_WIDTH * 0.35, -500, 'RESCUE_CAPSULE'));
+    } else if (this.stage >= 4) {
+      this.fieldItems.push(new FieldItem(CANVAS_WIDTH * 0.5, -80, 'BARRIER_ORB'));
+    }
 
     // ギャラガ＆ムーンクレスタ風 多彩な大編隊をスポーン！
     this.spawnAlienFleet();
@@ -478,30 +496,37 @@ export class GameManager {
         break;
 
       case 2:
-        // 【WAVE 2：ギャラガ・S字＆8の字大流星編隊】（ザコ44機）
+        // 【WAVE 2：ギャラガ・S字＆8の字大流星編隊＋高速フライバイ】（ザコ48機）
         // 左上・右上から流麗な曲線を描いて飛来し、隊列から急降下ダイブ！
         for (let k = 0; k < 18; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, 0.05, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
-        for (let k = 0; k < 16; k++) {
+        for (let k = 0; k < 14; k++) {
           this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 2 + (k % 5), 1, 0.45, 'FIGURE_EIGHT', k));
         }
-        for (let k = 0; k < 10; k++) {
+        for (let k = 0; k < 8; k++) {
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 3, 0.8, 'INFINITY_DIVE_LEFT', k));
+        }
+        // 高速横切りフライバイ急襲！
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 6), 0, 2.0 + i * 0.3));
         }
         break;
 
       case 3:
-        // 【WAVE 3：沙羅曼蛇 1・縦スクロール バンガード岩盤迷宮突破】（ザコ40機）
-        // カクカクしたバンガード山鳴り地形！狭まる岩盤の隙間をクランク移動するトーロイド＆スターフォース強襲！
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 6), 1, 0.5 + i * 0.22));
+        // 【WAVE 3：沙羅曼蛇 1・縦スクロール バンガード岩盤迷宮突破】（ザコ46機）
+        // カクカクしたバンガード山鳴り地形！一定位置を往復巡航するバンガードポッド＋地表ミサイル迎撃！
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 0.3 + i * 0.25));
         }
         for (let i = 0; i < 14; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.8 + i * 0.2));
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 0.8 + i * 0.22));
         }
         for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'SURPRISE_FROM_BOTTOM', 1 + (i % 5) * 2, 2, 1.2 + i * 0.16));
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 5), 1, 1.2 + i * 0.18));
+        }
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 4), 0, 1.6 + i * 0.2));
         }
         break;
 
@@ -511,40 +536,43 @@ export class GameManager {
         for (let i = 0; i < 16; i++) {
           this.enemies.push(new Enemy('FOUR_FLY', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 1, 0.2 + i * 0.2));
         }
-        for (let i = 0; i < 24; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.5 + i * 0.12));
+        for (let i = 0; i < 20; i++) {
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.5 + i * 0.12));
         }
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 1.6 + i * 0.25));
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 2 + (i % 5), 0, 1.4 + i * 0.2));
         }
         break;
 
       case 5:
-        // 【WAVE 5：ギャラガ・クロススプリット突撃＆インフィニティ宙返り】（ザコ56機）
-        // 左右対角線から交差突撃する大編隊＋大型イエロー司令機の中ボス前哨戦！
-        for (let k = 0; k < 18; k++) {
+        // 【WAVE 5：ギャラガ＆沙羅曼蛇（斜めスクロール！宇宙浮遊要塞・高速侵攻）】（ザコ56機）
+        // 左右対角線から交差突撃する大編隊＋地表ミサイル＋巡航ポッド！
+        for (let k = 0; k < 16; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.15, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.15, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < 14; i++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'CROSS_SPLIT', 1 + (i % 7), 0, 0.9 + i * 0.12));
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 0.6 + i * 0.2));
         }
-        for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('GIANT_YELLOW', 'SWEEP_FROM_LEFT', 2, 0, 1.8 + i * 0.2));
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 0.9 + i * 0.18));
         }
         break;
 
       case 6:
-        // 【WAVE 6：沙羅曼蛇 2・横スクロール 右方向バンガード岩盤回廊】（ザコ50機）
+        // 【WAVE 6：沙羅曼蛇 2・横スクロール 右方向バンガード岩盤回廊】（ザコ52機）
         // 天井と床から突き出るバンガードブロック岩！高速で旋回するトーロイドとスターフォース！
-        for (let i = 0; i < 18; i++) {
+        for (let i = 0; i < 16; i++) {
           this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 6), 1, 0.3 + i * 0.2));
         }
-        for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.6 + i * 0.18));
-        }
         for (let i = 0; i < 14; i++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'SWEEP_FROM_RIGHT', 7, 0, 1.2 + i * 0.15));
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 5), 0, 0.5 + i * 0.2));
+        }
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.8 + i * 0.18));
+        }
+        for (let i = 0; i < 10; i++) {
+          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 5), 1, 1.2 + i * 0.2));
         }
         break;
 
@@ -558,32 +586,38 @@ export class GameManager {
           this.enemies.push(new Enemy('BETA_PHANTOM', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 0, 0.6 + i * 0.16));
         }
         for (let i = 0; i < 20; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 1.0 + i * 0.12));
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 1.0 + i * 0.12));
         }
         break;
 
       case 8:
         // 【WAVE 8：ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】（ザコ66機）
-        // 画面全方位から押し寄せるギャプラス風ストリーム大編隊！
-        for (let k = 0; k < 22; k++) {
+        // 画面全方位から押し寄せるギャプラス風ストリーム大編隊＋電光石火フライバイ！
+        for (let k = 0; k < 20; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.12, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.12, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < 22; i++) {
+        for (let i = 0; i < 16; i++) {
           this.enemies.push(new Enemy('YELLOW_COMMANDER', 'ZIGZAG_DIVE', 1 + (i % 8), 2, 0.8 + i * 0.11));
+        }
+        for (let i = 0; i < 10; i++) {
+          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, 1.2 + i * 0.15));
         }
         break;
 
       case 9:
         // 【WAVE 9：沙羅曼蛇 3・極限バンガード迷宮要塞】（ザコ72機）
         // 左右から大きくせり出す山鳴りブロック回廊＋全方位エイリアン迎撃！
-        for (let i = 0; i < 24; i++) {
+        for (let i = 0; i < 20; i++) {
           this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 0.3 + i * 0.15));
         }
-        for (let i = 0; i < 24; i++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STARFORCE_SWOOP', 1 + (i % 6), 0, 0.6 + i * 0.14));
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 0.5 + i * 0.16));
         }
-        for (let i = 0; i < 24; i++) {
+        for (let i = 0; i < 18; i++) {
+          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 0.7 + i * 0.18));
+        }
+        for (let i = 0; i < 16; i++) {
           this.enemies.push(new Enemy('RED_GUARD', 'SURPRISE_FROM_BOTTOM', 1 + (i % 6) * 2, 2, 1.0 + i * 0.12));
         }
         break;
@@ -601,11 +635,11 @@ export class GameManager {
         for (let k = 0; k < 20; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.1, 'INFINITY_DIVE_LEFT', k));
         }
-        for (let i = 0; i < 20; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_FALL', 1 + (i % 8), 0, 0.6 + i * 0.1));
-        }
         for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('FOUR_FLY', 'CROSS_SPLIT', 1 + (i % 7), 0, 1.0 + i * 0.12));
+          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.6 + i * 0.1));
+        }
+        for (let i = 0; i < 14; i++) {
+          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 6), 0, 1.0 + i * 0.15));
         }
         break;
     }
@@ -616,39 +650,61 @@ export class GameManager {
     this.sound.playPhaseAlert('shooting');
     this.showTransitionText(`WARNING: BOSS APPROACHING`, 1.2);
 
-    let bossRank: 'GIANT_YELLOW' | 'GIANT_RED' | 'UFO_MOTHERSHIP' = 'GIANT_YELLOW';
+    let bossRank: 'GIANT_YELLOW' | 'GIANT_RED' | 'UFO_MOTHERSHIP' | 'GIGA_COLD_EYE' | 'SPACE_SERPENT_HEAD' = 'GIANT_YELLOW';
     let bossHp = 5;
 
     if (this.stage === 10) {
       // 最終面ラスボス：最強UFO母船（HPさらに倍：112！）
       bossRank = 'UFO_MOTHERSHIP';
       bossHp = 112;
+    } else if (this.stage === 6) {
+      // Wave 6ボス：沙羅曼蛇・多関節スペースサーペントドラゴン！
+      bossRank = 'SPACE_SERPENT_HEAD';
+      bossHp = 42;
     } else if (this.stage === 5) {
       // 5面中ボス：超大型UFO母船（HPさらに倍：72！）
       bossRank = 'UFO_MOTHERSHIP';
       bossHp = 72;
-    } else if (this.stage >= 6) {
-      // 6〜9面ボス：超高速頑強ジャイアントレッド（HPさらに倍：40〜52！）
+    } else if (this.stage === 4) {
+      // Wave 4ボス：超ド級ギガ・コールドアイ（撃破で2つのコールドアイに分裂！）
+      bossRank = 'GIGA_COLD_EYE';
+      bossHp = 40;
+    } else if (this.stage >= 7) {
+      // 7〜9面ボス：超高速頑強ジャイアントレッド（HP：44〜56！）
       bossRank = 'GIANT_RED';
       bossHp = (10 + (this.stage - 6) * 2) * 4;
     } else if (this.stage >= 3) {
-      // 3〜4面ボス：ジャイアントレッド（HPさらに倍：32〜44！）
+      // 3面ボス：ジャイアントレッド
       bossRank = 'GIANT_RED';
       bossHp = (7 + this.stage) * 4;
     } else {
-      // 1〜2面ボス：ジャイアントイエロー司令機（HPさらに倍：20〜32！）
+      // 1〜2面ボス：ジャイアントイエロー司令機
       bossRank = 'GIANT_YELLOW';
       bossHp = this.stage === 1 ? 20 : 32;
     }
 
-    const pattern = this.stage === 10 ? 'CAROUSEL_CIRCLE' : 'FORMATION_LOOP';
+    const pattern = this.stage === 10 ? 'CAROUSEL_CIRCLE' : (this.stage === 6 ? 'SERPENT_SLITHER' : 'FORMATION_LOOP');
     const boss = new Enemy(bossRank, pattern, 4, 0, 0.1, undefined, 0, true, bossHp);
     boss.scoreValue = 3000 + this.stage * 1000;
     this.currentBoss = boss;
     this.enemies.push(boss);
 
+    // Wave 6：スペースサーペントの多関節ボディセグメントを生成
+    if (bossRank === 'SPACE_SERPENT_HEAD') {
+      let prevSeg = boss;
+      for (let s = 1; s <= 7; s++) {
+        const bodySeg = new Enemy('SERPENT_BODY', 'SERPENT_SLITHER', 4, 0, 0.1, undefined, 0, false, 999);
+        bodySeg.leader = prevSeg;
+        bodySeg.segmentIndex = s;
+        bodySeg.x = boss.x - s * 28;
+        bodySeg.y = boss.y;
+        this.enemies.push(bodySeg);
+        prevSeg = bodySeg;
+      }
+    }
+
     // 護衛を2機随伴（高ステージ）
-    if (this.stage >= 4) {
+    if (this.stage >= 4 && bossRank !== 'SPACE_SERPENT_HEAD') {
       this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SWEEP_FROM_LEFT', 2, 1, 0.3));
       this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SWEEP_FROM_RIGHT', 6, 1, 0.3));
     }
@@ -825,24 +881,10 @@ export class GameManager {
       }
     }
 
-    // プレイヤー弾の更新 ＆ 要望④：自分の弾は自身とぶつかっても消える（自傷ダメージなし）
-    const playerCells = this.player.getOccupiedCells();
+    // プレイヤー弾の更新
     for (let i = this.playerBullets.length - 1; i >= 0; i--) {
       const b = this.playerBullets[i];
       b.update(dt);
-
-      // 自弾 vs 自機ブロック吸収判定（弾消滅、自機ノーダメージ）
-      if (!b.isDead) {
-        for (const cell of playerCells) {
-          const cx = cell.gx * BLOCK_SIZE;
-          const cy = cell.gy * BLOCK_SIZE;
-          if (b.x >= cx && b.x <= cx + BLOCK_SIZE && b.y >= cy && b.y <= cy + BLOCK_SIZE) {
-            b.isDead = true;
-            this.particles.emitSparks(b.x, b.y, b.color, 4);
-            break;
-          }
-        }
-      }
 
       // 自弾 vs 地形壁（壁に当たると弾消滅）
       if (!b.isDead && this.terrain.enabled && this.terrain.isColliding(b.x, b.y)) {
@@ -888,6 +930,40 @@ export class GameManager {
       // 画面下端を抜けたら消滅
       if (dp.y > CANVAS_HEIGHT + 30) {
         this.detachedPieces.splice(i, 1);
+      }
+    }
+
+    // ★ フィールドアイテムの更新＆プレイヤー取得判定
+    const scrollSpeed = 140;
+    for (let i = this.fieldItems.length - 1; i >= 0; i--) {
+      const item = this.fieldItems[i];
+      item.update(dt, scrollSpeed, this.terrain.direction);
+
+      // 自機との当たり判定
+      const playerBounds = this.player.getBoundingBox();
+      const pCenterX = (playerBounds.minX + playerBounds.maxX) / 2;
+      const pCenterY = (playerBounds.minY + playerBounds.maxY) / 2;
+      const dist = Math.hypot(item.x - pCenterX, item.y - pCenterY);
+
+      if (dist < item.radius + 28) {
+        item.isDead = true;
+        this.sound.playDock();
+        this.particles.emitDockRing(item.x, item.y, '#00ffff');
+
+        if (item.type === 'BARRIER_ORB') {
+          // 8秒間の完全無敵レインボーバリア展開！
+          this.player.barrierTimer = 8.0;
+          this.showTransitionText('BARRIER ACTIVATED!', 1.2);
+          this.score += 1000;
+        } else if (item.type === 'RESCUE_CAPSULE') {
+          // 緊急救済テトリミノを即時投下
+          this.spawnRescuePiece();
+          this.score += 800;
+        }
+      }
+
+      if (item.isDead) {
+        this.fieldItems.splice(i, 1);
       }
     }
 
@@ -950,6 +1026,45 @@ export class GameManager {
               this.enemies.push(mini1, mini2);
               this.score += enemy.scoreValue;
               break;
+            }
+
+            // ★ Wave 4 ボス：超ド級ギガ・コールドアイ（GIGA_COLD_EYE）撃破時に2つのコールドアイに分裂！
+            if (enemy.rank === 'GIGA_COLD_EYE') {
+              this.sound.playMoonSplit();
+              this.sound.playBossExplosion();
+              this.particles.emitBossExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.width, enemy.height);
+              
+              const eye1 = new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', 1, 0, 0);
+              eye1.x = enemy.x - 30;
+              eye1.y = enemy.y;
+              eye1.vx = -180;
+              eye1.vy = 60;
+              eye1.movingRight = false;
+
+              const eye2 = new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', 3, 0, 0);
+              eye2.x = enemy.x + 30;
+              eye2.y = enemy.y;
+              eye2.vx = 180;
+              eye2.vy = 60;
+              eye2.movingRight = true;
+
+              this.enemies.push(eye1, eye2);
+              this.score += enemy.scoreValue;
+              this.currentBoss = null;
+              this.hitStopTimer = 0.08;
+              this.screenShake = 16;
+              break;
+            }
+
+            // ★ Wave 6 ボス：スペースサーペント頭部破壊時に全胴体セグメントが連鎖大爆発！
+            if (enemy.rank === 'SPACE_SERPENT_HEAD') {
+              for (const other of this.enemies) {
+                if (other.rank === 'SERPENT_BODY') {
+                  other.isDead = true;
+                  this.particles.emitExplosion(other.x + other.width / 2, other.y + other.height / 2, '#ffea00', 30, true);
+                  this.score += other.scoreValue;
+                }
+              }
             }
 
             const isGiant = enemy.rank.startsWith('GIANT') || enemy.rank === 'UFO_MOTHERSHIP';
@@ -1224,6 +1339,11 @@ export class GameManager {
         const py = dp.y + cell.gy * BLOCK_SIZE;
         dp.piece.drawCell(ctx, px, py, undefined, alpha);
       }
+    }
+
+    // ★ フィールドアイテム描画（バリアオーブ・救済カプセル）
+    for (const item of this.fieldItems) {
+      item.draw(ctx);
     }
 
     // 3. 自機

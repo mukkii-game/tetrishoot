@@ -18,7 +18,7 @@ interface GalaxyArmPoint {
 
 export class Starfield {
   private stars: Star[] = [];
-  public direction: 'UP' | 'RIGHT' = 'UP';
+  public direction: 'UP' | 'RIGHT' | 'DIAGONAL_UP_RIGHT' = 'UP';
   // 渦巻き銀河
   private galaxyY = -200;
   private galaxyX = CANVAS_WIDTH * 0.55;
@@ -72,7 +72,7 @@ export class Starfield {
         this.galaxyY = -250;
         this.galaxyX = Math.random() * (CANVAS_WIDTH - 200) + 100;
       }
-    } else {
+    } else if (this.direction === 'RIGHT') {
       // 右スクロール（自機が右に進む）：星は左方向へ流れる
       for (const star of this.stars) {
         star.x -= star.speed * speedMultiplier * dt;
@@ -87,6 +87,24 @@ export class Starfield {
       if (this.galaxyX < -250) {
         this.galaxyX = CANVAS_WIDTH + 250;
         this.galaxyY = Math.random() * (CANVAS_HEIGHT - 200) + 100;
+      }
+    } else if (this.direction === 'DIAGONAL_UP_RIGHT') {
+      // 斜め右上スクロール（バンガード）：星は左下へ流れる
+      for (const star of this.stars) {
+        star.x -= star.speed * 0.7 * speedMultiplier * dt;
+        star.y += star.speed * 0.7 * speedMultiplier * dt;
+        if (star.x < 0 || star.y > CANVAS_HEIGHT) {
+          star.x = Math.random() * (CANVAS_WIDTH + 100);
+          star.y = -10;
+        }
+      }
+
+      this.galaxyX -= 10 * speedMultiplier * dt;
+      this.galaxyY += 10 * speedMultiplier * dt;
+      this.galaxyRotation += 0.08 * dt;
+      if (this.galaxyY > CANVAS_HEIGHT + 250 || this.galaxyX < -250) {
+        this.galaxyY = -250;
+        this.galaxyX = CANVAS_WIDTH + 50;
       }
     }
   }
