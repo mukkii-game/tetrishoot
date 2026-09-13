@@ -90,10 +90,14 @@ export class GameManager {
   // バトル中に落ちてくる救済テトリミノ（Oミノのみになった時の緊急ドッキング）
   public battlePiece: FallingPieceItem | null = null;
   public gameOverSelection: 'CONTINUE' | 'TITLE' = 'CONTINUE';
-  public pauseMenuSelection: 'RESUME' | 'RESTART_WAVE' | 'TITLE' = 'RESUME';
+  public pauseMenuSelection: 'RESUME' | 'RESTART_STAGE' | 'TITLE' = 'RESUME';
   private rescueSpawnCooldown = 0;
+  public dockingTimer = 30.0; // ユーザー要望：ドッキングせよ 30.0から減っていく
 
   private deathDelay = 0; // 自機爆発アニメーション用ディレイ
+  private playerDeathSoundPlayed = false; // プレイヤー死亡音再生フラグ
+  private bossWarningActive = false; // ボス出現予告サイレン中か
+  private bossWarningTimer = 0;      // ボス出現予告タイマー
   private stateTimer = 0;
   private transitionAlpha = 0;
   private transitionText = '';
@@ -111,6 +115,10 @@ export class GameManager {
     this.stage = 1;
     this.score = 0;
     this.deathDelay = 0;
+    this.playerDeathSoundPlayed = false;
+    this.bossWarningActive = false;
+    this.bossWarningTimer = 0;
+    this.sound.stopBossWarning();
     this.player = new Player();
     this.particles.clear();
     this.detachedPieces = [];
@@ -128,6 +136,10 @@ export class GameManager {
     this.enemies = [];
     this.battlePiece = null;
     this.bossSpawned = false;
+    this.bossWarningActive = false;
+    this.bossWarningTimer = 0;
+    this.playerDeathSoundPlayed = false;
+    this.sound.stopBossWarning();
     this.currentBoss = null;
     this.bossDying = false;
     this.bossDeathTimer = 0;
@@ -144,9 +156,10 @@ export class GameManager {
     this.spawnTetrominoes();
     this.remainingPiecesCount = 1;
 
+    this.dockingTimer = 30.0;
     this.sound.playStartJingle();
     this.sound.startBGM('tetris');
-    this.showTransitionText('ドッキングせよ', 1.0);
+    this.showTransitionText(`STAGE ${this.stage}`, 1.4);
   }
 
   private startShootingPhase(): void {
@@ -156,6 +169,10 @@ export class GameManager {
     this.formationOffsetAngle = 0;
     this.battlePiece = null; // 要望⑤：シューティング時のミノ落下は一旦休止
     this.bossSpawned = false;
+    this.bossWarningActive = false;
+    this.bossWarningTimer = 0;
+    this.playerDeathSoundPlayed = false;
+    this.sound.stopBossWarning();
     this.currentBoss = null;
     this.bossDying = false;
     this.bossDeathTimer = 0;
@@ -200,7 +217,7 @@ export class GameManager {
 
     this.sound.playPhaseAlert('shooting');
     this.sound.startBGM('shooting');
-    this.showTransitionText(`WAVE ${this.stage}`, 1.8);
+    this.showTransitionText(`STAGE ${this.stage}`, 1.8);
   }
 
   private showTransitionText(text: string, scale = 1.0): void {
@@ -221,11 +238,19 @@ export class GameManager {
         this.screenShake = 0;
         this.pauseMenuSelection = 'RESUME';
         this.sound.pauseBGM();
+        this.sound.stopBossLfo();
+        this.sound.stopBossWarning();
         input.clearTransientInputs();
         return;
       } else if (this.state === 'PAUSED') {
         this.state = 'PLAYING';
         this.sound.resumeBGM();
+        if (this.bossWarningActive) {
+          this.sound.playBossWarning();
+        } else if (this.currentBoss && !this.currentBoss.isDead && !this.bossDying) {
+          const lfoCategory = (this.currentBoss.rank === 'UFO_MOTHERSHIP' || this.currentBoss.rank === 'SPACE_SERPENT_HEAD') ? 1 : 2;
+          this.sound.startBossLfo(lfoCategory);
+        }
         input.clearTransientInputs();
         return;
       }
@@ -271,12 +296,12 @@ export class GameManager {
         // 上下キーまたはW/Sキーで選択切り替え
         if (input.justRotate) {
           if (this.pauseMenuSelection === 'RESUME') this.pauseMenuSelection = 'TITLE';
-          else if (this.pauseMenuSelection === 'RESTART_WAVE') this.pauseMenuSelection = 'RESUME';
-          else if (this.pauseMenuSelection === 'TITLE') this.pauseMenuSelection = 'RESTART_WAVE';
+          else if (this.pauseMenuSelection === 'RESTART_STAGE') this.pauseMenuSelection = 'RESUME';
+          else if (this.pauseMenuSelection === 'TITLE') this.pauseMenuSelection = 'RESTART_STAGE';
           this.sound.playHit();
         } else if (input.justDrop) {
-          if (this.pauseMenuSelection === 'RESUME') this.pauseMenuSelection = 'RESTART_WAVE';
-          else if (this.pauseMenuSelection === 'RESTART_WAVE') this.pauseMenuSelection = 'TITLE';
+          if (this.pauseMenuSelection === 'RESUME') this.pauseMenuSelection = 'RESTART_STAGE';
+          else if (this.pauseMenuSelection === 'RESTART_STAGE') this.pauseMenuSelection = 'TITLE';
           else if (this.pauseMenuSelection === 'TITLE') this.pauseMenuSelection = 'RESUME';
           this.sound.playHit();
         }
@@ -286,7 +311,7 @@ export class GameManager {
           if (input.mouseY >= 360 && input.mouseY <= 405) {
             this.pauseMenuSelection = 'RESUME';
           } else if (input.mouseY >= 420 && input.mouseY <= 465) {
-            this.pauseMenuSelection = 'RESTART_WAVE';
+            this.pauseMenuSelection = 'RESTART_STAGE';
           } else if (input.mouseY >= 480 && input.mouseY <= 525) {
             this.pauseMenuSelection = 'TITLE';
           }
@@ -371,8 +396,26 @@ export class GameManager {
     }
 
     if (this.player.isDead) {
+      if (!this.playerDeathSoundPlayed) {
+        this.playerDeathSoundPlayed = true;
+        this.sound.stopBGM();
+        this.sound.stopBossLfo();
+        this.sound.stopBossWarning();
+        this.sound.playPlayerDeath();
+        this.screenShake = 22;
+        const px = this.player.anchorX + BLOCK_SIZE;
+        const py = this.player.anchorY + BLOCK_SIZE;
+        this.particles.emitRetroExplosion(px, py, 3.5);
+      }
       this.deathDelay += dt;
-      if (this.deathDelay >= 0.65) {
+      // プレイヤー死亡演出：時間差で自機位置に連続誘爆・破片火花を放出
+      if (Math.random() < 0.35) {
+        const px = this.player.anchorX + BLOCK_SIZE + (Math.random() - 0.5) * 40;
+        const py = this.player.anchorY + BLOCK_SIZE + (Math.random() - 0.5) * 40;
+        this.particles.emitExplosion(px, py, Math.random() > 0.5 ? '#ff2200' : '#ffea00', 16, true);
+        this.sound.playExplosion(false);
+      }
+      if (this.deathDelay >= 2.2) {
         this.triggerGameOver();
       }
     }
@@ -414,6 +457,20 @@ export class GameManager {
   }
 
   private updateTetrisPhase(dt: number, input: Input): void {
+    // ★ ユーザー要望：ドッキングせよ 30.0から減っていく、とらないまま0になったらしゅわーときえていくミノ
+    this.dockingTimer = Math.max(0, this.dockingTimer - dt);
+    if (this.dockingTimer <= 0) {
+      for (const item of this.fallingPieces) {
+        if (!item.settled) {
+          item.settled = true;
+          this.particles.emitDissolve(item.x, item.y, BLOCK_SIZE * 3, BLOCK_SIZE * 2, item.piece.color, 45);
+          this.sound.playExplosion(false);
+        }
+      }
+      this.startShootingPhase();
+      return;
+    }
+
     // 1. 自機の操作（エクセリオン風慣性移動）
     this.player.updateMovement(dt, input);
 
@@ -422,7 +479,8 @@ export class GameManager {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
-        this.sound.playShoot(newBullets[0]?.pieceType);
+        const soundType = newBullets.find(b => b.pieceType !== 'O')?.pieceType || 'O';
+        this.sound.playShoot(soundType);
         this.player.fireCooldown = PLAYER_FIRE_INTERVAL;
       }
     }
@@ -585,24 +643,29 @@ export class GameManager {
         break;
 
       case 2:
-        // 【WAVE 2：グラディウス開幕突進編隊 ＆ ギャラガ流星編隊】
-        // ユーザー要望：敵を混ぜずに順番に出す。ギャラガ風味の体当たり急降下！
-        // フェーズ1（t=1.5〜）：グラディウス開幕突進編隊（まっすぐ突撃→反転離脱）
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 14 : 10); k++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, START_DELAY + k * 0.3));
-        }
-        // フェーズ2（t=8.0〜）：第二波グラディウス突進編隊
+        // 【STAGE 2：純粋なギャラガ大旋回面（グルングルン回る高速編隊＆画面全体スウィング）】
+        // ユーザー要望：2面ってギャラガモチーフじゃなかったっけ？ もっとグルングルン回るよね編隊、画面全体使って、それなりの速度で。したまでくる！
+        // ウェーブ1（t=1.5〜）：左から大S字ループで下部(y≈620)まで急降下旋回するグリーン・ドローン隊（8機）
         for (let k = 0; k < (this.difficulty === 'HARD' ? 12 : 8); k++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, START_DELAY + 6.5 + k * 0.3));
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, START_DELAY, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
-        // フェーズ3（t=14.5〜）：ギャラガS字流星編隊（編隊着任後、果敢に自機へ体当たり急降下ダイブ！）
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 18 : 12); k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, START_DELAY + 0.4, 'S_CURVE_LEFT_TO_RIGHT', k));
+        // ウェーブ2（t=6.5〜）：右から大S字ループで逆から画面全体を横断・下部スウィングするレッド・ガード隊（8機）
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 12 : 8); k++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 1, START_DELAY + 5.0, 'S_CURVE_RIGHT_TO_LEFT', k));
+        }
+        // ウェーブ3（t=12.0〜）：左右から同時に突入し中央で8の字インフィニティループを描く交差編隊！
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 14 : 8); k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 3, START_DELAY + 10.5, 'INFINITY_DIVE_LEFT', k));
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 4), 3, START_DELAY + 10.5, 'INFINITY_DIVE_RIGHT', k));
+        }
+        // ウェーブ4（t=18.5〜）：巨大8の字大旋回ループで画面を舞うイエロー司令機＆護衛隊！
+        for (let k = 0; k < 6; k++) {
+          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 3 + (k % 3), 0, START_DELAY + 17.0, 'FIGURE_EIGHT', k));
         }
         break;
 
       case 3:
-        // 【WAVE 3：スターフォース名物「ガリ」＆ 90度直角旋回機 ＆ 左右ワープランナー】
+        // 【STAGE 3：スターフォース名物「ガリ」＆ 90度直角旋回機 ＆ 左右ワープランナー】
         // ユーザー要望：敵を混ぜずに順番に出す
         // フェーズ1（t=1.5〜）：スターフォース「ガリ」第一波（深く急降下→急停止スウィング→超高速ダッシュ）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
@@ -619,43 +682,50 @@ export class GameManager {
         break;
 
       case 4:
-        // 【WAVE 4：索敵急加速ミサイル ＆ フォー・フライ】
-        // ユーザー要望：敵を混ぜずに順番に出す。ザコは基本一撃死！
+        // 【STAGE 4：索敵急加速ミサイル ＆ フォー・フライ ＆ 広域ギャラガ大旋回】
+        // 地形スクロールのない宇宙空間で、ギャラガ編隊が縦横無尽に画面全体を舞う！
         // フェーズ1（t=1.5〜）：索敵急加速ミサイル（フワリと横移動後、突如バーニア点火で急加速）
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 18 : 12); i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, START_DELAY + i * 0.32));
-        }
-        // フェーズ2（t=8.5〜）：ムーンクレスタ名物「フォー・フライ」（カミソリ急降下ジグザグ）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, START_DELAY + 7.0 + i * 0.3));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, START_DELAY + i * 0.35));
         }
-        // フェーズ3（t=15.5〜）：索敵急加速ミサイル 第二波
+        // フェーズ2（t=7.5〜）：オープン空間を縦横無尽に飛び回るギャラガ交差ストリーム編隊！
+        for (let k = 0; k < 12; k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, START_DELAY + 6.0, 'INFINITY_DIVE_LEFT', k));
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 4), 2, START_DELAY + 6.0, 'INFINITY_DIVE_RIGHT', k));
+        }
+        // フェーズ3（t=14.0〜）：ムーンクレスタ名物「フォー・フライ」（カミソリ急降下ジグザグ）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, START_DELAY + 14.0 + i * 0.3));
+          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, START_DELAY + 12.5 + i * 0.3));
         }
         break;
 
       case 5:
-        // 【WAVE 5：ギャラガ＆沙羅曼蛇（斜めスクロール！宇宙浮遊要塞・高速侵攻）】（ザコ56機）
-        // 左右対角線から交差突撃する大編隊＋地表ミサイル＋斜め高速メテオ＋スターフォース90度直角機！
-        for (let k = 0; k < 16; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.15, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.15, 'INFINITY_DIVE_RIGHT', k));
+        // 【STAGE 5：ドラマチック起承転結ステージ（静寂 → スリル → クライマックス大群 → UFO母船ボス）】
+        // ユーザー要望：5面とかただやみくもに複数の敵をたくさん出してるだけじゃない？ まず面の最初からたくさん出すなよ
+        // 1面の中でも静かに始まって、ところどころスリルのあるところがあって、ものすごくてきがたくさん！みたいなクライマックスがあって、その後ボス！
+        //
+        // 1. 【静かな導入】（t=1.5〜）：少数の斥候ドローンが整然と画面を優雅に横断（4機）
+        for (let k = 0; k < 4; k++) {
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 3 + k, 1, START_DELAY, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
-        for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 0.6 + i * 0.22));
+        // 2. 【スリル・急襲】（t=6.5〜）：突如飛び込んでくる地表ミサイル＆索敵急加速ミサイル！
+        for (let i = 0; i < 6; i++) {
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + i, 0, START_DELAY + 5.0 + i * 0.45));
         }
-        for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 6), 0, 1.2 + i * 0.2));
+        for (let i = 0; i < 4; i++) {
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, START_DELAY + 7.0 + i * 0.5));
         }
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, 1.4 + i * 0.25));
+        // 3. 【加速する緊張】（t=12.0〜）：スターフォース「ガリ」の急停止＆急加速アタック！
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 8 : 6); i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 5), 0, START_DELAY + 10.5 + i * 0.38));
         }
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 8); i++) {
-          this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, 1.5 + i * 0.25));
+        // 4. 【怒涛のクライマックス大群！】（t=17.0〜）：左右から怒涛の勢いで押し寄せる大編隊クロスラッシュ！
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 16 : 10); k++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 1 + (k % 4), 2, START_DELAY + 15.5, 'INFINITY_DIVE_LEFT', k));
+          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 4 + (k % 4), 2, START_DELAY + 15.5, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 1.8 + i * 0.18));
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 10 : 6); i++) {
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 5), 0, START_DELAY + 18.0 + i * 0.25));
         }
         break;
 
@@ -753,8 +823,11 @@ export class GameManager {
 
   private spawnWaveBoss(): void {
     this.bossSpawned = true;
+    this.bossWarningActive = false;
+    this.bossWarningTimer = 0;
+    this.sound.stopBossWarning();
     this.sound.playPhaseAlert('shooting');
-    this.showTransitionText(`WARNING: BOSS APPROACHING`, 1.2);
+    this.showTransitionText(`BOSS ENGAGED!`, 1.3);
 
     let bossRank: 'GIANT_YELLOW' | 'GIANT_RED' | 'UFO_MOTHERSHIP' | 'GIGA_COLD_EYE' | 'SPACE_SERPENT_HEAD' = 'GIANT_YELLOW';
     let bossHp = 5;
@@ -794,7 +867,10 @@ export class GameManager {
       bossHp *= 2;
     }
 
-    const pattern = this.stage === 10 ? 'CAROUSEL_CIRCLE' : (this.stage === 6 ? 'SERPENT_SLITHER' : 'FORMATION_LOOP');
+    // ★ ユーザー要望：3面ってボスは下から来てもいいよね（SURPRISE_FROM_BOTTOMで画面下部から急上昇！）
+    const pattern = this.stage === 10
+      ? 'CAROUSEL_CIRCLE'
+      : (this.stage === 6 ? 'SERPENT_SLITHER' : (this.stage === 3 ? 'SURPRISE_FROM_BOTTOM' : 'FORMATION_LOOP'));
     const boss = new Enemy(bossRank, pattern, 4, 0, 0.1, undefined, 0, true, bossHp);
     boss.scoreValue = 3000 + this.stage * 1000;
     this.currentBoss = boss;
@@ -854,17 +930,21 @@ export class GameManager {
       }
     }
 
-    // ★ ユーザー要望：Oミノだけになった時は、シューティング中でも上からテトリミノが落ちてきてドッキングできるように！
-    if (this.player.isOnlyOMino()) {
+    // ★ ユーザー要望：0ミノしかなくなった時は、救済でテトリミノを落としてくるけど、もし0ミノの他にもう1ミノしかついてないままのときは、10秒くらいの間を空けてもう一つテトリミノを落とす
+    // つまり、粘っていればどのステージでもテトリミノ３つ（0ミノ含む）までには復活できるってわけ
+    const pieceCount = this.player.pieces.length;
+    if (pieceCount < 3) {
       if (!this.battlePiece || this.battlePiece.settled) {
         this.rescueSpawnCooldown -= dt;
         if (this.rescueSpawnCooldown <= 0) {
           this.spawnRescuePiece();
-          this.rescueSpawnCooldown = 1.6;
+          // 0ミノのみなら速やかに再救済、1ミノ付いているなら10秒間隔で投下
+          this.rescueSpawnCooldown = this.player.isOnlyOMino() ? 2.0 : 10.0;
         }
       }
     } else {
-      this.rescueSpawnCooldown = 0.5;
+      // 3パーツ以上揃っているときは救済タイマーをリセット（10秒待機状態）
+      this.rescueSpawnCooldown = 10.0;
     }
 
     // シューティング中の救済落下テトリミノ更新＆ドッキング判定
@@ -950,15 +1030,16 @@ export class GameManager {
           this.score += 600;
           this.showTransitionText('DOCK SUCCESS!', 1.2);
           this.battlePiece = null;
-          this.rescueSpawnCooldown = 3.0;
+          // 合体後、まだ2パーツ（Oミノ＋1パーツ）なら10秒後に次の救済、3パーツ以上なら救済休止
+          this.rescueSpawnCooldown = this.player.pieces.length < 3 ? 10.0 : 10.0;
         }
       }
 
-      // 画面下端を抜けた場合
+      // 画面下端を抜けた場合（拾えなかった時は速やかに再投下）
       if (this.battlePiece && this.battlePiece.y > CANVAS_HEIGHT + 20) {
         this.battlePiece.settled = true;
         this.battlePiece = null;
-        this.rescueSpawnCooldown = 0.8;
+        this.rescueSpawnCooldown = 1.0;
       }
     }
 
@@ -1138,9 +1219,24 @@ export class GameManager {
       }
     }
 
-    // ★ ウェーブ後半または通常敵が減ったらボス出現！（中だるみをなくし、テンポよくボス戦へ突入）
-    if (!this.bossSpawned && (this.shootingTimeLimit <= 32 || this.enemies.length <= 6)) {
-      this.spawnWaveBoss();
+    // ★ ユーザー要望：宇宙基地サイレンはボス登場時に鳴らす、予告として そしてボス登場
+    if (!this.bossSpawned) {
+      if (!this.bossWarningActive && (this.shootingTimeLimit <= 32 || this.enemies.length <= 6)) {
+        this.bossWarningActive = true;
+        this.bossWarningTimer = 3.5;
+        this.sound.playBossWarning();
+        this.showTransitionText('WARNING: BOSS APPROACHING', 1.3);
+        this.screenShake = 6;
+      }
+      if (this.bossWarningActive) {
+        this.bossWarningTimer -= dt;
+        // 予告中は警告テキストを点滅・維持
+        this.transitionAlpha = Math.sin(Date.now() * 0.015) > 0 ? 1.0 : 0.45;
+        if (this.bossWarningTimer <= 0) {
+          this.bossWarningActive = false;
+          this.spawnWaveBoss();
+        }
+      }
     }
 
     // ★ ユーザー要望：ボス戦中、ボス自体が部下のそれなりにめんどくさい敵編隊や変な動きの敵を生み出して撹乱！
@@ -1395,6 +1491,9 @@ export class GameManager {
   private clearStage(): void {
     this.sound.stopBGM();
     this.sound.stopBossLfo();
+    this.sound.stopBossWarning();
+    this.bossWarningActive = false;
+    this.bossWarningTimer = 0;
     this.sound.playVictory();
     this.state = 'STAGE_CLEAR';
     this.stateTimer = 2.5;
@@ -1405,6 +1504,9 @@ export class GameManager {
   private triggerGameOver(): void {
     this.sound.stopBGM();
     this.sound.stopBossLfo();
+    this.sound.stopBossWarning();
+    this.bossWarningActive = false;
+    this.bossWarningTimer = 0;
     this.sound.playGameOver(); // ムーンクレスタ風 哀愁下降アルペジオ！
     this.state = 'GAMEOVER';
     this.stateTimer = 1.0;
@@ -1416,6 +1518,11 @@ export class GameManager {
   // ユーザー要望：2面で死んだらコンティニューできるように、タイトルに戻るとコンティニューの2択
   private handleGameOverConfirm(): void {
     this.sound.stopBossLfo();
+    this.sound.stopBossWarning();
+    this.bossWarningActive = false;
+    this.bossWarningTimer = 0;
+    this.playerDeathSoundPlayed = false;
+    this.deathDelay = 0;
     if (this.gameOverSelection === 'CONTINUE') {
       this.sound.playPhaseAlert('tetris');
       this.state = 'PLAYING';
@@ -1454,12 +1561,19 @@ export class GameManager {
     if (this.pauseMenuSelection === 'RESUME') {
       this.state = 'PLAYING';
       this.sound.resumeBGM();
-      if (this.currentBoss && !this.currentBoss.isDead && !this.bossDying) {
+      if (this.bossWarningActive) {
+        this.sound.playBossWarning();
+      } else if (this.currentBoss && !this.currentBoss.isDead && !this.bossDying) {
         const lfoCategory = (this.currentBoss.rank === 'UFO_MOTHERSHIP' || this.currentBoss.rank === 'SPACE_SERPENT_HEAD') ? 1 : 2;
         this.sound.startBossLfo(lfoCategory);
       }
-    } else if (this.pauseMenuSelection === 'RESTART_WAVE') {
+    } else if (this.pauseMenuSelection === 'RESTART_STAGE') {
       this.sound.stopBossLfo();
+      this.sound.stopBossWarning();
+      this.bossWarningActive = false;
+      this.bossWarningTimer = 0;
+      this.playerDeathSoundPlayed = false;
+      this.deathDelay = 0;
       this.state = 'PLAYING';
       this.screenShake = 0;
       this.fallingPieces = [];
@@ -1472,10 +1586,15 @@ export class GameManager {
       this.currentBoss = null;
       this.player.isDead = false;
       this.player.initInitialPiece();
-      this.startTetrisPhase(); // 現在のWaveの最初（ドッキング）からリスタート！
+      this.startTetrisPhase(); // 現在のStageの最初（ドッキング）からリスタート！
     } else if (this.pauseMenuSelection === 'TITLE') {
       this.sound.stopBGM();
       this.sound.stopBossLfo();
+      this.sound.stopBossWarning();
+      this.bossWarningActive = false;
+      this.bossWarningTimer = 0;
+      this.playerDeathSoundPlayed = false;
+      this.deathDelay = 0;
       this.state = 'TITLE';
       this.stage = 1;
       this.score = 0;
@@ -1597,19 +1716,8 @@ export class GameManager {
         }
       }
 
-      // ★ ムーンクレスタ完全再現：「ドッキングせよ！」をシアン色ピクセルで描画！
-      const blink = Math.sin(Date.now() / 200) > -0.7;
-      if (blink) {
-        drawMoonCrestaText(ctx, 'ドッキングせよ！', CANVAS_WIDTH / 2, 115, 36, '#00f0ff');
-      }
     } else if (this.phase === 'SHOOTING') {
-      // ★ シューティング時は「WAVE 1」を大きくピクセルフォントで描画！
-      const blink = Math.sin(Date.now() / 220) > -0.5;
-      if (blink) {
-        drawMoonCrestaText(ctx, `WAVE ${this.stage}`, CANVAS_WIDTH / 2, 70, 32, '#ff3366');
-      }
-
-      // ★ ユーザー要望：Oミノ救済テトリミノの描画＆「ドッキングせよ！」の誘導表示
+      // ★ ユーザー要望：Oミノ救済テトリミノの描画＆「DOCK!」の誘導表示
       if (this.battlePiece && !this.battlePiece.settled) {
         for (const cell of this.battlePiece.piece.cells) {
           const px = this.battlePiece.x + cell.gx * BLOCK_SIZE;
@@ -1634,14 +1742,6 @@ export class GameManager {
         const dockBlink = Math.sin(Date.now() / 150) > -0.2;
         if (dockBlink) {
           drawMoonCrestaText(ctx, 'DOCK!', (bounds.minX + bounds.maxX) / 2, bounds.minY - 14, 18, '#ffff00');
-        }
-      }
-
-      // Oミノのみの場合は画面上部に緊急救済テトリミノ警告
-      if (this.player.isOnlyOMino()) {
-        const alertBlink = Math.sin(Date.now() / 180) > 0;
-        if (alertBlink) {
-          drawMoonCrestaText(ctx, 'RESCUE DOCKING!', CANVAS_WIDTH / 2, 110, 20, '#00f0ff');
         }
       }
     }
@@ -1679,16 +1779,34 @@ export class GameManager {
     // 6. パーティクル
     this.particles.draw(ctx);
 
-    // 7. フェーズ切り替えバナー（WAVE開始時は超巨大サイズで迫力満点！）
+    // 7. フェーズ切り替えバナー（STAGE開始時は超巨大サイズで迫力満点！）
     if (this.transitionAlpha > 0) {
       ctx.save();
       ctx.globalAlpha = Math.min(1, this.transitionAlpha);
-      const isWaveBanner = this.transitionText.startsWith('WAVE');
-      const boxHeight = isWaveBanner ? 130 : 90;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+      const isStageBanner = this.transitionText.startsWith('STAGE');
+      const isWarningBanner = this.transitionText.includes('WARNING');
+      const boxHeight = isStageBanner ? 130 : (isWarningBanner ? 105 : 90);
+      ctx.fillStyle = isWarningBanner ? 'rgba(35, 0, 5, 0.88)' : 'rgba(0, 0, 0, 0.82)';
       ctx.fillRect(0, CANVAS_HEIGHT / 2 - boxHeight / 2, CANVAS_WIDTH, boxHeight);
 
-      if (isWaveBanner) {
+      if (isWarningBanner) {
+        // 上下に警告ストロボ枠線
+        ctx.strokeStyle = Math.sin(Date.now() * 0.02) > 0 ? '#ff1100' : '#ffea00';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(0, CANVAS_HEIGHT / 2 - boxHeight / 2, CANVAS_WIDTH, boxHeight);
+
+        const fontSize = Math.floor(30 * this.transitionScale);
+        ctx.font = `900 ${fontSize}px "Impact", "Arial Black", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ff2200';
+        ctx.shadowColor = '#ff6600';
+        ctx.shadowBlur = 20;
+        ctx.fillText(this.transitionText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.strokeText(this.transitionText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      } else if (isStageBanner) {
         // 超特大の迫力アーケードフォント
         const fontSize = Math.floor(64 * this.transitionScale);
         ctx.font = `900 ${fontSize}px "Impact", "Arial Black", monospace`;
@@ -1729,8 +1847,46 @@ export class GameManager {
     // ゲーム内描画の終了：screenShakeの揺れをここで解除（メニューやHUD、オーバーレイに揺れを絶対に波及させない）
     ctx.restore();
 
-    // 8. タイトル・ゲームオーバーオーバーレイ（画面揺れの影響を一切受けない）
+    // 8. プレイ中のHUD（STAGE & SCORE）：Canvas直描画によりCRT走査線・歪み・グローと完全融合
+    if (this.state === 'PLAYING') {
+      this.drawArcadeHUD(ctx);
+    }
+
+    // 9. タイトル・ゲームオーバーオーバーレイ（画面揺れの影響を一切受けない）
     this.drawOverlays(ctx);
+  }
+
+  private drawArcadeHUD(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.textBaseline = 'top';
+
+    // 左上: STAGE X / 10
+    ctx.textAlign = 'left';
+    ctx.font = '900 24px "DotGothic16", "Courier New", monospace';
+    // ブラウン管シアン蛍光体グロー
+    ctx.shadowColor = '#00f0ff';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#38f8f8';
+    ctx.fillText(`STAGE ${this.stage} / ${MAX_STAGES}`, 20, 16);
+    // コアハイライト
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`STAGE ${this.stage} / ${MAX_STAGES}`, 20, 16);
+
+    // 右上: SCORE: X
+    ctx.textAlign = 'right';
+    ctx.font = '900 24px "DotGothic16", "Courier New", monospace';
+    // ブラウン管イエロー蛍光体グロー
+    ctx.shadowColor = '#ffea00';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#ffee00';
+    ctx.fillText(`SCORE: ${this.score}`, CANVAS_WIDTH - 20, 16);
+    // コアハイライト
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`SCORE: ${this.score}`, CANVAS_WIDTH - 20, 16);
+
+    ctx.restore();
   }
 
   private drawOverlays(ctx: CanvasRenderingContext2D): void {
@@ -1823,10 +1979,10 @@ export class GameManager {
       ctx.font = 'bold 18px monospace';
       ctx.fillStyle = '#ffffff';
       ctx.shadowBlur = 0;
-      ctx.fillText(`CURRENT: WAVE ${this.stage}   SCORE: ${this.score}`, CANVAS_WIDTH / 2, 315);
+      ctx.fillText(`CURRENT: STAGE ${this.stage}   SCORE: ${this.score}`, CANVAS_WIDTH / 2, 315);
 
       const isResume = this.pauseMenuSelection === 'RESUME';
-      const isRestart = this.pauseMenuSelection === 'RESTART_WAVE';
+      const isRestart = this.pauseMenuSelection === 'RESTART_STAGE';
       const isTitle = this.pauseMenuSelection === 'TITLE';
 
       // 1. ゲームに戻る (RESUME)
@@ -1842,16 +1998,16 @@ export class GameManager {
         ctx.fillText('  ゲームに戻る (RESUME)  ', CANVAS_WIDTH / 2, 390);
       }
 
-      // 2. waveの最初から (RESTART WAVE)
+      // 2. STAGEの最初から (RESTART STAGE)
       if (isRestart) {
         ctx.fillStyle = '#ffff00';
         ctx.shadowColor = '#ffff00';
         ctx.shadowBlur = 12;
-        ctx.fillText(`> WAVEの最初から (RESTART WAVE ${this.stage}) <`, CANVAS_WIDTH / 2, 450);
+        ctx.fillText(`> STAGEの最初から (RESTART STAGE ${this.stage}) <`, CANVAS_WIDTH / 2, 450);
       } else {
         ctx.fillStyle = '#888888';
         ctx.shadowBlur = 0;
-        ctx.fillText(`  WAVEの最初から (RESTART WAVE ${this.stage})  `, CANVAS_WIDTH / 2, 450);
+        ctx.fillText(`  STAGEの最初から (RESTART STAGE ${this.stage})  `, CANVAS_WIDTH / 2, 450);
       }
 
       // 3. タイトルに戻る (RETURN TO TITLE)

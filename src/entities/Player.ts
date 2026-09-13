@@ -369,22 +369,25 @@ export class Player {
     return !this.isDead && this.pieces.length > 0 && this.pieces.every(p => p.piece.type === 'O');
   }
 
+  // 自機の特定グリッド列（shipGx）の上空に、shipGyより上にある自機ブロックが存在するか判定（かぶさり判定）
+  public isColumnCoveredAbove(shipGx: number, shipGy: number): boolean {
+    for (const attached of this.pieces) {
+      for (const c of attached.piece.cells) {
+        const cgx = attached.relGx + c.gx;
+        const cgy = attached.relGy + c.gy;
+        if (cgx === shipGx && cgy < shipGy) {
+          return true; // 上に自機パーツが存在＝塞がれている
+        }
+      }
+    }
+    return false;
+  }
+
   // ショット発射処理（1つの銃口につき画面内最大2発制限：ギャラガ・ムーンクレスタ仕様）
   public shootBullets(existingBullets: PlayerBullet[] = []): PlayerBullet[] {
     const bullets: PlayerBullet[] = [];
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
-
-    // ★ ユーザー要望：Oミノだけになった時は画面内1発制限で発射
-    if (this.isOnlyOMino()) {
-      const emergencyCount = existingBullets.filter(b => !b.isDead && b.gunId === 'o_core_emergency').length;
-      if (emergencyCount < 1) {
-        const bx = this.anchorX + BLOCK_SIZE;
-        const by = this.anchorY;
-        bullets.push(new PlayerBullet(bx, by, -Math.PI / 2, '#ffea00', 'o_core_emergency', 'O'));
-      }
-      return bullets;
-    }
 
     const occupiedMap = new Set<string>();
     for (const cell of this.getOccupiedCells()) {
@@ -402,7 +405,38 @@ export class Player {
     for (let pieceIdx = 0; pieceIdx < this.pieces.length; pieceIdx++) {
       const attached = this.pieces[pieceIdx];
       const piece = attached.piece;
-      if (piece.type === 'O') continue; // 通常はOブロック自体からは弾が出ない
+
+      // ★ ユーザー要望：oミノ、単発弾は出してね、ドッキングしてももちろんかぶさっていたらでないでいいけど
+      // Oミノは単体時もドッキング時も、上部が開いていれば必ず単発弾（画面内最大1発）を発射！
+      if (piece.type === 'O') {
+        const oAliveCount = existingBullets.filter(
+          b => !b.isDead && (b.pieceType === 'O' || b.gunId?.startsWith(`o_mino_${piece.id}`))
+        ).length;
+
+        if (oAliveCount < 1) {
+          // Oミノの上面2セル列：左列(gx=0) と 右列(gx=1)
+          const col0Covered = this.isColumnCoveredAbove(attached.relGx + 0, attached.relGy);
+          const col1Covered = this.isColumnCoveredAbove(attached.relGx + 1, attached.relGy);
+
+          const by = this.anchorY + attached.relGy * BLOCK_SIZE;
+
+          if (!col0Covered && !col1Covered) {
+            // 両方の列が開いている場合：Oミノ中央から美しい単発弾を発射！
+            const bx = this.anchorX + (attached.relGx + 1.0) * BLOCK_SIZE;
+            bullets.push(new PlayerBullet(bx, by, -Math.PI / 2, '#ffee00', `o_mino_${piece.id}`, 'O'));
+          } else if (!col0Covered && col1Covered) {
+            // 左列のみ開いている場合：左列から単発弾を発射！
+            const bx = this.anchorX + (attached.relGx + 0.5) * BLOCK_SIZE;
+            bullets.push(new PlayerBullet(bx, by, -Math.PI / 2, '#ffee00', `o_mino_${piece.id}`, 'O'));
+          } else if (col0Covered && !col1Covered) {
+            // 右列のみ開いている場合：右列から単発弾を発射！
+            const bx = this.anchorX + (attached.relGx + 1.5) * BLOCK_SIZE;
+            bullets.push(new PlayerBullet(bx, by, -Math.PI / 2, '#ffee00', `o_mino_${piece.id}`, 'O'));
+          }
+          // 両方塞がれている場合（col0Covered && col1Covered）は上にかぶさっているため発射しない
+        }
+        continue;
+      }
 
       for (let portIdx = 0; portIdx < piece.gunPorts.length; portIdx++) {
         const gun = piece.gunPorts[portIdx];
@@ -621,6 +655,13 @@ export class Player {
           if (!occupiedMap.has(`${targetGx},${targetGy}`)) {
             hasActiveGun = true;
             activeAngle = gun.angle;
+          }
+        } else if (piece.type === 'O' && cell.gy === 0) {
+          // Oミノ上側セルが開いていれば真上砲口インジケータを描画
+          const isCovered = this.isColumnCoveredAbove(attached.relGx + cell.gx, attached.relGy);
+          if (!isCovered) {
+            hasActiveGun = true;
+            activeAngle = -Math.PI / 2;
           }
         }
 

@@ -232,8 +232,8 @@ export class Enemy {
         this.scoreValue = 450;
         break;
       case 'TERRAIN_MISSILE':
-        this.width = 44; // ユーザー要望：ロケットみたいにもう少し長い形に
-        this.height = 18;
+        this.width = 80; // ユーザー要望：横から飛んでくるミサイル、倍サイズで
+        this.height = 36;
         this.maxHp = 1;
         this.scoreValue = 300;
         break;
@@ -256,8 +256,8 @@ export class Enemy {
         this.scoreValue = 400; // グラディウス開幕ファン編隊
         break;
       case 'DART_MISSILE':
-        this.width = 24;
-        this.height = 24;
+        this.width = 48; // ユーザー要望：横から飛んでくるミサイル、倍サイズで
+        this.height = 44;
         this.maxHp = 1;
         this.scoreValue = 350; // 索敵急加速ミサイル
         break;
@@ -528,9 +528,9 @@ export class Enemy {
     }
 
     switch (this.pattern) {
-      // ★ ギャプラス＆ギャラガ完全再現：曲線で連なって流れる美しい大編隊！
+      // ★ ギャプラス＆ギャラガ完全再現：曲線で連なって流れる美しい大編隊！（速度・旋回力UP！）
       case 'STREAM_CURVE': {
-        this.streamProgress += dt * 0.55; // 進行速度（ギャラガ風の落ち着いた流麗なスピード）
+        this.streamProgress += dt * 1.15; // 進行速度（画面全体をグルングルン回る高速ギャラガスピード）
         const t = this.streamProgress;
 
         if (t < 0) {
@@ -1209,43 +1209,43 @@ export class Enemy {
     const cx = CANVAS_WIDTH / 2;
 
     switch (path) {
-      // 1. ギャラガ8の字ループ（リサジューインフィニティ）
+      // 1. ギャラガ8の字ループ（リサジューインフィニティ：画面横幅・下部まで大きく旋回！）
       case 'FIGURE_EIGHT': {
         const angle = t * Math.PI * 1.35;
-        const x = cx + Math.sin(angle) * 190;
-        const y = 220 + Math.sin(angle * 2) * 110;
+        const x = cx + Math.sin(angle) * (CANVAS_WIDTH * 0.44);
+        const y = 300 + Math.sin(angle * 2) * 260; // y: 40 〜 560 まで大きく旋回
         return { x: x - this.width / 2, y: y - this.height / 2 };
       }
 
-      // 2. 左から優雅なS字蛇行で画面を渡る（自機付近 y ≈ 520〜560 まで深く急降下スウィング！）
+      // 2. 左から優雅なS字蛇行で画面を渡る（自機がいる下部 y ≈ 620 まで深く急降下スウィング！）
       case 'S_CURVE_LEFT_TO_RIGHT': {
         const progressX = (t / 4.0) * (CANVAS_WIDTH + 140) - 70;
-        const dip = Math.sin((t / 4.0) * Math.PI) * 440;
-        const y = 80 + dip + Math.sin(t * 3.0) * 40;
+        const dip = Math.sin((t / 4.0) * Math.PI) * 520;
+        const y = 80 + dip + Math.sin(t * 3.0) * 50; // 最大 y ≈ 650
         return { x: progressX - this.width / 2, y: y - this.height / 2 };
       }
 
-      // 3. 右から優雅なS字蛇行で画面を渡る（自機付近 y ≈ 520〜560 まで深く急降下スウィング！）
+      // 3. 右から優雅なS字蛇行で画面を渡る（自機がいる下部 y ≈ 620 まで深く急降下スウィング！）
       case 'S_CURVE_RIGHT_TO_LEFT': {
         const progressX = CANVAS_WIDTH + 70 - (t / 4.0) * (CANVAS_WIDTH + 140);
-        const dip = Math.sin((t / 4.0) * Math.PI) * 440;
-        const y = 80 + dip + Math.cos(t * 3.0) * 40;
+        const dip = Math.sin((t / 4.0) * Math.PI) * 520;
+        const y = 80 + dip + Math.cos(t * 3.0) * 50; // 最大 y ≈ 650
         return { x: progressX - this.width / 2, y: y - this.height / 2 };
       }
 
-      // 4. 左からのダイナミック宙返りループ
+      // 4. 左からのダイナミック宙返りループ（画面下部まで落ちてから上昇）
       case 'INFINITY_DIVE_LEFT': {
         const angle = t * 2.8;
-        const x = cx - 90 + Math.cos(angle) * 130;
-        const y = 140 + Math.sin(angle) * 130 + t * 65;
+        const x = cx - 110 + Math.cos(angle) * 150;
+        const y = 180 + Math.sin(angle) * 160 + t * 90;
         return { x: x - this.width / 2, y: y - this.height / 2 };
       }
 
-      // 5. 右からのダイナミック宙返りループ
+      // 5. 右からのダイナミック宙返りループ（画面下部まで落ちてから上昇）
       case 'INFINITY_DIVE_RIGHT': {
         const angle = -t * 2.8;
-        const x = cx + 90 + Math.cos(angle) * 130;
-        const y = 140 + Math.sin(angle) * 130 + t * 65;
+        const x = cx + 110 + Math.cos(angle) * 150;
+        const y = 180 + Math.sin(angle) * 160 + t * 90;
         return { x: x - this.width / 2, y: y - this.height / 2 };
       }
     }
@@ -1609,11 +1609,11 @@ export class Enemy {
       }
 
       // ★ コナミ・スクランブル風：地表ミサイル（TERRAIN_MISSILE）
-      // ユーザー要望：ロケットみたいにもう少し長い形にして
+      // ユーザー要望：横から飛んでくるミサイル、倍サイズで
       case 'TERRAIN_MISSILE': {
         // 飛行方向（左右）に合わせて反転
         const dir = this.vx >= 0 ? 1 : -1;
-        ctx.scale(dir, 1);
+        ctx.scale(dir * 1.8, 1.8);
 
         // 1. 細身で長いロケット胴体（白/ライトグレー 30x8）
         ctx.fillStyle = '#e8f0f8';
@@ -1712,8 +1712,9 @@ export class Enemy {
         break;
       }
 
-      // ★ 索敵急加速ミサイル（DART_MISSILE）
+      // ★ 索敵急加速ミサイル（DART_MISSILE）倍サイズ描画！
       case 'DART_MISSILE': {
+        ctx.scale(1.9, 1.9);
         ctx.fillStyle = '#ffff00';
         ctx.fillRect(-8, -4, 16, 8);
         ctx.fillStyle = '#ff0044';

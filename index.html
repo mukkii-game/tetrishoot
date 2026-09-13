@@ -65,82 +65,7 @@
       box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.9), inset 0 0 10px rgba(0, 255, 200, 0.1);
       z-index: 11;
     }
-    #ui-layer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 12;
-    }
-    .hud {
-      position: absolute;
-      top: 10px;
-      left: 15px;
-      right: 15px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-weight: 900;
-      font-size: 13px;
-      letter-spacing: 1px;
-      text-shadow: 0 0 6px rgba(0, 255, 200, 0.6);
-    }
-    .hud-stage {
-      color: #00f0ff;
-      font-size: 15px;
-    }
-    .hud-phase {
-      padding: 3px 10px;
-      border-radius: 4px;
-      font-size: 12px;
-      text-transform: uppercase;
-      font-weight: 900;
-    }
-    .phase-tetris {
-      background: rgba(0, 255, 150, 0.2);
-      border: 1px solid #00ffaa;
-      color: #00ffaa;
-    }
-    .phase-shooting {
-      background: rgba(255, 40, 80, 0.2);
-      border: 1px solid #ff2255;
-      color: #ff3366;
-    }
-    .hud-score {
-      color: #ffea00;
-      font-size: 14px;
-    }
-    .tetris-stock-container {
-      position: absolute;
-      top: 40px;
-      left: 15px;
-      right: 15px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #8be9fd;
-    }
-    .stock-icons {
-      display: flex;
-      gap: 6px;
-    }
-    .stock-block {
-      width: 12px;
-      height: 12px;
-      background: #00ffaa;
-      border: 1px solid #ffffff;
-      box-shadow: 0 0 6px #00ffaa;
-      transition: opacity 0.2s;
-    }
-    .stock-block.spent {
-      opacity: 0.2;
-      background: #444;
-      border-color: #666;
-      box-shadow: none;
-    }
+
     #instructions {
       margin-top: 10px;
       font-size: 12px;
@@ -163,13 +88,6 @@
     <canvas id="game-canvas" width="540" height="720"></canvas>
     <div class="crt-overlay"></div>
     <div class="crt-vignette"></div>
-    <div id="ui-layer">
-      <div class="hud">
-        <div class="hud-stage" id="hud-stage">STAGE 1 / 10</div>
-        <div class="hud-phase phase-tetris" id="hud-phase">ドッキングせよ</div>
-        <div class="hud-score" id="hud-score">SCORE: 0</div>
-      </div>
-    </div>
   </div>
   <div id="instructions">
     Galaxtris (ギャラクトリス) ｜ ブロックを合体して全方位エイリアンを撃破せよ！<br/>

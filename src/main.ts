@@ -10,10 +10,6 @@ window.addEventListener('DOMContentLoaded', () => {
   canvas.width = CANVAS_WIDTH;
   canvas.height = CANVAS_HEIGHT;
 
-  // HUD要素
-  const hudStage = document.getElementById('hud-stage')!;
-  const hudPhase = document.getElementById('hud-phase')!;
-  const hudScore = document.getElementById('hud-score')!;
   const input = new Input(canvas);
   const sound = new Sound();
   const game = new GameManager(sound);
@@ -27,22 +23,7 @@ window.addEventListener('DOMContentLoaded', () => {
     game.update(dt, input);
     game.draw(ctx);
 
-    updateHUD();
-
     requestAnimationFrame(gameLoop);
-  }
-
-  function updateHUD(): void {
-    hudStage.textContent = `STAGE ${game.stage} / 10`;
-    hudScore.textContent = `SCORE: ${game.score}`;
-
-    if (game.phase === 'TETRIS') {
-      hudPhase.className = 'hud-phase phase-tetris';
-      hudPhase.textContent = `ドッキングせよ`;
-    } else {
-      hudPhase.className = 'hud-phase phase-shooting';
-      hudPhase.textContent = `WAVE ${game.stage} (${Math.ceil(game.shootingTimeLimit)}s)`;
-    }
   }
 
   requestAnimationFrame(gameLoop);

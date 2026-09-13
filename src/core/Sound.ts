@@ -1,4 +1,4 @@
-import { shoot_arc_b64, damage_arc_b64, score_arc_b64, boss_lfo1_b64, boss_lfo2_b64 } from '../audio/audioData';
+import { shoot_arc_b64, damage_arc_b64, score_arc_b64, boss_lfo1_b64, boss_lfo2_b64, boss_warning_b64, player_death_b64 } from '../audio/audioData';
 
 // ムーンクレスタ風 往年チップチューン音源（Web Audio API）＋ OtoLogic効果音
 export class Sound {
@@ -13,10 +13,16 @@ export class Sound {
   private scoreBuffer: AudioBuffer | null = null;
   private bossLfo1Buffer: AudioBuffer | null = null;
   private bossLfo2Buffer: AudioBuffer | null = null;
+  private bossWarningBuffer: AudioBuffer | null = null;
+  private playerDeathBuffer: AudioBuffer | null = null;
 
   // ボスLFO再生用ループノード
   private activeBossLfoSource: AudioBufferSourceNode | null = null;
   private activeBossLfoGain: GainNode | null = null;
+
+  // ボス予告サイレン再生ノード
+  private activeBossWarningSource: AudioBufferSourceNode | null = null;
+  private activeBossWarningGain: GainNode | null = null;
 
   // ショット音の過剰な重なり防止用（スロットリング＆ボイススティーリング）
   private lastShootTime = 0;
@@ -62,6 +68,8 @@ export class Sound {
     decode(score_arc_b64, buf => { this.scoreBuffer = buf; });
     decode(boss_lfo1_b64, buf => { this.bossLfo1Buffer = buf; });
     decode(boss_lfo2_b64, buf => { this.bossLfo2Buffer = buf; });
+    decode(boss_warning_b64, buf => { this.bossWarningBuffer = buf; });
+    decode(player_death_b64, buf => { this.playerDeathBuffer = buf; });
   }
 
   public toggleMute(): boolean {
@@ -69,6 +77,7 @@ export class Sound {
     if (this.isMuted) {
       this.stopBGM();
       this.stopBossLfo();
+      this.stopBossWarning();
     }
     return this.isMuted;
   }
@@ -509,6 +518,88 @@ export class Sound {
       }
       this.activeBossLfoGain = null;
     }
+  }
+
+  // ★ ユーザー要望：宇宙基地サイレンはボス登場時に鳴らす、予告として
+  public playBossWarning(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+    this.stopBossWarning();
+
+    if (this.bossWarningBuffer) {
+      try {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.bossWarningBuffer;
+        src.loop = false;
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.75, this.ctx.currentTime);
+
+        src.connect(gain);
+        gain.connect(this.ctx.destination);
+        src.start(0);
+
+        this.activeBossWarningSource = src;
+        this.activeBossWarningGain = gain;
+        return;
+      } catch (e) {
+        console.warn('playBossWarning error:', e);
+      }
+    }
+
+    // フォールバック（サイレン調ピッチベンド）
+    this.playPhaseAlert('shooting');
+  }
+
+  public stopBossWarning(): void {
+    if (this.activeBossWarningGain && this.ctx) {
+      try {
+        const now = this.ctx.currentTime;
+        this.activeBossWarningGain.gain.cancelScheduledValues(now);
+        this.activeBossWarningGain.gain.setValueAtTime(this.activeBossWarningGain.gain.value, now);
+        this.activeBossWarningGain.gain.linearRampToValueAtTime(0.001, now + 0.35);
+      } catch {
+        // ignore
+      }
+    }
+    if (this.activeBossWarningSource) {
+      try {
+        this.activeBossWarningSource.stop(this.ctx ? this.ctx.currentTime + 0.4 : 0);
+      } catch {
+        // ignore
+      }
+      this.activeBossWarningSource = null;
+    }
+    this.activeBossWarningGain = null;
+  }
+
+  // ★ ユーザー要望：プレイヤがーやられたときの音は添付の爆発のどれかを使って
+  public playPlayerDeath(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    if (this.playerDeathBuffer) {
+      try {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.playerDeathBuffer;
+        src.playbackRate.value = 1.0;
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.95, this.ctx.currentTime);
+
+        src.connect(gain);
+        gain.connect(this.ctx.destination);
+        src.start(0);
+        return;
+      } catch (e) {
+        console.warn('playPlayerDeath error:', e);
+      }
+    }
+
+    // フォールバック（通常大爆発）
+    this.playExplosion(true);
   }
 
   // ★ ユーザー要望：R-TYPEのフォースをぶち当てているような「ジャシシッ！」「ガガッ」という重厚な破壊ヒット音

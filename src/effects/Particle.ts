@@ -146,6 +146,26 @@ export class ParticleManager {
     }
   }
 
+  // ★ ユーザー要望：ドッキング時間切れでミノがシュワーと光の粒子になって消滅するエフェクト
+  public emitDissolve(x: number, y: number, width: number, height: number, color: string, count = 35): void {
+    for (let i = 0; i < count; i++) {
+      const px = x + Math.random() * width;
+      const py = y + Math.random() * height;
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.5; // ふわっと上空へ昇華
+      const speed = Math.random() * 80 + 30;
+      this.particles.push({
+        x: px,
+        y: py,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: Math.random() > 0.4 ? color : '#ffffff',
+        size: Math.random() * 4 + 2,
+        alpha: 1.0,
+        decay: Math.random() * 1.2 + 0.8,
+      });
+    }
+  }
+
   public update(dt: number): void {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
