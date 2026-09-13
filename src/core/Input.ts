@@ -18,6 +18,7 @@ export class Input {
   public justTab = false;
   public enter = false;
   public justEnter = false;
+  public justInvincible = false;
   public selectedPieceIndex: number | null = null;
 
   public mouseX: number | null = null;
@@ -93,6 +94,10 @@ export class Input {
           break;
         case 'KeyM':
           this.mutePressed = true;
+          break;
+        case 'KeyI':
+        case 'KeyG':
+          this.justInvincible = true;
           break;
         case 'Escape':
           if (!this.escape) this.justEscape = true;
@@ -265,6 +270,7 @@ export class Input {
     this.justShoot = false;
     this.justMouseDown = false;
     this.justEnter = false;
+    this.justInvincible = false;
     this.justRotate = false;
     this.justDrop = false;
     this.justLeft = false;
@@ -285,6 +291,7 @@ export class Input {
     this.justMouseDown = false;
     this.justTab = false;
     this.justEnter = false;
+    this.justInvincible = false;
     this.selectedPieceIndex = null;
     this.mouseDeltaX = 0;
     this.mouseDeltaY = 0;

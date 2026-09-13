@@ -87,6 +87,7 @@ export class GameManager {
   public screenShake = 0;
   public hitStopTimer = 0;
   public terrainHitCooldown = 0;
+  public isInvincibleMode = false; // 撮影用無敵モード
 
   // バトル中に落ちてくる救済テトリミノ（Oミノのみになった時の緊急ドッキング）
   public battlePiece: FallingPieceItem | null = null;
@@ -125,6 +126,7 @@ export class GameManager {
     this.bossWarningTimer = 0;
     this.sound.stopBossWarning();
     this.player = new Player();
+    this.player.isInvincible = this.isInvincibleMode;
     this.particles.clear();
     this.detachedPieces = [];
     this.state = 'PLAYING';
@@ -249,6 +251,14 @@ export class GameManager {
       }
     }
 
+    // 撮影用無敵モード切替（Iキー / Gキー）
+    if (input.justInvincible) {
+      this.isInvincibleMode = !this.isInvincibleMode;
+      this.player.isInvincible = this.isInvincibleMode;
+      this.sound.playDock();
+      this.showTransitionText(this.isInvincibleMode ? '★ INVINCIBLE: ON ★' : '★ INVINCIBLE: OFF ★', 1.2);
+    }
+
     // ESCキーでポーズ画面へ移行 / ポーズ解除（★ ユーザー要望：ESCのときは音を消す！）
     if (input.justEscape) {
       if (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR') {
@@ -345,6 +355,14 @@ export class GameManager {
         // スペースキー、Enterキー、またはマウスクリックで決定（単発押し判定）
         if (input.justShoot || input.justEnter || (input.justMouseDown && input.mouseY !== null && input.mouseY >= 360 && input.mouseY <= 530)) {
           this.handlePauseConfirm(input);
+        }
+
+        // 無敵モードのタップ切替（PAUSE画面で Y: 540..575 をタップ）
+        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 540 && input.mouseY <= 575) {
+          this.isInvincibleMode = !this.isInvincibleMode;
+          this.player.isInvincible = this.isInvincibleMode;
+          this.sound.playDock();
+          input.clearTransientInputs();
         }
         break;
 
@@ -1939,6 +1957,16 @@ export class GameManager {
     ctx.fillText(`${this.highScore}`, CANVAS_WIDTH / 2, 28);
     ctx.shadowBlur = 0;
 
+    // 撮影用無敵モードインジケータ
+    if (this.isInvincibleMode) {
+      ctx.font = '900 13px "DotGothic16", monospace';
+      ctx.fillStyle = '#ffea00';
+      ctx.shadowColor = '#ffea00';
+      ctx.shadowBlur = 6;
+      ctx.fillText('★ INVINCIBLE (無敵) ★', CANVAS_WIDTH / 2, 54);
+      ctx.shadowBlur = 0;
+    }
+
     // ── 右上: モバイル・マウス向け MUTE & PAUSE ボタン ──
     // MUTE (x: 440..476, y: 10..42)
     ctx.fillStyle = 'rgba(20, 30, 48, 0.7)';
@@ -2160,10 +2188,17 @@ export class GameManager {
         ctx.fillText('  タイトルに戻る (TITLE)  ', CANVAS_WIDTH / 2, 510);
       }
 
+      // 4. 撮影用無敵モード切替表示
+      ctx.font = 'bold 15px monospace';
+      ctx.fillStyle = this.isInvincibleMode ? '#ffea00' : '#778899';
+      ctx.shadowColor = this.isInvincibleMode ? '#ffea00' : 'transparent';
+      ctx.shadowBlur = this.isInvincibleMode ? 6 : 0;
+      ctx.fillText(`★ 撮影用無敵モード: [ ${this.isInvincibleMode ? 'ON (有効)' : 'OFF (通常)'} ] (Iキー/タップ)`, CANVAS_WIDTH / 2, 558);
+
       ctx.shadowBlur = 0;
       ctx.font = '13px monospace';
       ctx.fillStyle = '#8b949e';
-      ctx.fillText('SELECT & DECIDE: TAP / CLICK / ARROWS / SPACE', CANVAS_WIDTH / 2, 590);
+      ctx.fillText('SELECT & DECIDE: TAP / CLICK / ARROWS / SPACE', CANVAS_WIDTH / 2, 600);
       ctx.restore();
     } else if (this.state === 'GAMEOVER') {
       ctx.save();

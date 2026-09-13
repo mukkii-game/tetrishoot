@@ -17,6 +17,7 @@ export class Player {
   public pieces: AttachedPiece[] = [];
   public fireCooldown = 0;
   public barrierTimer = 0;
+  public isInvincible = false; // 撮影用無敵モードフラグ
   public isDead = false;
 
   constructor() {
@@ -569,8 +570,8 @@ export class Player {
     py: number,
     particles: ParticleManager
   ): { hit: boolean; pieceDestroyed: boolean; pieceType?: TetrominoType; detachedPieces?: AttachedPiece[] } {
-    // バリア稼働中は完全無敵（体当たり・弾を弾き返す）
-    if (this.barrierTimer > 0) {
+    // バリア稼働中または撮影用無敵モード稼働中は完全無敵（体当たり・弾を弾き返す）
+    if (this.barrierTimer > 0 || this.isInvincible) {
       particles.emitSparks(px, py, '#00ffff', 8);
       return { hit: false, pieceDestroyed: false };
     }
