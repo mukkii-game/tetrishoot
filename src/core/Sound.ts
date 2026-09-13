@@ -265,8 +265,32 @@ export class Sound {
       gain.connect(this.ctx.destination);
 
       osc.start(st);
-      osc.stop(st + 0.055);
+      osc.stop(st + 0.06);
     }
+  }
+
+  // 6.7. ムーンクレスタ名物・コールドアイ分裂音（ピキィィン！と鋭く弾ける高周波ポップ音）
+  public playMoonSplit(): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1750, now);
+    osc.frequency.exponentialRampToValueAtTime(360, now + 0.12);
+
+    gain.gain.setValueAtTime(0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.12);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.13);
   }
 
   // 7. フェーズアラート

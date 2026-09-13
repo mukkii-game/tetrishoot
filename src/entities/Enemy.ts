@@ -36,6 +36,8 @@ export type FlightPattern =
   | 'ZIGZAG_DIVE'         // ★ ムーンクレスタ風：カミソリ急降下（電光石火の左右切り返し）
   | 'CROSS_SPLIT'         // ★ 左右斜め上から中央交差突入
   | 'MOON_SPLIT_FLOAT'    // ★ ムーンクレスタ風：カクカク不規則に左右に振れながら降下
+  | 'MOON_COLD_EYE'       // ★ ムーンクレスタ完全再現：コールドアイ（上部横スイング＆階段状ジグザグ急降下）
+  | 'MOON_SUPER_EYE'      // ★ ムーンクレスタ完全再現：スーパーアイ（左右高速ダイアゴナルバウンド）
   | 'XEVIOUS_TOROID'      // ★ ゼビウス風：直角クランク移動で画面をクロス
   | 'STARFORCE_SWOOP';    // ★ スターフォース風：超高速ダイナミック全画面ダイブ＆旋回
 
@@ -57,6 +59,12 @@ export class Enemy {
 
   public formationX: number;
   public formationY: number;
+
+  // ムーンクレスタ専用状態
+  public moonState: 'HOVER' | 'DIVE' = 'HOVER';
+  public diveDelay = 0;
+  public movingRight = true;
+  public eyeLookX = 0;
 
   // ストリーム曲線編隊パラメータ
   public curveType?: CurvePathType;
@@ -148,12 +156,12 @@ export class Enemy {
         break;
       case 'SPLITTING_EYE':
         this.width = 46;
-        this.height = 42;
+        this.height = 40;
         this.maxHp = 1; // 1発で2つのMINI_EYEに分裂
         this.scoreValue = 500;
         break;
       case 'MINI_EYE':
-        this.width = 24;
+        this.width = 26;
         this.height = 22;
         this.maxHp = 1;
         this.scoreValue = 250;
@@ -221,6 +229,30 @@ export class Enemy {
       this.y = -40;
       this.vx = (Math.random() > 0.5 ? 1 : -1) * 80;
       this.vy = 45; // ゆっくりカクカク不規則降下
+    } else if (pattern === 'MOON_COLD_EYE') {
+      // ★ ムーンクレスタ完全再現：コールドアイ
+      // 4機が初期フレームから上部に並んで配置（spawnDelay=0 なら即座に画面内 y=90 に出現）
+      const colIndex = Math.floor(formationCol) % 4;
+      const xPositions = [85, 195, 305, 415];
+      this.formationX = xPositions[colIndex];
+      this.formationY = 90 + formationRow * 44;
+      this.x = this.formationX;
+      this.y = spawnDelay === 0 ? this.formationY : -50;
+      this.moonState = 'HOVER';
+      this.movingRight = colIndex % 2 === 0;
+      this.diveDelay = 1.8 + colIndex * 2.4;
+      this.vx = (this.movingRight ? 1 : -1) * 190;
+      this.vy = 24;
+    } else if (pattern === 'MOON_SUPER_EYE') {
+      // ★ ムーンクレスタ完全再現：スーパーアイ
+      const colIndex = Math.floor(formationCol) % 8;
+      this.formationX = 40 + colIndex * 65;
+      this.formationY = 80 + formationRow * 36;
+      this.x = this.formationX;
+      this.y = spawnDelay === 0 ? this.formationY : -40;
+      this.movingRight = Math.random() > 0.5;
+      this.vx = (this.movingRight ? 1 : -1) * 220;
+      this.vy = 90;
     } else if (pattern === 'XEVIOUS_TOROID') {
       this.x = Math.random() > 0.5 ? -30 : CANVAS_WIDTH + 30;
       this.y = 80 + Math.random() * 200;
@@ -273,6 +305,12 @@ export class Enemy {
         this.y = -50;
       } else if (this.pattern === 'CROSS_SPLIT') {
         this.x = this.formationX < CANVAS_WIDTH / 2 ? -40 : CANVAS_WIDTH + 40;
+        this.y = -40;
+      } else if (this.pattern === 'MOON_COLD_EYE') {
+        this.x = this.formationX;
+        this.y = -50;
+      } else if (this.pattern === 'MOON_SUPER_EYE') {
+        this.x = this.formationX;
         this.y = -40;
       } else {
         this.x = -100;
@@ -471,6 +509,89 @@ export class Enemy {
         if (this.y > CANVAS_HEIGHT + 30) {
           this.y = -40;
           this.x = 60 + Math.random() * (CANVAS_WIDTH - 120);
+        }
+        break;
+      }
+
+      // ★ ムーンクレスタ完全再現：コールドアイ
+      // 上部で4機が息を合わせて横スイング → 順次離脱して画面端でガクンと降りる階段状急降下
+      case 'MOON_COLD_EYE': {
+        if (this.moonState === 'HOVER') {
+          // 増援の場合、上部待機位置から編隊Y座標までスムーズに滑空
+          if (this.y < this.formationY) {
+            this.y += 130 * dt;
+            if (this.y > this.formationY) this.y = this.formationY;
+          }
+          // 上部で4機が呼吸を合わせて左右にゆったりスイング（ムーンクレスタ完全再現！）
+          const sway = Math.sin(this.timeAlive * 2.2) * 55;
+          this.x = this.formationX + sway;
+          this.eyeLookX = Math.cos(this.timeAlive * 2.2);
+
+          // 一定時間経過で順次急降下ダイブ開始！
+          if (this.patternTimer >= this.diveDelay) {
+            this.moonState = 'DIVE';
+            this.movingRight = this.eyeLookX >= 0;
+            this.vx = (this.movingRight ? 1 : -1) * 190;
+            justStartedDive = true;
+          }
+        } else {
+          // 【急降下モード：ムーンクレスタ名物・階段状カクカクジグザグ急降下！】
+          this.x += this.vx * dt;
+          this.y += 24 * dt; // 緩やかな下降
+          this.eyeLookX = this.movingRight ? 1 : -1;
+
+          // 画面左右端に達したら一段「ガクン」と急降下して方向転換（階段移動）
+          const leftLimit = 20;
+          const rightLimit = CANVAS_WIDTH - 20 - this.width;
+
+          if (this.x <= leftLimit && !this.movingRight) {
+            this.x = leftLimit;
+            this.movingRight = true;
+            this.vx = 190;
+            this.y += 36; // ガクンと階段を降りるように下降！
+          } else if (this.x >= rightLimit && this.movingRight) {
+            this.x = rightLimit;
+            this.movingRight = false;
+            this.vx = -190;
+            this.y += 36; // ガクンと階段を降りるように下降！
+          }
+
+          // 画面下端を抜けたら天頂から再突入（ムーンクレスタのループ仕様！）
+          if (this.y > CANVAS_HEIGHT + 30) {
+            this.y = -35;
+            this.x = Math.max(30, Math.min(CANVAS_WIDTH - 30 - this.width, this.x));
+            this.movingRight = !this.movingRight;
+            this.vx = (this.movingRight ? 1 : -1) * 190;
+          }
+        }
+        break;
+      }
+
+      // ★ ムーンクレスタ完全再現：スーパーアイ
+      // 分裂直後から全画面を電光石火の左右ダイアゴナルバウンド＆高速ジグザグ！
+      case 'MOON_SUPER_EYE': {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.eyeLookX = this.vx > 0 ? 1 : -1;
+
+        const leftLimit = 16;
+        const rightLimit = CANVAS_WIDTH - 16 - this.width;
+
+        if (this.x <= leftLimit && this.vx < 0) {
+          this.x = leftLimit;
+          this.vx = 220;
+          this.y += 24; // 壁バウンドで一段落下
+        } else if (this.x >= rightLimit && this.vx > 0) {
+          this.x = rightLimit;
+          this.vx = -220;
+          this.y += 24;
+        }
+
+        // 画面下端を抜けたら上から再突入
+        if (this.y > CANVAS_HEIGHT + 25) {
+          this.y = -25;
+          this.x = 30 + Math.random() * (CANVAS_WIDTH - 60 - this.width);
+          this.vx = (Math.random() > 0.5 ? 1 : -1) * 220;
         }
         break;
       }
@@ -706,40 +827,88 @@ export class Enemy {
         break;
       }
 
-      // ★ ムーンクレスタ名物：撃つと2つに分裂する目玉怪獣
+      // ★ ムーンクレスタ完全再現：コールドアイ（撃つと2つに分裂する怪獣目玉）
       case 'SPLITTING_EYE': {
-        // 生物感のあるドット絵
-        ctx.fillStyle = '#ff0055';
-        ctx.fillRect(-14, -12, 28, 24);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(-10, -8, 20, 16);
-        // ギョロリと動く瞳
-        const eyeOffsetX = Math.sin(this.timeAlive * 5) * 3;
-        ctx.fillStyle = '#00f0ff';
-        ctx.fillRect(-5 + eyeOffsetX, -5, 10, 10);
-        ctx.fillStyle = '#000033';
-        ctx.fillRect(-2 + eyeOffsetX, -2, 4, 4);
+        // 1. 赤いヘルメット状外郭
+        ctx.fillStyle = '#d8002b';
+        ctx.fillRect(-15, -14, 30, 8);
+        ctx.fillRect(-16, -6, 32, 14);
 
-        // 触手・トゲ（パタパタ動く）
-        ctx.fillStyle = f === 0 ? '#ffcc00' : '#ff3300';
-        ctx.fillRect(-18, -4, 4, 8);
-        ctx.fillRect(14, -4, 4, 8);
-        ctx.fillRect(-8, 12, 4, 5);
-        ctx.fillRect(4, 12, 4, 5);
+        // 2. 頭頂部の王冠風黄色突起（ムーンクレスタのトレードマーク）
+        ctx.fillStyle = '#ffea00';
+        ctx.fillRect(-11, -17, 5, 4);
+        ctx.fillRect(-2, -18, 5, 5);
+        ctx.fillRect(7, -17, 5, 4);
+
+        // 3. 左右のパタパタ動く側翼
+        ctx.fillStyle = f === 0 ? '#ffea00' : '#ff0044';
+        if (f === 0) {
+          ctx.fillRect(-19, -4, 4, 10);
+          ctx.fillRect(15, -4, 4, 10);
+        } else {
+          ctx.fillRect(-18, -7, 3, 10);
+          ctx.fillRect(15, -7, 3, 10);
+        }
+
+        // 4. 巨大な白目
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-10, -7, 20, 14);
+
+        // 5. 水色虹彩＋黒瞳孔＋白ハイライト（移動方向やプレイヤーをギョロリと見つめる！）
+        const eyeShift = Math.max(-4, Math.min(4, Math.round(this.eyeLookX * 4)));
+        ctx.fillStyle = '#00f0ff';
+        ctx.fillRect(-4 + eyeShift, -5, 8, 10);
+        ctx.fillStyle = '#000033';
+        ctx.fillRect(-2 + eyeShift, -3, 4, 6);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-1 + eyeShift, -4, 2, 2);
+
+        // 6. 下部の黄色い鋭いアゴ・牙（アニメーションで開閉）
+        ctx.fillStyle = '#ffea00';
+        if (f === 0) {
+          ctx.fillRect(-12, 8, 4, 6);
+          ctx.fillRect(-4, 8, 3, 4);
+          ctx.fillRect(1, 8, 3, 4);
+          ctx.fillRect(8, 8, 4, 6);
+        } else {
+          ctx.fillRect(-10, 8, 5, 5);
+          ctx.fillRect(-3, 8, 6, 5);
+          ctx.fillRect(5, 8, 5, 5);
+        }
         break;
       }
 
-      // ★ 分裂したミニ目玉
+      // ★ ムーンクレスタ完全再現：スーパーアイ（分裂した小型目玉）
       case 'MINI_EYE': {
-        ctx.fillStyle = '#ff0055';
-        ctx.fillRect(-8, -7, 16, 14);
+        // 1. 赤い小型ボディ
+        ctx.fillStyle = '#d8002b';
+        ctx.fillRect(-10, -8, 20, 14);
+
+        // 2. 左右の黄色い小さな翼
+        ctx.fillStyle = '#ffea00';
+        if (f === 0) {
+          ctx.fillRect(-13, -3, 4, 6);
+          ctx.fillRect(9, -3, 4, 6);
+        } else {
+          ctx.fillRect(-12, -5, 3, 6);
+          ctx.fillRect(9, -5, 3, 6);
+        }
+
+        // 3. 白目
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(-5, -4, 10, 8);
+        ctx.fillRect(-6, -5, 12, 9);
+
+        // 4. 水色と黒の瞳（高速移動に追従）
+        const miniShift = Math.max(-2, Math.min(2, Math.round(this.eyeLookX * 2)));
         ctx.fillStyle = '#00f0ff';
-        ctx.fillRect(-2, -2, 4, 4);
-        ctx.fillStyle = f === 0 ? '#ffcc00' : '#ff3300';
-        ctx.fillRect(-10, -2, 2, 4);
-        ctx.fillRect(8, -2, 2, 4);
+        ctx.fillRect(-3 + miniShift, -4, 6, 7);
+        ctx.fillStyle = '#000033';
+        ctx.fillRect(-1 + miniShift, -2, 3, 4);
+
+        // 5. 下部の小さな足
+        ctx.fillStyle = '#ffea00';
+        ctx.fillRect(-7, 6, 3, 3);
+        ctx.fillRect(4, 6, 3, 3);
         break;
       }
 

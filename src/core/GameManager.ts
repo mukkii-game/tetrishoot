@@ -432,13 +432,18 @@ export class GameManager {
 
     switch (this.stage) {
       case 1:
-        // 【WAVE 1：ムーンクレスタ Stage 1&2・コールドアイ＆スーパーアイ】（ザコ32機）
-        // 撃つと2つのスーパーアイにパッと分裂するコールドアイ＋最初から降下するスーパーアイ！
-        for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_SPLIT_FLOAT', 1 + (i % 6), 0, 0.2 + i * 0.22));
+        // 【WAVE 1：ムーンクレスタ Stage 1&2・コールドアイ＆スーパーアイ】
+        // 1. 初手：4機のコールドアイが初期フレーム（t=0）から画面上部（y=90）に並んで横スイング！（待機時間ゼロ！）
+        for (let i = 0; i < 4; i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, 0));
         }
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('MINI_EYE', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 1, 0.8 + i * 0.18));
+        // 2. 増援（Stage 1 第二波）：8.5秒後に上部から滑空して編隊に加わる4機のコールドアイ
+        for (let i = 0; i < 4; i++) {
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, 8.5));
+        }
+        // 3. Stage 2 スーパーアイ大群：電光石火の左右ダイアゴナルバウンド（8機）
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('MINI_EYE', 'MOON_SUPER_EYE', i, 0, 14.0 + i * 0.4));
         }
         break;
 
@@ -807,21 +812,23 @@ export class GameManager {
 
           const killed = enemy.hit(1);
           if (killed) {
-            // 要望①：ムーンクレスタ名物 SPLITTING_EYE が撃破されたら2つの MINI_EYE に分裂！
+            // 要望①：ムーンクレスタ名物 SPLITTING_EYE（コールドアイ）が撃破されたら2つの MINI_EYE（スーパーアイ）に分裂！
             if (enemy.rank === 'SPLITTING_EYE') {
-              this.sound.playExplosion(false);
-              this.particles.emitExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, '#ff0055', 18);
-              const mini1 = new Enemy('MINI_EYE', 'MOON_SPLIT_FLOAT', 0, 0, 0);
-              mini1.x = enemy.x - 12;
+              this.sound.playMoonSplit();
+              this.particles.emitExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, '#ff0055', 24);
+              const mini1 = new Enemy('MINI_EYE', 'MOON_SUPER_EYE', 0, 0, 0);
+              mini1.x = enemy.x - 14;
               mini1.y = enemy.y;
-              mini1.vx = -90;
-              mini1.vy = 65;
+              mini1.vx = -220; // 鋭く左へ弾き飛ぶ
+              mini1.vy = 85;
+              mini1.movingRight = false;
 
-              const mini2 = new Enemy('MINI_EYE', 'MOON_SPLIT_FLOAT', 0, 0, 0);
-              mini2.x = enemy.x + 12;
+              const mini2 = new Enemy('MINI_EYE', 'MOON_SUPER_EYE', 0, 0, 0);
+              mini2.x = enemy.x + 14;
               mini2.y = enemy.y;
-              mini2.vx = 90;
-              mini2.vy = 65;
+              mini2.vx = 220; // 鋭く右へ弾き飛ぶ
+              mini2.vy = 85;
+              mini2.movingRight = true;
 
               this.enemies.push(mini1, mini2);
               this.score += enemy.scoreValue;
