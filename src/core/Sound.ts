@@ -442,6 +442,21 @@ export class Sound {
     }, tempo);
   }
 
+  public pauseBGM(): void {
+    if (this.bgmIntervalId !== null) {
+      clearInterval(this.bgmIntervalId);
+      this.bgmIntervalId = null;
+    }
+  }
+
+  public resumeBGM(): void {
+    if (this.currentBgmPhase !== 'none' && this.bgmIntervalId === null) {
+      const p = this.currentBgmPhase;
+      this.currentBgmPhase = 'none'; // reset to force re-start
+      this.startBGM(p);
+    }
+  }
+
   public stopBGM(): void {
     if (this.bgmIntervalId !== null) {
       clearInterval(this.bgmIntervalId);

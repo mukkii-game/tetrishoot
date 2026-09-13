@@ -18,8 +18,8 @@ export const BULLET_SPEED = 650;
 export const BULLET_WIDTH = BLOCK_SIZE * 0.85; // 極太弾
 export const PLAYER_FIRE_INTERVAL = 0.12; // 押しっぱなし連射の快適なトリガー間隔
 
-// 耐久度
-export const PIECE_MAX_HP = 2; // パーツ耐久（体当たり2回で破壊）
+// 耐久度（昔のレトロアーケード準拠：一撃死！）
+export const PIECE_MAX_HP = 1; // パーツ耐久（一撃で即破壊）
 
 // 色定義
 export const TETROMINO_COLORS = {

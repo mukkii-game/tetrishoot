@@ -364,10 +364,10 @@ export class Player {
     const baseGx = Math.round(this.anchorX / BLOCK_SIZE);
     const baseGy = Math.round(this.anchorY / BLOCK_SIZE);
 
-    // ★ ユーザー要望：Oミノだけになった時は、救済ブロックを回転させたり最低限の迎撃ができるよう中央緊急ショットを発射！
+    // ★ ユーザー要望：Oミノだけになった時は画面内1発制限で発射
     if (this.isOnlyOMino()) {
       const emergencyCount = existingBullets.filter(b => !b.isDead && b.gunId === 'o_core_emergency').length;
-      if (emergencyCount < 2) {
+      if (emergencyCount < 1) {
         const bx = this.anchorX + BLOCK_SIZE;
         const by = this.anchorY;
         bullets.push(new PlayerBullet(bx, by, -Math.PI / 2, '#ffea00', 'o_core_emergency'));

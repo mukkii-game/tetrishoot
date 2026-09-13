@@ -214,17 +214,17 @@ export class GameManager {
       this.sound.toggleMute();
     }
 
-    // ESCキーでポーズ画面へ移行 / ポーズ解除
+    // ESCキーでポーズ画面へ移行 / ポーズ解除（★ ユーザー要望：ESCのときは音を消す！）
     if (input.justEscape) {
       if (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR') {
         this.state = 'PAUSED';
         this.pauseMenuSelection = 'RESUME';
-        this.sound.playHit();
+        this.sound.pauseBGM();
         input.clearTransientInputs();
         return;
       } else if (this.state === 'PAUSED') {
         this.state = 'PLAYING';
-        this.sound.playHit();
+        this.sound.resumeBGM();
         input.clearTransientInputs();
         return;
       }
@@ -602,14 +602,18 @@ export class GameManager {
         for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
           this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, i * 0.35));
         }
-        // 2. バンガード岩盤回廊の巡航ポッド＆地表ミサイル
+        // 2. 左右ループ走査機（右端に行くと左端からワープして飛び出してくる敵！）
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 6); i++) {
+          this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, 0.8 + i * 0.3));
+        }
+        // 3. バンガード岩盤回廊の巡航ポッド＆地表ミサイル
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 1.2 + i * 0.25));
+          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 1.4 + i * 0.25));
         }
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
           this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 1.8 + i * 0.22));
         }
-        // 3. 後半：ガリ第二波が全画面を強襲！
+        // 4. 後半：ガリ第二波が全画面を強襲！
         for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 6); i++) {
           this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 2 + (i % 5), 0, 4.5 + i * 0.3));
         }
@@ -652,8 +656,11 @@ export class GameManager {
         for (let i = 0; i < 10; i++) {
           this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 6), 0, 1.2 + i * 0.2));
         }
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 8); i++) {
+          this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, 1.5 + i * 0.25));
+        }
         for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 1.6 + i * 0.18));
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 1.8 + i * 0.18));
         }
         break;
 
@@ -1433,6 +1440,7 @@ export class GameManager {
 
     if (this.pauseMenuSelection === 'RESUME') {
       this.state = 'PLAYING';
+      this.sound.resumeBGM();
     } else if (this.pauseMenuSelection === 'RESTART_WAVE') {
       this.state = 'PLAYING';
       this.fallingPieces = [];

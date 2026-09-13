@@ -20,6 +20,7 @@ export type AlienRank =
   | 'STARFORCE_GARI'   // ★ スターフォース名物：ガリ（急停止・高速旋回・電光石火の急襲）
   | 'GRADIUS_FAN'      // ★ グラディウス／沙羅曼蛇：開幕編隊（突進・反転離脱）
   | 'DART_MISSILE'     // ★ 索敵加速ミサイル（水平浮遊後、縦・横へ急加速）
+  | 'SIDE_WARP_RUNNER' // ★ ユーザー要望：左右ループ走査機（画面端から反対側へワープして周回突撃）
   | 'GIGA_COLD_EYE'    // ★ 超ド級分裂目玉ボス
   | 'SPACE_SERPENT_HEAD' // ★ 多関節スペースドラゴン（頭部）
   | 'SERPENT_BODY';    // ★ 多関節スペースドラゴン（胴体節）
@@ -54,6 +55,7 @@ export type FlightPattern =
   | 'STARFORCE_GARI_MOVE' // ★ スターフォース・ガリの動き（急降下→急停止→鋭角急加速）
   | 'GRADIUS_FLEET'       // ★ グラディウス開幕編隊（突撃後、急旋回して斜め離脱）
   | 'DELAYED_DART'        // ★ 索敵加速ミサイル（微動後、一気に高速直進）
+  | 'SIDE_WRAP_SWEEP'     // ★ ユーザー要望：左右ループ周回（右端に行くと左から、左端に行くと右から連続突撃）
   | 'VANGUARD_CRUISE'     // ★ SNKバンガード：画面上部往復から急降下ダイブ
   | 'TERRAIN_LAUNCH'      // ★ スクランブル：壁から横へ加速発射
   | 'FLYBY_CROSS'         // ★ 水平全速フライバイ
@@ -252,6 +254,12 @@ export class Enemy {
         this.maxHp = 1;
         this.scoreValue = 350; // 索敵急加速ミサイル
         break;
+      case 'SIDE_WARP_RUNNER':
+        this.width = 36;
+        this.height = 26;
+        this.maxHp = 1;
+        this.scoreValue = 500; // 左右ループ走査機
+        break;
       case 'GIGA_COLD_EYE':
         this.width = 112;
         this.height = 96;
@@ -402,6 +410,13 @@ export class Enemy {
       this.y = 80 + Math.random() * 120;
       this.vx = (fromLeft ? 1 : -1) * 75; // 最初の索敵慣性移動
       this.vy = 25;
+    } else if (pattern === 'SIDE_WRAP_SWEEP') {
+      // ★ 左右ループ走査機：端から端へ高速横断、逆側から再突入
+      const fromLeft = formationCol % 2 === 0;
+      this.x = fromLeft ? -40 : CANVAS_WIDTH + 40;
+      this.y = 90 + (formationRow % 5) * 48;
+      this.vx = (fromLeft ? 1 : -1) * (240 + Math.random() * 60);
+      this.vy = 28; // 緩やかに降りながら左右を高速ループ！
     } else if (pattern === 'TERRAIN_LAUNCH') {
       this.x = Math.random() > 0.5 ? -40 : CANVAS_WIDTH + 40;
       this.y = 100 + Math.random() * (CANVAS_HEIGHT * 0.5);
@@ -1046,6 +1061,30 @@ export class Enemy {
         break;
       }
 
+      // ★ ユーザー要望：左右がつながっているルールを活用した敵！
+      // 右端に行くと左端からワープして飛び出し、左端に行くと右端から飛び出して連続掃射！
+      case 'SIDE_WRAP_SWEEP': {
+        this.x += this.vx * dt;
+        this.y += (this.vy + Math.sin(this.timeAlive * 3) * 30) * dt;
+
+        // 右端を抜けたら即座に左端からそのままの勢いで再突入！
+        if (this.vx > 0 && this.x > CANVAS_WIDTH + 20) {
+          this.x = -this.width - 10;
+          this.y += 28; // ワープするたびに少しずつ降下して自機に迫る
+        }
+        // 左端を抜けたら即座に右端からそのままの勢いで再突入！
+        else if (this.vx < 0 && this.x < -this.width - 20) {
+          this.x = CANVAS_WIDTH + 10;
+          this.y += 28; // ワープするたびに少しずつ降下して自機に迫る
+        }
+
+        // 下端に抜けた場合は上空から再突入
+        if (this.y > CANVAS_HEIGHT + 30) {
+          this.y = 70 + Math.random() * 80;
+        }
+        break;
+      }
+
       // ★ 超高速フライバイ：画面横外から一瞬で全画面を突き抜ける（抜けたら反対側から再突入）
       case 'FLYBY_CROSS': {
         this.x += this.vx * dt;
@@ -1537,6 +1576,20 @@ export class Enemy {
         ctx.fillRect(4, -6, 6, 12); // 弾頭
         ctx.fillStyle = f === 0 ? '#00e5ff' : '#ffffff';
         ctx.fillRect(-12, -3, 4, 6); // バーニア火花
+        break;
+      }
+
+      // ★ 左右ループ走査機（SIDE_WARP_RUNNER）
+      case 'SIDE_WARP_RUNNER': {
+        ctx.fillStyle = '#00ff88';
+        ctx.fillRect(-12, -5, 24, 10);
+        ctx.fillStyle = '#ffff00';
+        ctx.fillRect(-6, -8, 12, 16);
+        ctx.fillStyle = f === 0 ? '#ff00ff' : '#00ffff';
+        ctx.fillRect(-3, -3, 6, 6);
+        // ワープ航行推進スラスター
+        ctx.fillStyle = f === 0 ? '#ffaa00' : '#ffffff';
+        ctx.fillRect(this.vx > 0 ? -15 : 11, -3, 4, 6);
         break;
       }
 
