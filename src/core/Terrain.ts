@@ -10,6 +10,8 @@ export interface TerrainSilo {
   isDead: boolean;
   hp: number;
   flashTime: number;
+  isWarning: boolean;
+  warningTimer: number;
 }
 
 export class TerrainManager {
@@ -60,6 +62,8 @@ export class TerrainManager {
         isDead: false,
         hp: 1,
         flashTime: 0,
+        isWarning: false,
+        warningTimer: 0.9, // 予備動作：約0.9秒間グラグラ激しく揺れてから発射
       });
     }
 
@@ -76,24 +80,35 @@ export class TerrainManager {
         continue;
       }
 
-      // 画面内（Y=120〜520）に進入し、未発射なら自機方向へミサイル水平発射！
-      if (!silo.launched && !silo.isDead && screenY >= 140 && screenY <= 520) {
-        silo.launched = true;
-        const { w1, w2 } = this.getWallThickness(screenY);
-        let launchX = 0;
-        let vx = 0;
-        const vy = (Math.random() - 0.5) * 50;
+      // 画面内（Y=140〜520）に進入したとき、未発射なら予備動作（警告・振動フェーズ）を開始
+      if (!silo.launched && !silo.isDead) {
+        if (!silo.isWarning && screenY >= 140 && screenY <= 520) {
+          silo.isWarning = true;
+          silo.warningTimer = 0.9;
+        } else if (silo.isWarning) {
+          silo.warningTimer -= dt;
+          // 予備動作時間が終わったら、速度を従来の半分にして発射！
+          if (silo.warningTimer <= 0) {
+            silo.launched = true;
+            silo.isWarning = false;
+            const { w1, w2 } = this.getWallThickness(screenY);
+            let launchX = 0;
+            let vx = 0;
+            const vy = (Math.random() - 0.5) * 25; // 上下ブレも半減
 
-        if (silo.side === 'LEFT') {
-          launchX = Math.max(16, w1 + 10);
-          vx = 220 + Math.random() * 50; // 右の中央通路へ噴射加速！
-        } else {
-          launchX = Math.min(CANVAS_WIDTH - 30, CANVAS_WIDTH - w2 - 20);
-          vx = -(220 + Math.random() * 50); // 左の中央通路へ噴射加速！
-        }
+            // ユーザー要望：速度は半分に（220〜270px/s → 110〜135px/s）
+            if (silo.side === 'LEFT') {
+              launchX = Math.max(16, w1 + 10);
+              vx = 110 + Math.random() * 25;
+            } else {
+              launchX = Math.min(CANVAS_WIDTH - 30, CANVAS_WIDTH - w2 - 20);
+              vx = -(110 + Math.random() * 25);
+            }
 
-        if (onLaunchMissile) {
-          onLaunchMissile(launchX, screenY, vx, vy);
+            if (onLaunchMissile) {
+              onLaunchMissile(launchX, screenY, vx, vy);
+            }
+          }
         }
       }
     }
@@ -383,8 +398,16 @@ export class TerrainManager {
       if (screenY < -30 || screenY > CANVAS_HEIGHT + 30) continue;
 
       const { w1, w2 } = this.getWallThickness(screenY);
-      const siloX = silo.side === 'LEFT' ? Math.max(8, w1 - 10) : CANVAS_WIDTH - w2 - 12;
-      const siloY = screenY - 10;
+      const baseX = silo.side === 'LEFT' ? Math.max(8, w1 - 10) : CANVAS_WIDTH - w2 - 12;
+      let siloX = baseX;
+      let siloY = screenY - 10;
+
+      // ユーザー要望：発射前にしばらく揺れている演出
+      if (silo.isWarning) {
+        const shake = Math.sin(Date.now() / 25) * 2.5;
+        siloX += shake;
+        siloY += (Math.cos(Date.now() / 30) * 1.5);
+      }
 
       ctx.save();
       // 被弾点滅
@@ -393,43 +416,55 @@ export class TerrainManager {
       } else {
         ctx.fillStyle = '#667788'; // 発射台フレーム
       }
-      ctx.fillRect(siloX, siloY + 4, 22, 16);
+      ctx.fillRect(siloX, siloY + 4, 24, 18);
       ctx.fillStyle = '#334455';
-      ctx.fillRect(siloX + 2, siloY + 6, 18, 12);
+      ctx.fillRect(siloX + 2, siloY + 6, 20, 14);
 
       // ミサイル本体（未発射時）
       if (!silo.launched) {
-        // 弾頭（赤）
+        // 予備動作中：エンジン点火の火花＆警告フラッシュ
+        if (silo.isWarning) {
+          const sparkOffset = (Math.random() - 0.5) * 6;
+          ctx.fillStyle = Math.random() > 0.5 ? '#ff4400' : '#ffea00';
+          if (silo.side === 'LEFT') {
+            ctx.fillRect(siloX - 4, siloY + 11 + sparkOffset, 5, 4);
+          } else {
+            ctx.fillRect(siloX + 23, siloY + 11 + sparkOffset, 5, 4);
+          }
+        }
+
+        // 弾頭（赤、長めの先端コーン）
         ctx.fillStyle = '#ff2244';
         if (silo.side === 'LEFT') {
           // 右向き弾頭
           ctx.beginPath();
-          ctx.moveTo(siloX + 22, siloY + 12);
-          ctx.lineTo(siloX + 16, siloY + 7);
-          ctx.lineTo(siloX + 16, siloY + 17);
+          ctx.moveTo(siloX + 24, siloY + 13);
+          ctx.lineTo(siloX + 16, siloY + 8);
+          ctx.lineTo(siloX + 16, siloY + 18);
           ctx.closePath();
           ctx.fill();
         } else {
           // 左向き弾頭
           ctx.beginPath();
-          ctx.moveTo(siloX, siloY + 12);
-          ctx.lineTo(siloX + 6, siloY + 7);
-          ctx.lineTo(siloX + 6, siloY + 17);
+          ctx.moveTo(siloX, siloY + 13);
+          ctx.lineTo(siloX + 8, siloY + 8);
+          ctx.lineTo(siloX + 8, siloY + 18);
           ctx.closePath();
           ctx.fill();
         }
-        // ミサイル胴体（白）
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(siloX + 6, siloY + 9, 10, 6);
+        // ミサイル胴体（白、少し長め）
+        ctx.fillStyle = '#f0f4f8';
+        ctx.fillRect(siloX + 5, siloY + 10, 14, 6);
 
-        // 発射前点滅ランプ
-        const blink = Math.sin(Date.now() / 100) > 0;
-        ctx.fillStyle = blink ? '#ffff00' : '#ff0000';
-        ctx.fillRect(siloX + 9, siloY + 2, 4, 3);
+        // 発射前点滅ランプ（警告中は超高速点滅）
+        const blinkRate = silo.isWarning ? 40 : 120;
+        const blink = Math.sin(Date.now() / blinkRate) > 0;
+        ctx.fillStyle = silo.isWarning ? (blink ? '#ff0033' : '#ffff00') : (blink ? '#ffff00' : '#ff0000');
+        ctx.fillRect(siloX + 10, siloY + 1, 4, 4);
       } else {
         // 発射済みの空サイロ（黒煙痕）
         ctx.fillStyle = '#111122';
-        ctx.fillRect(siloX + 4, siloY + 8, 14, 8);
+        ctx.fillRect(siloX + 4, siloY + 8, 16, 10);
       }
       ctx.restore();
     }

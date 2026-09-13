@@ -225,8 +225,8 @@ export class Enemy {
         this.scoreValue = 450;
         break;
       case 'TERRAIN_MISSILE':
-        this.width = 28;
-        this.height = 20;
+        this.width = 44; // ユーザー要望：ロケットみたいにもう少し長い形に
+        this.height = 18;
         this.maxHp = 1;
         this.scoreValue = 300;
         break;
@@ -420,8 +420,9 @@ export class Enemy {
     } else if (pattern === 'TERRAIN_LAUNCH') {
       this.x = Math.random() > 0.5 ? -40 : CANVAS_WIDTH + 40;
       this.y = 100 + Math.random() * (CANVAS_HEIGHT * 0.5);
-      this.vx = this.x < 0 ? 200 : -200;
-      this.vy = (Math.random() - 0.5) * 80;
+      // ユーザー要望：速度は半分に（200px/s → 100px/s）
+      this.vx = this.x < 0 ? 100 : -100;
+      this.vy = (Math.random() - 0.5) * 40;
     } else {
       this.x = -100;
       this.y = -100;
@@ -909,18 +910,18 @@ export class Enemy {
       case 'TERRAIN_LAUNCH': {
         this.x += this.vx * dt;
         this.y += this.vy * dt;
-        this.vx *= 1.012;
-        this.vy *= 1.008;
+        this.vx *= 1.004; // 緩やかな加速
+        this.vy *= 1.003;
 
         // 画面外へ抜けたら消滅させず、反対側・別高度から再突入！
         if (this.x < -60) {
           this.x = CANVAS_WIDTH + 40;
           this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
-          this.vx = -Math.abs(this.vx) * 0.85;
+          this.vx = -Math.abs(this.vx) * 0.9;
         } else if (this.x > CANVAS_WIDTH + 60) {
           this.x = -40;
           this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
-          this.vx = Math.abs(this.vx) * 0.85;
+          this.vx = Math.abs(this.vx) * 0.9;
         }
         if (this.y > CANVAS_HEIGHT + 60) {
           this.y = -30;
@@ -1519,15 +1520,69 @@ export class Enemy {
       }
 
       // ★ コナミ・スクランブル風：地表ミサイル（TERRAIN_MISSILE）
+      // ユーザー要望：ロケットみたいにもう少し長い形にして
       case 'TERRAIN_MISSILE': {
-        // 水平または斜めに噴射しながら飛ぶ弾頭
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(-10, -5, 20, 10);
+        // 飛行方向（左右）に合わせて反転
+        const dir = this.vx >= 0 ? 1 : -1;
+        ctx.scale(dir, 1);
+
+        // 1. 細身で長いロケット胴体（白/ライトグレー 30x8）
+        ctx.fillStyle = '#e8f0f8';
+        ctx.fillRect(-15, -4, 26, 8);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillRect(-15, 0, 26, 4); // 胴体下部シャドウ
+
+        // 2. 胴体中央の赤い識別帯（レトロSF感）
         ctx.fillStyle = '#ff0033';
-        ctx.fillRect(6, -6, 5, 12); // 先端ノーズ
-        // 後部ロケット噴射炎
-        ctx.fillStyle = f === 0 ? '#ffaa00' : '#ffea00';
-        ctx.fillRect(-15, -3, 5, 6);
+        ctx.fillRect(-2, -4, 4, 8);
+
+        // 3. 先端の尖った流線型ノーズコーン（赤）
+        ctx.beginPath();
+        ctx.moveTo(17, 0);       // 先端
+        ctx.lineTo(11, -4.5);
+        ctx.lineTo(11, 4.5);
+        ctx.closePath();
+        ctx.fill();
+
+        // 4. 上下の尾翼・スタビライザー（黄色/オレンジ）
+        ctx.fillStyle = '#ffaa00';
+        // 上翼
+        ctx.beginPath();
+        ctx.moveTo(-15, -4);
+        ctx.lineTo(-10, -4);
+        ctx.lineTo(-14, -8);
+        ctx.closePath();
+        ctx.fill();
+        // 下翼
+        ctx.beginPath();
+        ctx.moveTo(-15, 4);
+        ctx.lineTo(-10, 4);
+        ctx.lineTo(-14, 8);
+        ctx.closePath();
+        ctx.fill();
+
+        // 5. 後部ロケットノズル（ダークグレー）
+        ctx.fillStyle = '#475569';
+        ctx.fillRect(-17, -3, 2, 6);
+
+        // 6. 後部ロケットアフターバーナー噴射炎（激しくチラつく炎）
+        const flameLen = f === 0 ? 9 : 13;
+        ctx.fillStyle = '#ff4400';
+        ctx.beginPath();
+        ctx.moveTo(-17, -3);
+        ctx.lineTo(-17 - flameLen, 0);
+        ctx.lineTo(-17, 3);
+        ctx.closePath();
+        ctx.fill();
+
+        // コア高温炎（黄・白）
+        ctx.fillStyle = f === 0 ? '#ffea00' : '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(-17, -1.5);
+        ctx.lineTo(-17 - flameLen * 0.55, 0);
+        ctx.lineTo(-17, 1.5);
+        ctx.closePath();
+        ctx.fill();
         break;
       }
 
