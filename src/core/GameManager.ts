@@ -1217,13 +1217,9 @@ export class GameManager {
           pb.isDead = true;
           this.particles.emitSparks(pb.x, pb.y, pb.color, 8);
 
-          // ★ ユーザー要望：ボスに当たっている時はR-TYPE風の重厚な「ジャシシッ！」「ガガッ」という重撃音！
-          if (enemy.isBoss || enemy === this.currentBoss) {
-            this.sound.playBossHit();
-          } else {
-            // ★ ユーザー要望：Arcade-Shooter01-2(Damage) 敵ダメージ音
-            this.sound.playEnemyDamage();
-          }
+          // ★ ユーザー要望：ボスにあたったときのダメージ音、敵ダメージ音（Arcade-Shooter01-2）
+          const isBossTarget = enemy.isBoss || enemy === this.currentBoss;
+          this.sound.playEnemyDamage(isBossTarget);
 
           const killed = enemy.hit(1);
           if (killed) {

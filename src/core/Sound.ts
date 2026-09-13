@@ -142,7 +142,7 @@ export class Sound {
         else src.playbackRate.value = 0.95;
 
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(0.22, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.65, this.ctx.currentTime);
         src.connect(gain);
         gain.connect(this.ctx.destination);
         src.start(0);
@@ -233,7 +233,7 @@ export class Sound {
     osc.frequency.setValueAtTime(startFreq, now);
     osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur * 0.7);
 
-    oscGain.gain.setValueAtTime(big ? 0.32 : 0.22, now);
+    oscGain.gain.setValueAtTime(big ? 0.32 : 0.14, now);
     oscGain.gain.exponentialRampToValueAtTime(0.001, now + dur * 0.75);
 
     osc.connect(oscGain);
@@ -262,7 +262,7 @@ export class Sound {
     filter.frequency.exponentialRampToValueAtTime(60, now + dur);
 
     const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(big ? 0.38 : 0.28, now);
+    noiseGain.gain.setValueAtTime(big ? 0.38 : 0.18, now);
     noiseGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
     noise.connect(filter);
@@ -311,8 +311,8 @@ export class Sound {
     osc.stop(now + 0.09);
   }
 
-  // ★ ユーザー要望：Arcade-Shooter01-2(Damage) 敵ダメージに使う
-  public playEnemyDamage(): void {
+  // ★ ユーザー要望：Arcade-Shooter01-2(Damage) 敵・ボスダメージに使う
+  public playEnemyDamage(isBoss = false): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
@@ -321,18 +321,41 @@ export class Sound {
       try {
         const src = this.ctx.createBufferSource();
         src.buffer = this.damageBuffer;
-        src.playbackRate.value = 0.95 + Math.random() * 0.12;
+        // ボス時は少し低音ピッチ（0.90）で重厚感、通常敵はピッチ（1.02）で歯切れの良いヒット音
+        src.playbackRate.value = isBoss ? (0.90 + Math.random() * 0.04) : (1.02 + Math.random() * 0.08);
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(0.24, this.ctx.currentTime);
+        gain.gain.setValueAtTime(isBoss ? 0.90 : 0.78, this.ctx.currentTime);
         src.connect(gain);
         gain.connect(this.ctx.destination);
         src.start(0);
+
+        if (isBoss) {
+          // ボス時は重厚な衝撃サブベースを薄くブレンドして手応えを極大化
+          this.playBossSubThump();
+        }
         return;
       } catch {
         // fallback
       }
     }
     this.playHit();
+  }
+
+  // ボス被弾時の手応えを重厚にするサブウーファー的低域アタック音
+  private playBossSubThump(): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(130, now);
+    osc.frequency.exponentialRampToValueAtTime(32, now + 0.09);
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.09);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
   }
 
   // ★ ユーザー要望：Arcade-Shooter01-6(Score) アイテム採った時（5秒間無敵等）
@@ -346,7 +369,7 @@ export class Sound {
         const src = this.ctx.createBufferSource();
         src.buffer = this.scoreBuffer;
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(0.28, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.78, this.ctx.currentTime);
         src.connect(gain);
         gain.connect(this.ctx.destination);
         src.start(0);
@@ -390,7 +413,7 @@ export class Sound {
     osc.frequency.setValueAtTime(2600, now);
     osc.frequency.exponentialRampToValueAtTime(280, now + dur);
 
-    gain.gain.setValueAtTime(0.20, now);
+    gain.gain.setValueAtTime(0.28, now);
     gain.gain.exponentialRampToValueAtTime(0.002, now + dur);
 
     osc.connect(gain);
@@ -418,8 +441,8 @@ export class Sound {
       src.loop = true;
 
       const gain = this.ctx.createGain();
-      // 程よい音量バランス（BGMや効果音を邪魔せず不気味な威圧感を出す）
-      gain.gain.setValueAtTime(category === 1 ? 0.22 : 0.18, this.ctx.currentTime);
+      // 適正音量バランス（BGMや効果音と美しく調和しつつ存在感あるLFO）
+      gain.gain.setValueAtTime(category === 1 ? 0.48 : 0.44, this.ctx.currentTime);
 
       src.connect(gain);
       gain.connect(this.ctx.destination);
