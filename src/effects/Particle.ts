@@ -69,21 +69,45 @@ export class ParticleManager {
     this.emitExplosion(x, y, '#00ffff', 40, true);
   }
 
+  // 80年代スーパーカセットビジョン／往年アーケード風：鮮やかな原色カラーパレット
+  // 赤、黄、シアン、白、マゼンタ、緑、オレンジ
+  private static readonly RETRO_PRIMARY_COLORS = [
+    '#ff0033', // 原色レッド
+    '#ffea00', // 原色イエロー
+    '#00f0ff', // 原色シアン
+    '#ffffff', // ピュアホワイト
+    '#ff0077', // 鮮烈マゼンタ
+    '#00ff44', // ネオングリーン
+    '#ff6600', // ビビッドオレンジ
+  ];
+
   public emitExplosion(x: number, y: number, color: string, count = 20, big = false): void {
-    const speedBase = big ? 260 : 160;
+    const speedBase = big ? 280 : 180;
+    // ザコの死にパーティクルもドットを大きめ（bigなら8〜14px、通常敵でも5〜9px）にして
+    // スーパーカセットビジョンのような粗い原色四角ドットの飛び散りを強調！
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * speedBase;
+      const speed = (Math.random() * 0.75 + 0.25) * speedBase;
+      
+      // 原色カラーのブレンド（指定色ベースに加え、原色パレットをミックスしてレトロ感アップ）
+      const pColor = Math.random() < 0.4 
+        ? color 
+        : ParticleManager.RETRO_PRIMARY_COLORS[Math.floor(Math.random() * ParticleManager.RETRO_PRIMARY_COLORS.length)];
+
+      const size = big 
+        ? Math.floor(Math.random() * 6) * 2 + 8   // 8, 10, 12, 14, 16, 18px
+        : Math.floor(Math.random() * 4) * 2 + 6;  // 6, 8, 10, 12px (クッキリした偶数ピクセル)
+
       this.particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        color,
-        size: Math.random() * (big ? 6 : 4) + 2,
+        color: pColor,
+        size,
         alpha: 1.0,
-        decay: Math.random() * 1.5 + 1.2,
-        gravity: 60,
+        decay: Math.random() * 1.6 + 1.4,
+        gravity: 90,
       });
     }
   }
@@ -98,7 +122,7 @@ export class ParticleManager {
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         color,
-        size: Math.random() * 3 + 1.5,
+        size: Math.floor(Math.random() * 3) * 2 + 4, // 4, 6, 8px
         alpha: 1.0,
         decay: Math.random() * 3.0 + 2.0,
       });

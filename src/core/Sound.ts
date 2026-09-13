@@ -342,6 +342,7 @@ export class Sound {
   }
 
   // ★ ユーザー要望：Arcade-Shooter01-2(Damage) 敵・ボスダメージに使う
+  // ボスダメージの重低音（布団を殴るようなボスボス音）を排除し、より高音で威力と硬質感のあるクリスプな金属・装甲ヒット音に調整
   public playEnemyDamage(isBoss = false): void {
     if (this.isMuted) return;
     this.initContext();
@@ -351,17 +352,17 @@ export class Sound {
       try {
         const src = this.ctx.createBufferSource();
         src.buffer = this.damageBuffer;
-        // ボス時は少し低音ピッチ（0.90）で重厚感、通常敵はピッチ（1.02）で歯切れの良いヒット音
-        src.playbackRate.value = isBoss ? (0.90 + Math.random() * 0.04) : (1.02 + Math.random() * 0.08);
+        // 布団のようなこもった低音化を撤廃し、高め（1.25〜1.35）の鋭いピッチで装甲被弾の衝撃を演出
+        src.playbackRate.value = isBoss ? (1.28 + Math.random() * 0.08) : (1.10 + Math.random() * 0.06);
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(isBoss ? 0.90 : 0.78, this.ctx.currentTime);
+        gain.gain.setValueAtTime(isBoss ? 0.85 : 0.65, this.ctx.currentTime);
         src.connect(gain);
         gain.connect(this.ctx.destination);
         src.start(0);
 
         if (isBoss) {
-          // ボス時は重厚な衝撃サブベースを薄くブレンドして手応えを極大化
-          this.playBossSubThump();
+          // ボス時は高音の金属装甲スパーク（高周波パルス）を重ねて手応えと硬質感をプラス
+          this.playBossMetallicClang();
         }
         return;
       } catch {
@@ -371,21 +372,26 @@ export class Sound {
     this.playHit();
   }
 
-  // ボス被弾時の手応えを重厚にするサブウーファー的低域アタック音
-  private playBossSubThump(): void {
+  // ボス装甲被弾時の高音クリスプな金属音・衝撃クリック音（威力と装甲感を強調）
+  private playBossMetallicClang(): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(130, now);
-    osc.frequency.exponentialRampToValueAtTime(32, now + 0.09);
-    gain.gain.setValueAtTime(0.35, now);
-    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.09);
+
+    // 鋭い高域下降（2400Hz -> 850Hz）でキリッとした金属装甲の手応え
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(2400, now);
+    osc.frequency.exponentialRampToValueAtTime(750, now + 0.045);
+
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+
     osc.connect(gain);
     gain.connect(this.ctx.destination);
+
     osc.start(now);
-    osc.stop(now + 0.1);
+    osc.stop(now + 0.05);
   }
 
   // ★ ユーザー要望：Arcade-Shooter01-6(Score) アイテム採った時（5秒間無敵等）
