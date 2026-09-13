@@ -179,7 +179,7 @@ export class Enemy {
       case 'METEOR_ROCK':
         this.width = 42;
         this.height = 42;
-        this.maxHp = 3; // 隕石は頑丈（3発）
+        this.maxHp = 1; // ユーザー要望：ザコは基本一撃で死ぬように
         this.scoreValue = 300;
         break;
       case 'SPLITTING_EYE':
@@ -209,7 +209,7 @@ export class Enemy {
       case 'BETA_PHANTOM':
         this.width = 44;
         this.height = 36;
-        this.maxHp = 2; // タフなコウモリ型
+        this.maxHp = 1; // ユーザー要望：ザコは基本一撃で死ぬように
         this.scoreValue = 600;
         break;
       case 'TOROID_SCOUT':
@@ -221,7 +221,7 @@ export class Enemy {
       case 'VANGUARD_POD':
         this.width = 36;
         this.height = 32;
-        this.maxHp = 2; // 耐久2発のタフな巡航ポッド
+        this.maxHp = 1; // ユーザー要望：ザコは基本一撃で死ぬように
         this.scoreValue = 450;
         break;
       case 'TERRAIN_MISSILE':
@@ -643,8 +643,8 @@ export class Enemy {
         this.x = this.formationX + waveX;
         this.y = this.formationY + waveY;
 
-        // 隊列から離脱して体当たり急降下！
-        if (canDive && this.patternTimer > 3.0 + Math.random() * 4.0) {
+        // ★ ユーザー要望：体当たりしてくる敵（ギャラガ風味の果敢な急降下ダイブ！）
+        if (canDive && this.patternTimer > 1.0 + Math.random() * 2.5) {
           this.pattern = 'KAMIKAZE_DIVE';
           this.patternTimer = 0;
           this.diveAngle = -Math.PI / 2;
@@ -656,17 +656,17 @@ export class Enemy {
       }
 
       case 'KAMIKAZE_DIVE': {
-        if (this.patternTimer < 0.6) {
-          this.diveAngle += 6.0 * dt;
-          this.x += Math.cos(this.diveAngle) * 90 * dt;
-          this.y += Math.sin(this.diveAngle) * 90 * dt;
+        if (this.patternTimer < 0.45) {
+          this.diveAngle += 7.0 * dt;
+          this.x += Math.cos(this.diveAngle) * 110 * dt;
+          this.y += Math.sin(this.diveAngle) * 110 * dt;
         } else {
           const dx = this.diveTargetX - this.x;
           const dy = (this.diveTargetY + 60) - this.y;
           const dist = Math.hypot(dx, dy) || 1;
-          const speed = 150 + (this.rank.startsWith('GIANT') ? 30 : 15);
+          const speed = 190 + (this.rank.startsWith('GIANT') ? 35 : 20);
           this.x += (dx / dist) * speed * dt;
-          this.y += Math.max(70, (dy / dist) * speed) * dt;
+          this.y += Math.max(90, (dy / dist) * speed) * dt;
 
           if (this.y > CANVAS_HEIGHT + 30) {
             this.y = -40;

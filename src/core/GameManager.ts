@@ -560,86 +560,70 @@ export class GameManager {
 
     switch (this.stage) {
       case 1:
-        // 【WAVE 1：ムーンクレスタ Stage 1&2・コールドアイ＆スーパーアイ】
-        // 1. 初手：4機のコールドアイが初期フレーム（t=0）から画面上部（y=90）に並んで横スイング！（待機時間ゼロ！）
+        // 【WAVE 1：ムーンクレスタ Stage 1&2・コールドアイ＆スーパーアイ（純粋なムーンクレスタ面）】
+        // ユーザー要望：基本は一種類の敵を出す。順番に別の種類の敵が出る
+        // フェーズ1（t=0〜）：コールドアイ4機（上部スイングから階段状ダイブ、撃破で2つに分裂）
         for (let i = 0; i < 4; i++) {
           this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, 0));
         }
-        // 2. 増援（Stage 1 第二波）：8.5秒後に上部から滑空して編隊に加わる4機のコールドアイ
+        // フェーズ2（t=9.0〜）：増援コールドアイ4機（上空から滑空して編隊形成）
         for (let i = 0; i < 4; i++) {
-          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, 8.5));
+          this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, 9.0));
         }
-        // 3. Stage 2 スーパーアイ大群：電光石火の左右ダイアゴナルバウンド（8機）
+        // フェーズ3（t=17.0〜）：スーパーアイ8機（左右壁面バウンドの電光石火ダイブ）
         for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('MINI_EYE', 'MOON_SUPER_EYE', i, 0, 14.0 + i * 0.4));
+          this.enemies.push(new Enemy('MINI_EYE', 'MOON_SUPER_EYE', i, 0, 17.0 + i * 0.4));
         }
         break;
 
       case 2:
-        // 【WAVE 2：グラディウス・沙羅曼蛇 開幕猛攻＆斜め超高速メテオ】
-        // ★ ユーザー要望：グラディウスや沙羅曼蛇の最初にまっすぐ突っ込んできて真っ直ぐや斜めに戻っていく編隊！
-        // 1. 第一波：中央へまっすぐ突進し、自機手前で急反転離脱するグラディウス開幕編隊！
+        // 【WAVE 2：グラディウス開幕突進編隊 ＆ ギャラガ流星編隊】
+        // ユーザー要望：敵を混ぜずに順番に出す。ギャラガ風味の体当たり急降下！
+        // フェーズ1（t=0〜）：グラディウス開幕突進編隊（まっすぐ突撃→反転離脱）
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 14 : 10); k++) {
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, k * 0.3));
+        }
+        // フェーズ2（t=6.5〜）：第二波グラディウス突進編隊
         for (let k = 0; k < (this.difficulty === 'HARD' ? 12 : 8); k++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, k * 0.28));
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, 6.5 + k * 0.3));
         }
-        // 2. 第二波：左右上空から画面を弾丸のように斜めに切り裂く高速メテオ！
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 16 : 10); k++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 2 + (k % 4), 0, 2.5 + k * 0.25));
-        }
-        // 3. 第三波：ギャラガS字流星編隊＋第二波グラディウス突進
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 16 : 10); k++) {
+        // フェーズ3（t=13.0〜）：ギャラガS字流星編隊（編隊着任後、果敢に自機へ体当たり急降下ダイブ！）
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 18 : 12); k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, 0.4, 'S_CURVE_LEFT_TO_RIGHT', k));
-        }
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 10 : 6); k++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 2 + (k % 4), 0, 4.5 + k * 0.3));
         }
         break;
 
       case 3:
-        // 【WAVE 3：スターフォース「ガリ」の急襲＆バンガード岩盤地帯】
-        // ★ ユーザー要望：スターフォースのガリの動き（急降下→急停止→超高速ダッシュ）！
-        // 1. 初手：ガリの高速編隊が急停止スウィングから電光石火のダッシュ！
+        // 【WAVE 3：スターフォース名物「ガリ」＆ 左右ワープランナー】
+        // ユーザー要望：敵を混ぜずに順番に出す
+        // フェーズ1（t=0〜）：スターフォース「ガリ」第一波（急降下→急停止スウィング→超高速ダッシュ）
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, i * 0.4));
+        }
+        // フェーズ2（t=7.5〜）：左右ループ走査機（画面端から反対端へループワープする巡航機）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, i * 0.35));
+          this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, 7.5 + i * 0.35));
         }
-        // 2. 左右ループ走査機（右端に行くと左端からワープして飛び出してくる敵！）
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 6); i++) {
-          this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, 0.8 + i * 0.3));
-        }
-        // 3. バンガード岩盤回廊の巡航ポッド＆地表ミサイル
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('VANGUARD_POD', 'VANGUARD_CRUISE', 1 + (i % 6), 1, 1.4 + i * 0.25));
-        }
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 1.8 + i * 0.22));
-        }
-        // 4. 後半：ガリ第二波が全画面を強襲！
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 6); i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 2 + (i % 5), 0, 4.5 + i * 0.3));
+        // フェーズ3（t=14.0〜）：スターフォース「ガリ」第二波の怒濤の強襲
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 2 + (i % 5), 0, 14.0 + i * 0.35));
         }
         break;
 
       case 4:
-        // 【WAVE 4：索敵急加速ミサイル＆怒涛のメテオストーム＆フォー・フライ】
-        // ★ ユーザー要望：多少横に動いたあと、縦や横に高速で飛んでいくミサイル！
-        // 1. 初手：索敵急加速ミサイル群がフワリと横移動後、突如バーニア点火で急加速！
+        // 【WAVE 4：索敵急加速ミサイル ＆ フォー・フライ】
+        // ユーザー要望：敵を混ぜずに順番に出す。ザコは基本一撃死！
+        // フェーズ1（t=0〜）：索敵急加速ミサイル（フワリと横移動後、突如バーニア点火で急加速）
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 18 : 12); i++) {
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, i * 0.32));
+        }
+        // フェーズ2（t=7.0〜）：ムーンクレスタ名物「フォー・フライ」（カミソリ急降下ジグザグ）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, i * 0.25));
+          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, 7.0 + i * 0.3));
         }
-        // 2. 超高速直線メテオ＋斜めメテオの交差ストーム！
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 20 : 12); i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_STRAIGHT', 1 + (i % 8), 0, 0.4 + i * 0.16));
-        }
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 6), 0, 1.0 + i * 0.22));
-        }
-        // 3. ムーンクレスタ：フォー・フライのカミソリ急降下
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, 2.0 + i * 0.18));
-        }
-        // 4. 第二波：索敵急加速ミサイル＆フライバイ
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 12 : 8); i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 3.6 + i * 0.2));
+        // フェーズ3（t=14.0〜）：索敵急加速ミサイル 第二波
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 14.0 + i * 0.3));
         }
         break;
 
@@ -1115,8 +1099,9 @@ export class GameManager {
     }
 
     // 敵の更新（弾なし・体当たりのみ！ 面が進むごとに同時急降下数が増加して激化）
+    // ★ ユーザー要望：ギャラガ風味の体当たり急降下をより頻繁に発生させる
     const divingCount = this.enemies.filter(e => e.pattern === 'KAMIKAZE_DIVE').length;
-    const maxDiving = Math.min(8, 2 + this.stage);
+    const maxDiving = Math.min(8, 3 + this.stage);
     const canDive = divingCount < maxDiving;
 
     for (let i = this.enemies.length - 1; i >= 0; i--) {
