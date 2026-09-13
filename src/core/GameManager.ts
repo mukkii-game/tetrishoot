@@ -32,6 +32,7 @@ export interface FallingPieceItem {
   gy: number;
   fallTimer: number;
   settled: boolean;
+  dockCooldown?: number; // ショット直後の反動・誤合体防止クールダウン
 }
 
 // 切断されて浮遊・落下中のパーツ（再回収可能）
@@ -414,39 +415,47 @@ export class GameManager {
       }
     }
 
-    // 3. 落下中ミノの自律ドリフト移動＆弾との衝突回転判定
+    // 3. 落下中ミノの自律ドリフト移動＆弾との衝突回転・反動判定
     for (const item of this.fallingPieces) {
       if (item.settled) continue;
 
       item.fallTimer += dt;
+      if (item.dockCooldown && item.dockCooldown > 0) {
+        item.dockCooldown -= dt;
+      }
 
-      // ユーザー要望：落ちてくるブロックも多少の加速減速をする（宇宙船プローブのような浮遊・加減速ダイナミクス）
-      // 縦速度：32px/s〜58px/s で緩やかに周期変動（加速・減速のうねり）
-      const targetVy = 44 + Math.sin(item.fallTimer * 2.2) * 16;
-      // 横速度：左右にゆったりスウィングしながら漂う
-      const targetVx = (item.vx >= 0 ? 1 : -1) * (32 + Math.cos(item.fallTimer * 1.6) * 14);
+      // 重力加速度＆ムーンクレスタ風の慣性落下ダイナミクス
+      const GRAVITY = 110;
+      const MAX_FALL_SPEED = 60;
 
-      item.vx = targetVx;
-      item.vy = targetVy;
+      // 弾による打ち上げ・反動インパルスからの重力落下
+      item.vy += GRAVITY * dt;
+      if (item.vy > MAX_FALL_SPEED) {
+        item.vy = MAX_FALL_SPEED;
+      }
+
+      // 横方向の自然なゆったりドリフト＋減衰
+      item.vx *= (1 - 0.5 * dt);
+      item.vx += Math.sin(item.fallTimer * 1.5) * 15 * dt;
 
       // 移動適用
       item.x += item.vx * dt;
       item.y += item.vy * dt;
 
       // 画面左右端で反転バウンド
-      if (item.x < 20) {
-        item.x = 20;
-        item.vx = Math.abs(item.vx);
-      } else if (item.x > CANVAS_WIDTH - 20 - BLOCK_SIZE * 3) {
-        item.x = CANVAS_WIDTH - 20 - BLOCK_SIZE * 3;
-        item.vx = -Math.abs(item.vx);
+      if (item.x < 15) {
+        item.x = 15;
+        item.vx = Math.abs(item.vx) * 0.8;
+      } else if (item.x > CANVAS_WIDTH - 15 - BLOCK_SIZE * 3) {
+        item.x = CANVAS_WIDTH - 15 - BLOCK_SIZE * 3;
+        item.vx = -Math.abs(item.vx) * 0.8;
       }
 
       item.gx = Math.round(item.x / BLOCK_SIZE);
       item.gy = Math.round(item.y / BLOCK_SIZE);
 
-      // 弾 vs 落下中ミノの回転判定！
-      // ユーザー要望：弾を当てると90度回転！左側ヒットなら時計回り、右側ヒットなら反時計回り
+      // 弾 vs 落下中ミノの回転＆上反動判定！
+      // ユーザー要望：球打つと一旦離れて飛ぶ / 少し上に反動で行ったりするといいな
       const pieceBounds = item.piece.getBoundingBox(item.x, item.y);
       const pieceCenterX = (pieceBounds.minX + pieceBounds.maxX) / 2;
 
@@ -461,28 +470,43 @@ export class GameManager {
           pb.y <= pieceBounds.maxY + 4
         ) {
           pb.isDead = true;
-          this.particles.emitSparks(pb.x, pb.y, item.piece.color, 10);
+          this.particles.emitSparks(pb.x, pb.y, item.piece.color, 12);
           this.sound.playHit();
 
-          if (pb.x < pieceCenterX) {
+          // 1. 上方向への力強い反動インパルス（お手玉・浮遊）
+          item.vy = -130;
+
+          // 2. ショット位置に応じた回転と左右ノックバック
+          const hitOffset = pb.x - pieceCenterX;
+          if (hitOffset < -6) {
             item.piece.rotate(); // 左側ヒット：時計回り（右回転）
-          } else {
+            item.vx = Math.min(item.vx + 45, 90);
+          } else if (hitOffset > 6) {
             item.piece.rotateCounter(); // 右側ヒット：反時計回り（左回転）
+            item.vx = Math.max(item.vx - 45, -90);
+          } else {
+            // ど真ん中ヒット：真上に大ジャンプ！
+            item.vy = -165;
           }
+
+          // 3. 撃った直後は合体不可（0.4秒間ドッキング判定をオフにし、誤合体を防止）
+          item.dockCooldown = 0.4;
         }
       }
 
       // 4. 自機との接触・近接スナップ合体判定！
+      // 降下中（vy > 0）かつショット直後の反動中でない場合のみドッキング受付
+      const canDockNow = (!item.dockCooldown || item.dockCooldown <= 0) && item.vy > 0;
       const playerBounds = this.player.getBoundingBox();
       const isClose =
-        pieceBounds.maxX >= playerBounds.minX - 10 &&
-        pieceBounds.minX <= playerBounds.maxX + 10 &&
-        pieceBounds.maxY >= playerBounds.minY - 10 &&
-        pieceBounds.minY <= playerBounds.maxY + 10;
+        pieceBounds.maxX >= playerBounds.minX - 25 &&
+        pieceBounds.minX <= playerBounds.maxX + 25 &&
+        pieceBounds.maxY >= playerBounds.minY - 30 &&
+        pieceBounds.minY <= playerBounds.maxY + 15;
 
-      if (isClose) {
-        // 自機と一番整合するグリッドにスナップ吸着
-        const dockRes = this.player.tryDockFromPixel(item.piece, item.x, item.y);
+      if (canDockNow && isClose) {
+        // 自機と最も距離が近く、接合面が合致する最適グリッド位置にスナップ合体
+        const dockRes = this.player.tryDockFromPixel(item.piece, item.x, item.y, BLOCK_SIZE * 1.15);
         if (dockRes.docked) {
           item.settled = true;
           this.sound.playDock(); // ムーンクレスタ風ピロピロピロ！
@@ -800,23 +824,36 @@ export class GameManager {
     // シューティング中の救済落下テトリミノ更新＆ドッキング判定
     if (this.battlePiece && !this.battlePiece.settled) {
       this.battlePiece.fallTimer += dt;
-      this.battlePiece.vy = 52 + Math.sin(this.battlePiece.fallTimer * 2.2) * 14;
+      if (this.battlePiece.dockCooldown && this.battlePiece.dockCooldown > 0) {
+        this.battlePiece.dockCooldown -= dt;
+      }
+
+      const GRAVITY = 110;
+      const MAX_FALL_SPEED = 60;
+      this.battlePiece.vy += GRAVITY * dt;
+      if (this.battlePiece.vy > MAX_FALL_SPEED) {
+        this.battlePiece.vy = MAX_FALL_SPEED;
+      }
+
+      this.battlePiece.vx *= (1 - 0.5 * dt);
+      this.battlePiece.vx += Math.sin(this.battlePiece.fallTimer * 1.5) * 15 * dt;
+
       this.battlePiece.x += this.battlePiece.vx * dt;
       this.battlePiece.y += this.battlePiece.vy * dt;
 
       // 左右画面端バウンド
-      if (this.battlePiece.x < 20) {
-        this.battlePiece.x = 20;
-        this.battlePiece.vx = Math.abs(this.battlePiece.vx);
-      } else if (this.battlePiece.x > CANVAS_WIDTH - 20 - BLOCK_SIZE * 3) {
-        this.battlePiece.x = CANVAS_WIDTH - 20 - BLOCK_SIZE * 3;
-        this.battlePiece.vx = -Math.abs(this.battlePiece.vx);
+      if (this.battlePiece.x < 15) {
+        this.battlePiece.x = 15;
+        this.battlePiece.vx = Math.abs(this.battlePiece.vx) * 0.8;
+      } else if (this.battlePiece.x > CANVAS_WIDTH - 15 - BLOCK_SIZE * 3) {
+        this.battlePiece.x = CANVAS_WIDTH - 15 - BLOCK_SIZE * 3;
+        this.battlePiece.vx = -Math.abs(this.battlePiece.vx) * 0.8;
       }
 
       this.battlePiece.gx = Math.round(this.battlePiece.x / BLOCK_SIZE);
       this.battlePiece.gy = Math.round(this.battlePiece.y / BLOCK_SIZE);
 
-      // 弾ヒットによる回転！
+      // 弾ヒットによる回転＆上反動！
       const pieceBounds = this.battlePiece.piece.getBoundingBox(this.battlePiece.x, this.battlePiece.y);
       const pieceCenterX = (pieceBounds.minX + pieceBounds.maxX) / 2;
 
@@ -831,27 +868,35 @@ export class GameManager {
           pb.y <= pieceBounds.maxY + 4
         ) {
           pb.isDead = true;
-          this.particles.emitSparks(pb.x, pb.y, this.battlePiece.piece.color, 10);
+          this.particles.emitSparks(pb.x, pb.y, this.battlePiece.piece.color, 12);
           this.sound.playHit();
 
-          if (pb.x < pieceCenterX) {
+          this.battlePiece.vy = -130;
+          const hitOffset = pb.x - pieceCenterX;
+          if (hitOffset < -6) {
             this.battlePiece.piece.rotate();
-          } else {
+            this.battlePiece.vx = Math.min(this.battlePiece.vx + 45, 90);
+          } else if (hitOffset > 6) {
             this.battlePiece.piece.rotateCounter();
+            this.battlePiece.vx = Math.max(this.battlePiece.vx - 45, -90);
+          } else {
+            this.battlePiece.vy = -165;
           }
+          this.battlePiece.dockCooldown = 0.4;
         }
       }
 
       // 自機との近接ドッキング判定！
+      const canDockBattle = (!this.battlePiece.dockCooldown || this.battlePiece.dockCooldown <= 0) && this.battlePiece.vy > 0;
       const playerBounds = this.player.getBoundingBox();
       const isClose =
-        pieceBounds.maxX >= playerBounds.minX - 12 &&
-        pieceBounds.minX <= playerBounds.maxX + 12 &&
-        pieceBounds.maxY >= playerBounds.minY - 12 &&
-        pieceBounds.minY <= playerBounds.maxY + 12;
+        pieceBounds.maxX >= playerBounds.minX - 25 &&
+        pieceBounds.minX <= playerBounds.maxX + 25 &&
+        pieceBounds.maxY >= playerBounds.minY - 30 &&
+        pieceBounds.minY <= playerBounds.maxY + 15;
 
-      if (isClose) {
-        const dockRes = this.player.tryDockFromPixel(this.battlePiece.piece, this.battlePiece.x, this.battlePiece.y);
+      if (canDockBattle && isClose) {
+        const dockRes = this.player.tryDockFromPixel(this.battlePiece.piece, this.battlePiece.x, this.battlePiece.y, BLOCK_SIZE * 1.15);
         if (dockRes.docked) {
           this.battlePiece.settled = true;
           this.sound.playDock();
@@ -1366,6 +1411,23 @@ export class GameManager {
         ctx.setLineDash([4, 4]);
         ctx.strokeRect(bounds.minX - 2, bounds.minY - 2, bounds.maxX - bounds.minX + 4, bounds.maxY - bounds.minY + 4);
         ctx.restore();
+
+        // ★ ドッキングゴーストプレビュー（確定前に自機上のどこにハマるかをリアルタイム投影！）
+        const cand = this.player.findBestDockCandidate(item.piece, item.x, item.y);
+        if (cand && cand.dist < BLOCK_SIZE * 5) {
+          this.player.drawDockGhost(ctx, item.piece, cand.relGx, cand.relGy);
+
+          // ピース中心からゴースト中心への誘導点線ライン
+          ctx.save();
+          ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 4]);
+          ctx.beginPath();
+          ctx.moveTo((bounds.minX + bounds.maxX) / 2, bounds.maxY);
+          ctx.lineTo(cand.candPx + BLOCK_SIZE, cand.candPy);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
 
       // ★ ムーンクレスタ完全再現：「ドッキングせよ！」をシアン色ピクセルで描画！
@@ -1395,6 +1457,12 @@ export class GameManager {
         ctx.setLineDash([4, 4]);
         ctx.strokeRect(bounds.minX - 2, bounds.minY - 2, bounds.maxX - bounds.minX + 4, bounds.maxY - bounds.minY + 4);
         ctx.restore();
+
+        // ★ ドッキングゴーストプレビュー（戦闘中）
+        const cand = this.player.findBestDockCandidate(this.battlePiece.piece, this.battlePiece.x, this.battlePiece.y);
+        if (cand && cand.dist < BLOCK_SIZE * 5) {
+          this.player.drawDockGhost(ctx, this.battlePiece.piece, cand.relGx, cand.relGy);
+        }
 
         const dockBlink = Math.sin(Date.now() / 150) > -0.2;
         if (dockBlink) {

@@ -90,91 +90,192 @@ export class Player {
     };
   }
 
-  // 落下中のミノが自機と接触しているか判定し、結合確定
+  // 浮遊ミノが自機に結合可能な最良のグリッド候補（最短距離かつ適切な接合面）を探索
+  public findBestDockCandidate(
+    piece: TetrominoPiece,
+    px: number,
+    py: number
+  ): {
+    relGx: number;
+    relGy: number;
+    candPx: number;
+    candPy: number;
+    dist: number;
+    effectiveDist: number;
+    contactTop: number;
+    totalContacts: number;
+  } | null {
+    const floatRelGx = (px - this.anchorX) / BLOCK_SIZE;
+    const floatRelGy = (py - this.anchorY) / BLOCK_SIZE;
+    const approxRelGx = Math.round(floatRelGx);
+    const approxRelGy = Math.round(floatRelGy);
+
+    const myCells: { relGx: number; relGy: number }[] = [];
+    for (const attached of this.pieces) {
+      for (const c of attached.piece.cells) {
+        myCells.push({
+          relGx: attached.relGx + c.gx,
+          relGy: attached.relGy + c.gy,
+        });
+      }
+    }
+
+    if (myCells.length === 0) return null;
+
+    let bestCandidate: {
+      relGx: number;
+      relGy: number;
+      candPx: number;
+      candPy: number;
+      dist: number;
+      effectiveDist: number;
+      contactTop: number;
+      totalContacts: number;
+    } | null = null;
+    let minEffectiveDist = Infinity;
+
+    // approxRelGx, approxRelGy を中心に ±2 の相対グリッド範囲を網羅探索
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const testRelGx = approxRelGx + dx;
+        const testRelGy = approxRelGy + dy;
+
+        // 候補の各セル座標
+        const testCells = piece.cells.map(c => ({
+          relGx: testRelGx + c.gx,
+          relGy: testRelGy + c.gy,
+        }));
+
+        // 1. 重なりチェック（1マスでも自機既存セルと被っていれば無効）
+        let overlaps = false;
+        for (const tc of testCells) {
+          for (const mc of myCells) {
+            if (tc.relGx === mc.relGx && tc.relGy === mc.relGy) {
+              overlaps = true;
+              break;
+            }
+          }
+          if (overlaps) break;
+        }
+        if (overlaps) continue;
+
+        // 2. 接合面（隣接）チェック
+        let contactTop = 0; // ミノが自機の上に乗る面（降下ドッキングで最優先）
+        let contactSide = 0; // ミノが自機の左右に接する面
+        let contactBottom = 0; // ミノが自機の下に接する面
+
+        for (const tc of testCells) {
+          for (const mc of myCells) {
+            // tc の底面が mc の上面に接している（tc が上に乗る）
+            if (tc.relGx === mc.relGx && tc.relGy + 1 === mc.relGy) {
+              contactTop++;
+            }
+            // tc の側面が mc に接している
+            else if (tc.relGy === mc.relGy && (tc.relGx + 1 === mc.relGx || tc.relGx - 1 === mc.relGx)) {
+              contactSide++;
+            }
+            // tc の上面が mc の下面に接している（tc が下にある）
+            else if (tc.relGx === mc.relGx && tc.relGy - 1 === mc.relGy) {
+              contactBottom++;
+            }
+          }
+        }
+
+        const totalContacts = contactTop + contactSide + contactBottom;
+        if (totalContacts === 0) continue; // どこにも接していない
+
+        // 3. ピクセル実距離の計算（自機の現在位置基準）
+        const candPx = this.anchorX + testRelGx * BLOCK_SIZE;
+        const candPy = this.anchorY + testRelGy * BLOCK_SIZE;
+        const dist = Math.hypot(px - candPx, py - candPy);
+
+        // 4. 有効距離スコア（上部着地優先＆接合面積ボーナス）
+        let effectiveDist = dist;
+        if (contactTop > 0) {
+          effectiveDist -= 10; // 上部着地を最優先
+        }
+        effectiveDist -= totalContacts * 2; // ガッチリ噛み合う配置を優先
+        if (contactBottom > 0 && contactTop === 0) {
+          effectiveDist += 24; // 下からの不自然な吸着を防止
+        }
+
+        if (effectiveDist < minEffectiveDist) {
+          minEffectiveDist = effectiveDist;
+          bestCandidate = {
+            relGx: testRelGx,
+            relGy: testRelGy,
+            candPx,
+            candPy,
+            dist,
+            effectiveDist,
+            contactTop,
+            totalContacts,
+          };
+        }
+      }
+    }
+
+    return bestCandidate;
+  }
+
+  // 落下中のミノが自機と接触しているか判定し、結合確定（互換用）
   public tryDock(
     fallingPiece: TetrominoPiece,
     fallGx: number,
     fallGy: number
   ): { docked: boolean; piece?: TetrominoPiece } {
-    const playerBaseGx = Math.round(this.anchorX / BLOCK_SIZE);
-    const playerBaseGy = Math.round(this.anchorY / BLOCK_SIZE);
-
-    const fallingAbsoluteCells = fallingPiece.cells.map(c => ({
-      gx: fallGx + c.gx,
-      gy: fallGy + c.gy,
-    }));
-
-    const myCells = this.getOccupiedCells();
-
-    // 重なりチェック
-    for (const fc of fallingAbsoluteCells) {
-      for (const mc of myCells) {
-        if (fc.gx === mc.gx && fc.gy === mc.gy) {
-          return { docked: false };
-        }
-      }
-    }
-
-    // 上から、または左右からの接触があるか
-    let isAdjacent = false;
-    for (const fc of fallingAbsoluteCells) {
-      for (const mc of myCells) {
-        // 上から接触
-        if (fc.gx === mc.gx && fc.gy + 1 === mc.gy) {
-          isAdjacent = true;
-          break;
-        }
-        // 左から接触
-        if (fc.gx + 1 === mc.gx && fc.gy === mc.gy) {
-          isAdjacent = true;
-          break;
-        }
-        // 右から接触
-        if (fc.gx - 1 === mc.gx && fc.gy === mc.gy) {
-          isAdjacent = true;
-          break;
-        }
-      }
-      if (isAdjacent) break;
-    }
-
-    if (isAdjacent) {
-      const relGx = fallGx - playerBaseGx;
-      const relGy = fallGy - playerBaseGy;
-      this.pieces.push({
-        piece: fallingPiece,
-        relGx,
-        relGy,
-      });
-      return { docked: true, piece: fallingPiece };
-    }
-
-    return { docked: false };
+    return this.tryDockFromPixel(fallingPiece, fallGx * BLOCK_SIZE, fallGy * BLOCK_SIZE);
   }
 
   // ピクセル単位で浮遊しているピースを自機に最も近い有効グリッド位置へスナップ吸着してドッキング
   public tryDockFromPixel(
     piece: TetrominoPiece,
     px: number,
-    py: number
+    py: number,
+    maxSnapDistance: number = BLOCK_SIZE * 1.15
   ): { docked: boolean; piece?: TetrominoPiece } {
-    const targetGx = Math.round(px / BLOCK_SIZE);
-    const targetGy = Math.round(py / BLOCK_SIZE);
+    const best = this.findBestDockCandidate(piece, px, py);
+    if (!best) {
+      return { docked: false };
+    }
 
-    // targetGx, targetGy を中心に ±1 のグリッドを探索して結合可能かチェック
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const testGx = targetGx + dx;
-        const testGy = targetGy + dy;
-
-        const res = this.tryDock(piece, testGx, testGy);
-        if (res.docked) {
-          return res;
-        }
-      }
+    // 許容距離内（十分に接近して合体体制にある）場合のみ結合
+    if (best.dist <= maxSnapDistance) {
+      this.pieces.push({
+        piece,
+        relGx: best.relGx,
+        relGy: best.relGy,
+      });
+      return { docked: true, piece };
     }
 
     return { docked: false };
+  }
+
+  // ドッキング予定位置のゴースト描画
+  public drawDockGhost(
+    ctx: CanvasRenderingContext2D,
+    piece: TetrominoPiece,
+    relGx: number,
+    relGy: number
+  ): void {
+    ctx.save();
+    const pulse = 0.45 + Math.sin(Date.now() / 120) * 0.2;
+    ctx.globalAlpha = Math.max(0.2, Math.min(0.85, pulse));
+    ctx.strokeStyle = '#00ffff';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+
+    for (const cell of piece.cells) {
+      const px = this.anchorX + (relGx + cell.gx) * BLOCK_SIZE;
+      const py = this.anchorY + (relGy + cell.gy) * BLOCK_SIZE;
+
+      ctx.fillStyle = piece.color;
+      ctx.fillRect(px + 1, py + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+      ctx.strokeRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+    }
+
+    ctx.restore();
   }
 
   // エクセリオン風・滑らかな慣性移動処理（加速・減速・ドリフト感）
