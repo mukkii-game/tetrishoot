@@ -18,6 +18,10 @@ export class Sound {
   private activeBossLfoSource: AudioBufferSourceNode | null = null;
   private activeBossLfoGain: GainNode | null = null;
 
+  // ショット音の過剰な重なり防止用（スロットリング＆ボイススティーリング）
+  private lastShootTime = 0;
+  private lastShootSource: AudioBufferSourceNode | null = null;
+
   constructor() {
     // 遅延デコード（ユーザー操作時に初期化）
   }
@@ -127,9 +131,27 @@ export class Sound {
     this.initContext();
     if (!this.ctx) return;
 
+    const now = this.ctx.currentTime;
+
+    // 1. 間隔制限 (スロットリング / ゲート)
+    // 複数砲門が同時に発射されたり連射された際、75ms以内の極短間隔なら音の生成をスキップして耳障りな重なりを防止
+    if (now - this.lastShootTime < 0.075) return;
+    this.lastShootTime = now;
+
+    // 2. ボイススティーリング (前の音が鳴っていたらスパッと切断して単一発音を維持)
+    if (this.lastShootSource) {
+      try {
+        this.lastShootSource.stop();
+        this.lastShootSource.disconnect();
+      } catch {
+        // すでに再生終了している場合は無視
+      }
+      this.lastShootSource = null;
+    }
+
     // I, L, J, T, S, Z ミノにより発射音の音色・ピッチバリエーションを展開
     // I, T, S は OtoLogicのリアルアーケードショット音 (Arcade-Shooter01-1)
-    // L, J, Z, O は レトロ矩形波レーザー音（ピッチを変えて音色に変化を付加）
+    // L, J, Z, O は レトロ矩形波レーザー音
     const useOtoLogicSample = pieceType === 'I' || pieceType === 'T' || pieceType === 'S';
 
     if (useOtoLogicSample && this.shootBuffer) {
@@ -137,23 +159,31 @@ export class Sound {
         const src = this.ctx.createBufferSource();
         src.buffer = this.shootBuffer;
         // テトリミノに応じたピッチの微差（Iは高め、Tは標準、Sは鋭く）
-        if (pieceType === 'I') src.playbackRate.value = 1.15;
-        else if (pieceType === 'S') src.playbackRate.value = 1.05;
-        else src.playbackRate.value = 0.95;
+        if (pieceType === 'I') src.playbackRate.value = 1.2;
+        else if (pieceType === 'S') src.playbackRate.value = 1.1;
+        else src.playbackRate.value = 1.0;
 
+        // 3. 音量の低減 & 4. 発音時間の短縮
+        // 原音は長いため、0.11秒でクイックに減衰(exponentialRamp)させ、0.12秒で強制ストップ
+        // 音量も 0.65 -> 0.28 に抑制
+        const dur = 0.11;
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(0.65, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.28, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
         src.connect(gain);
         gain.connect(this.ctx.destination);
-        src.start(0);
+        src.start(now);
+        src.stop(now + dur + 0.01);
+
+        this.lastShootSource = src;
         return;
       } catch {
         // フォールバック
       }
     }
 
-    // レトロチップチューン音（ピッチを変調）
-    const now = this.ctx.currentTime;
+    // レトロチップチューン音（ピッチを変調 & 短くキレよく）
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
@@ -169,16 +199,16 @@ export class Sound {
     }
 
     osc.frequency.setValueAtTime(startFreq, now);
-    osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.1);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.08);
 
-    gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.1);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.11);
+    osc.stop(now + 0.09);
   }
 
   // 4. ムーンクレスタ ドッキング成功音（ピロリロリロリロピロピロ〜ン！）
