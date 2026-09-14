@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ITCH_TARGET: mukkii/galaxtiris
+  ITCH_TARGET: mukkii/galaxtris
   ITCH_CHANNEL: html5
 
 jobs:
