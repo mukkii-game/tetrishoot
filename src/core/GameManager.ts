@@ -110,9 +110,9 @@ export class GameManager {
   public titleMenuSelection: 'DIFFICULTY' | 'STAGE' = 'DIFFICULTY';
   public selectedStage: number = 1; // タイトル画面＆ポーズ画面で選べるステージ (1〜10)
   private rescueSpawnCooldown = 0;
-  // ★ ユーザー要望：救済テトリミノは1つ目が5秒後、2つ目以降は7秒後
+  // ★ ユーザー要望：救済テトリミノは1つ目も2つ目以降も5秒後
   private static readonly RESCUE_FIRST_DELAY = 5.0;
-  private static readonly RESCUE_NEXT_DELAY = 7.0;
+  private static readonly RESCUE_NEXT_DELAY = 5.0;
   public dockingTimer = 30.0; // ユーザー要望：ドッキングせよ 30.0から減っていく
 
   private deathDelay = 0; // 自機爆発アニメーション用ディレイ
@@ -852,26 +852,26 @@ export class GameManager {
         // 1面の中でも静かに始まって、ところどころスリルのあるところがあって、ものすごくてきがたくさん！みたいなクライマックスがあって、その後ボス！
         //
         // ★ ユーザー要望：Stage 5 は地形に非常にぶつかりやすく難しいので、出現敵を約半分に削減
-        // ★ ユーザー要望：5面は難しいので、最初の約10秒は敵をさらに少なめに（地形に慣れる時間）
-        // 1. 【静かな導入】（t=1.5〜）：斥候ドローン1機が優雅に横断
-        this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 3, 1, START_DELAY, 'S_CURVE_LEFT_TO_RIGHT', 0));
-        // 2. 【スリル・急襲】（t=8.0〜）：索敵急加速ミサイル1発、続いて（t=11.5〜）地表ミサイル2発
-        this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1, 0, START_DELAY + 6.5));
+        // ★ ユーザー要望：5面は開始10秒間は敵を一匹も出さない（地形に慣れる時間）
+        // 1. 【静かな導入】（t=10.0〜）：斥候ドローン1機が優雅に横断
+        this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 3, 1, 10.0, 'S_CURVE_LEFT_TO_RIGHT', 0));
+        // 2. 【スリル・急襲】（t=13.0〜）：索敵急加速ミサイル1発、続いて（t=15.0〜）地表ミサイル2発
+        this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1, 0, 13.0));
         for (let i = 0; i < 2; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, START_DELAY + 10.0 + i * 1.0));
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, 15.0 + i * 1.0));
         }
         // ★ ユーザー要望：壁自体が難しいので、中盤以降も敵を少なめにし、種類の混合も減らして一種類ずつ順番に出す
-        // 3. 【加速する緊張】（t=16.0〜）：ガリの急停止＆急加速アタック（2機、間隔広め）
+        // 3. 【加速する緊張】（t=19.0〜）：ガリの急停止＆急加速アタック（2機、間隔広め）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 3 : 2); i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 5), 0, START_DELAY + 14.5 + i * 1.2));
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 5), 0, 19.0 + i * 1.2));
         }
-        // 4. 【クライマックス】（t=22.0〜）：片側からの旋回編隊のみ（左右同時のクロスラッシュは廃止）
+        // 4. 【クライマックス】（t=24.0〜）：片側からの旋回編隊のみ（左右同時のクロスラッシュは廃止）
         for (let k = 0; k < (this.difficulty === 'HARD' ? 5 : 3); k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 1 + (k % 4), 2, START_DELAY + 20.5, 'INFINITY_DIVE_LEFT', k));
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 1 + (k % 4), 2, 24.0, 'INFINITY_DIVE_LEFT', k));
         }
-        // 5. （t=28.0〜）：グラディウス編隊は前の編隊が抜けてから、少数で
+        // 5. （t=29.0〜）：グラディウス編隊は前の編隊が抜けてから、少数で
         for (let i = 0; i < (this.difficulty === 'HARD' ? 3 : 2); i++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 5), 0, START_DELAY + 26.5 + i * 0.8));
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 5), 0, 29.0 + i * 0.8));
         }
         break;
 

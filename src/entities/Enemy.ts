@@ -1775,7 +1775,9 @@ export class Enemy {
 
       // ★ 索敵急加速ミサイル（DART_MISSILE）倍サイズ描画！
       case 'DART_MISSILE': {
-        ctx.scale(1.9, 1.9);
+        // ★ バグ修正：進行方向に合わせて左右反転（左へ飛ぶ時に噴射口が前に来ていた）
+        const dartDir = this.vx < 0 ? -1 : 1;
+        ctx.scale(dartDir * 1.9, 1.9);
         ctx.fillStyle = '#ffff00';
         ctx.fillRect(-8, -4, 16, 8);
         ctx.fillStyle = '#ff0044';
