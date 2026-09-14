@@ -19,6 +19,7 @@ export class TerrainManager {
   public enabled = false;
   public silosEnabled = true; // 壁面ミサイル発射台の生成可否（ステージごとに切替）
   public siloStartDelay = 2.5; // ステージ開幕後、発射台が起動し始めるまでの秒数
+  public siloSpacing = 260; // 壁際ロケットの出現間隔（スクロールpx）
   private scrollOffset = 0;
   private seed = 42;
   public elapsedTime = 0;
@@ -52,7 +53,7 @@ export class TerrainManager {
     this.elapsedTime += dt;
 
     // ★ 洞窟壁サイロの生成（約260pxスクロールごと）
-    const nextSpawnY = Math.floor((this.scrollOffset + 720) / 260) * 260;
+    const nextSpawnY = Math.floor((this.scrollOffset + 720) / this.siloSpacing) * this.siloSpacing;
     if (this.silosEnabled && nextSpawnY > this.lastSiloSpawnY) {
       this.lastSiloSpawnY = nextSpawnY;
       const side = Math.random() > 0.5 ? 'LEFT' : 'RIGHT';

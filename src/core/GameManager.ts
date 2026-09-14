@@ -252,6 +252,8 @@ export class GameManager {
     this.terrain.silosEnabled = this.stage !== 3;
     // ★ ユーザー要望：5面は開幕約10秒間、壁面発射台も起動させない
     this.terrain.siloStartDelay = (this.stage === 5 || this.stage === 9) ? 10.0 : 2.5;
+    // HARD は壁際ロケットの間隔も詰める（260px → 175px ≒ 5割増）
+    this.terrain.siloSpacing = this.difficulty === 'HARD' ? 175 : 260;
 
     // ★ ユーザー要望：アイテムはステージ開始時の固定配置ではなく、累計撃破数に応じて出現（spawnBarrierOrb 参照）
     //   救済カプセルはいったん廃止
@@ -774,6 +776,11 @@ export class GameManager {
   // シューティングフェーズ：ウェーブごとの鮮やかな個性＆レベルデザイン！
   // 面が進むごとに敵の数・方向・攻撃頻度が怒涛のように進化！
   // ==========================================
+  // ★ ユーザー要望：HARD はザコの数を全ステージ一律で5割増（NORMAL の数 × 1.5、切り上げ）
+  private hc(normalCount: number): number {
+    return this.difficulty === 'HARD' ? Math.ceil(normalCount * 1.5) : normalCount;
+  }
+
   private spawnAlienFleet(): void {
     this.enemies = [];
 
@@ -787,15 +794,15 @@ export class GameManager {
         // ユーザー要望：基本は一種類の敵を出す。順番に別の種類の敵が出る
         // フェーズ1（t=1.5〜）：コールドアイ4機（上部スイングから階段状ダイブ、撃破で2つに分裂）
         // 点が生まれて拡大するムーンクレスタ1面風の演出で実体化！
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < this.hc(4); i++) {
           this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, START_DELAY));
         }
         // フェーズ2（t=10.5〜）：増援コールドアイ4機（上空から滑空して編隊形成）
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < this.hc(4); i++) {
           this.enemies.push(new Enemy('SPLITTING_EYE', 'MOON_COLD_EYE', i, 0, START_DELAY + 9.0));
         }
         // フェーズ3（t=18.5〜）：スーパーアイ8機（左右壁面バウンドの電光石火ダイブ）
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < this.hc(8); i++) {
           this.enemies.push(new Enemy('MINI_EYE', 'MOON_SUPER_EYE', i, 0, START_DELAY + 17.0 + i * 0.4));
         }
         break;
@@ -804,20 +811,20 @@ export class GameManager {
         // 【STAGE 2：純粋なギャラガ大旋回面（グルングルン回る高速編隊＆画面全体スウィング）】
         // ユーザー要望：2面ってギャラガモチーフじゃなかったっけ？ もっとグルングルン回るよね編隊、画面全体使って、それなりの速度で。したまでくる！
         // ウェーブ1（t=1.5〜）：左から大S字ループで下部(y≈620)まで急降下旋回するグリーン・ドローン隊（8機）
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 12 : 8); k++) {
+        for (let k = 0; k < this.hc(8); k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 4), 2, START_DELAY, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
         // ウェーブ2（t=6.5〜）：右から大S字ループで逆から画面全体を横断・下部スウィングするレッド・ガード隊（8機）
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 12 : 8); k++) {
+        for (let k = 0; k < this.hc(8); k++) {
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 4), 1, START_DELAY + 5.0, 'S_CURVE_RIGHT_TO_LEFT', k));
         }
         // ウェーブ3（t=12.0〜）：左右から同時に突入し中央で8の字インフィニティループを描く交差編隊！
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 14 : 8); k++) {
+        for (let k = 0; k < this.hc(8); k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 3, START_DELAY + 10.5, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 4), 3, START_DELAY + 10.5, 'INFINITY_DIVE_RIGHT', k));
         }
         // ウェーブ4（t=18.5〜）：巨大8の字大旋回ループで画面を舞うイエロー司令機＆護衛隊！
-        for (let k = 0; k < 6; k++) {
+        for (let k = 0; k < this.hc(6); k++) {
           this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 3 + (k % 3), 0, START_DELAY + 17.0, 'FIGURE_EIGHT', k));
         }
         break;
@@ -826,16 +833,16 @@ export class GameManager {
         // 【STAGE 3：スターフォース名物「ガリ」＆ 90度直角旋回機 ＆ 左右ワープランナー】
         // ユーザー要望：敵を混ぜずに順番に出す
         // フェーズ1（t=1.5〜）：スターフォース「ガリ」第一波（深く急降下→急停止スウィング→超高速ダッシュ）
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
+        for (let i = 0; i < this.hc(10); i++) {
           this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, START_DELAY + i * 0.4));
         }
         // ★ ユーザー要望：3面は地形もあり難しいので、敵種が混ざらないよう各フェーズの間隔を大きく広げて一種類ずつ出す
         // フェーズ2（t=13.5〜）：左右ループ走査機（画面端から反対端へループワープする巡航機）
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
+        for (let i = 0; i < this.hc(8); i++) {
           this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, START_DELAY + 12.0 + i * 0.35));
         }
         // フェーズ3（t=24.0〜）：左右端落下→自機Yで90度直角旋回突進！
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
+        for (let i = 0; i < this.hc(8); i++) {
           this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, START_DELAY + 22.5 + i * 0.38));
         }
         break;
@@ -844,16 +851,16 @@ export class GameManager {
         // 【STAGE 4：索敵急加速ミサイル ＆ フォー・フライ ＆ 広域ギャラガ大旋回】
         // 地形スクロールのない宇宙空間で、ギャラガ編隊が縦横無尽に画面全体を舞う！
         // フェーズ1（t=1.5〜）：索敵急加速ミサイル（フワリと横移動後、突如バーニア点火で急加速）
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
+        for (let i = 0; i < this.hc(10); i++) {
           this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, START_DELAY + i * 0.35));
         }
         // フェーズ2（t=7.5〜）：オープン空間を縦横無尽に飛び回るギャラガ交差ストリーム編隊！
-        for (let k = 0; k < 12; k++) {
+        for (let k = 0; k < this.hc(12); k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 2, START_DELAY + 6.0, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 4), 2, START_DELAY + 6.0, 'INFINITY_DIVE_RIGHT', k));
         }
         // フェーズ3（t=14.0〜）：ムーンクレスタ名物「フォー・フライ」（カミソリ急降下ジグザグ）
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
+        for (let i = 0; i < this.hc(10); i++) {
           this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, START_DELAY + 12.5 + i * 0.3));
         }
         break;
@@ -871,16 +878,16 @@ export class GameManager {
       case 6:
         // 【WAVE 6：沙羅曼蛇 2・横スクロール 右方向バンガード岩盤回廊】（ザコ52機）
         // 天井と床から突き出るバンガードブロック岩！ガリの急襲＋索敵加速ミサイル＋トーロイド！
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < this.hc(14); i++) {
           this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.2 + i * 0.25));
         }
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < this.hc(12); i++) {
           this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 5), 0, 0.8 + i * 0.22));
         }
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < this.hc(14); i++) {
           this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 6), 1, 1.4 + i * 0.2));
         }
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < this.hc(10); i++) {
           this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 5), 0, 2.0 + i * 0.18));
         }
         break;
@@ -891,27 +898,27 @@ export class GameManager {
         //   （全ステージ共通の開幕1.5秒シフト後の時刻）
         // 1. アトミック・ファントム：3機ずつのトリオが上部で静止→震え→自機へ鋭角急加速突撃（t≈1.5〜12）
         {
-          const trios = this.difficulty === 'HARD' ? 4 : 3;
+          const trios = this.hc(3);
           for (let w = 0; w < trios; w++) {
             for (let k = 0; k < 3; k++) {
               this.enemies.push(new Enemy('ATOMIC_PHANTOM', 'ATOMIC_CHARGE', 2 + k * 2, 0, 0.0 + w * 3.5 + k * 0.45));
             }
           }
           // 2. ベータ・ファントム：左右から交互に横スイープ、自機の真上で翼を畳んで垂直ダイブ（t≈13〜21）
-          const betas = this.difficulty === 'HARD' ? 10 : 7;
+          const betas = this.hc(7);
           for (let i = 0; i < betas; i++) {
             this.enemies.push(new Enemy('BETA_PHANTOM', 'BETA_WING_SWEEP', i, i, 11.5 + i * 1.2));
           }
           // 3. メテオの嵐：斜めメテオが4秒間だけ集中して降り注ぐ（t≈22〜26）
-          const meteors = this.difficulty === 'HARD' ? 16 : 12;
+          const meteors = this.hc(12);
           for (let i = 0; i < meteors; i++) {
             this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 8), 0, 20.5 + i * 0.3));
           }
           // 4. フィナーレ：アトミック＆ベータの混成（t≈27〜31）→ ボス
-          for (let k = 0; k < 4; k++) {
+          for (let k = 0; k < this.hc(4); k++) {
             this.enemies.push(new Enemy('ATOMIC_PHANTOM', 'ATOMIC_CHARGE', 1 + k * 2, 0, 25.5 + k * 0.5));
           }
-          for (let i = 0; i < 3; i++) {
+          for (let i = 0; i < this.hc(3); i++) {
             this.enemies.push(new Enemy('BETA_PHANTOM', 'BETA_WING_SWEEP', i, i + 1, 26.0 + i * 1.3));
           }
         }
@@ -921,17 +928,17 @@ export class GameManager {
         // 【WAVE 8：左スクロール・バンガード岩盤回廊 ＋ ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】（ザコ66機）
         // ★ ユーザー要望：Stage 8 は地形のある左スクロール面（Stage 6 の反対方向）
         // 画面全方位から押し寄せるギャプラス風ストリーム大編隊＋グラディウス開幕編隊＋フライバイ！
-        for (let k = 0; k < 20; k++) {
+        for (let k = 0; k < this.hc(20); k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.12, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.12, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < this.hc(14); i++) {
           this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 0.8 + i * 0.18));
         }
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < this.hc(14); i++) {
           this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 1.4 + i * 0.16));
         }
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < this.hc(10); i++) {
           this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, 2.2 + i * 0.15));
         }
         break;
@@ -942,31 +949,31 @@ export class GameManager {
         //   まとめて出すのを遅らせて面を長くする（バトル時間 100 秒、ボスは約68秒）
         //   （開幕10秒は敵なし → 以下は +10 秒シフト後の実時間）
         // 1. ガリ 12機（t=10〜15）
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < this.hc(12); i++) {
           this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.0 + i * 0.45));
         }
         // 2. 索敵ミサイル 10機（t=20〜24）
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < this.hc(10); i++) {
           this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 10.0 + i * 0.45));
         }
         // 3. トーロイド 10機（t=29〜33）
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < this.hc(10); i++) {
           this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 19.0 + i * 0.4));
         }
         // 4. ガリ第2波 8機（t=38〜42）
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < this.hc(8); i++) {
           this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 28.0 + i * 0.5));
         }
         // 5. 索敵ミサイル第2波 8機（t=46〜50）
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < this.hc(8); i++) {
           this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + ((i + 3) % 6), 0, 36.0 + i * 0.5));
         }
         // 6. トーロイド第2波 8機（t=54〜57）
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < this.hc(8); i++) {
           this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 44.0 + i * 0.45));
         }
         // 7. ロケット 8機（t=60〜64）→ ボス（約68秒）
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < this.hc(8); i++) {
           this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 50.0 + i * 0.5));
         }
         break;
@@ -975,19 +982,19 @@ export class GameManager {
       default:
         // 【WAVE 10：最終決戦・オールスター総力戦カタストロフィ】（ザコ90機超え！）
         // ムーンクレスタ怪獣・スターフォース・グラディウス・沙羅曼蛇が総結集する究極のラストバトル！
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < this.hc(16); i++) {
           this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.1 + i * 0.14));
         }
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < this.hc(14); i++) {
           this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 0.4 + i * 0.16));
         }
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < this.hc(16); i++) {
           this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 0.7 + i * 0.14));
         }
-        for (let i = 0; i < 18; i++) {
+        for (let i = 0; i < this.hc(18); i++) {
           this.enemies.push(new Enemy('BETA_PHANTOM', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 0, 1.0 + i * 0.12));
         }
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < this.hc(16); i++) {
           this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 8), 0, 1.4 + i * 0.1));
         }
         break;
@@ -1060,9 +1067,9 @@ export class GameManager {
       bossHp = this.stage === 1 ? 20 : 32;
     }
 
-    // ★ ユーザー要望：ハードモードはボスを2倍固くする！
+    // ★ ユーザー要望：HARD のボスは耐久 1.5倍・速度 2倍（速度は下の speedScale で適用）
     if (this.difficulty === 'HARD') {
-      bossHp *= 2;
+      bossHp = Math.ceil(bossHp * 1.5);
     }
 
     // ★ ユーザー要望：3面ってボスは下から来てもいいよね（SURPRISE_FROM_BOTTOMで画面下部から急上昇！）
@@ -1074,6 +1081,10 @@ export class GameManager {
     // ★ ユーザー要望：ラスボス（ボスラッシュ最後のUFO母船）は全ての動きを倍速に
     if (this.stage === 10 && this.bossRushIndex === BOSS_RUSH.length - 1) {
       boss.speedScale = 2.0;
+    }
+    // ★ ユーザー要望：HARD のボスは速度 2倍（ラスボスは元々2倍なので 3倍に留める）
+    if (this.difficulty === 'HARD') {
+      boss.speedScale = boss.speedScale >= 2.0 ? 3.0 : 2.0;
     }
     this.currentBoss = boss;
     this.enemies.push(boss);
