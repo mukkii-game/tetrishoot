@@ -47,6 +47,15 @@ export class Sound {
   private activeClearMusicSource: AudioBufferSourceNode | null = null;
   private activeClearMusicGain: GainNode | null = null;
 
+  // ★ ステージBGM（public/audio/stage_bgm.mp3 があればそれをループ再生。無ければ従来の合成BGM）
+  //   お試し版ブランチにだけ mp3 を置く運用。本番ビルドにはファイルが無いので自動的に合成BGMになる
+  private stageMusicBuffer: AudioBuffer | null = null;
+  private stageMusicState: 'unknown' | 'loading' | 'ready' | 'missing' = 'unknown';
+  private stageMusicSource: AudioBufferSourceNode | null = null;
+  private stageMusicGain: GainNode | null = null;
+  private stageMusicStartedAt = 0;
+  private stageMusicOffset = 0;
+
   // ショット音の同時発音管理（間引きはせず、同時に鳴る数だけ上限3で古い音から消す）
   private static readonly MAX_SHOT_VOICES = 6;
   private shootVoices: { gain: GainNode; endTime: number }[] = [];
@@ -66,6 +75,7 @@ export class Sound {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioCtx();
       this.loadOtoLogicBuffers();
+      this.loadStageMusic();
     }
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
@@ -997,12 +1007,90 @@ export class Sound {
   }
 
   // BGM
+  private loadStageMusic(): void {
+    if (!this.ctx || this.stageMusicState !== 'unknown') return;
+    this.stageMusicState = 'loading';
+    fetch('./audio/stage_bgm.mp3')
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.arrayBuffer();
+      })
+      .then(data => this.ctx!.decodeAudioData(data))
+      .then(buf => {
+        this.stageMusicBuffer = buf;
+        this.stageMusicState = 'ready';
+        // 読み込み完了時に既にステージ中なら、合成BGMから mp3 に切り替える
+        if (this.currentBgmPhase !== 'none' && this.bgmIntervalId !== null) {
+          clearInterval(this.bgmIntervalId);
+          this.bgmIntervalId = null;
+          this.startStageMusic(0);
+        }
+      })
+      .catch(() => {
+        this.stageMusicState = 'missing';
+      });
+  }
+
+  private startStageMusic(offset: number): void {
+    if (!this.ctx || !this.stageMusicBuffer || this.isMuted) return;
+    this.stopStageMusicSource();
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.stageMusicBuffer;
+    src.loop = true;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.65, this.ctx.currentTime);
+    src.connect(gain);
+    gain.connect(this.ctx.destination);
+    const startOffset = offset % this.stageMusicBuffer.duration;
+    src.start(0, startOffset);
+    this.stageMusicSource = src;
+    this.stageMusicGain = gain;
+    this.stageMusicStartedAt = this.ctx.currentTime - startOffset;
+  }
+
+  private stopStageMusicSource(fadeSec = 0): void {
+    if (this.stageMusicSource && this.ctx) {
+      try {
+        if (fadeSec > 0 && this.stageMusicGain) {
+          const t = this.ctx.currentTime;
+          this.stageMusicGain.gain.cancelScheduledValues(t);
+          this.stageMusicGain.gain.setValueAtTime(this.stageMusicGain.gain.value, t);
+          this.stageMusicGain.gain.exponentialRampToValueAtTime(0.001, t + fadeSec);
+          this.stageMusicSource.stop(t + fadeSec);
+        } else {
+          this.stageMusicSource.stop();
+        }
+      } catch {
+        /* already stopped */
+      }
+    }
+    this.stageMusicSource = null;
+    this.stageMusicGain = null;
+  }
+
+  // ボス撃破時：ステージBGM（mp3）をフェードアウトして止める。合成BGMは従来どおりクリア処理で止まる
+  public stopStageMusicOnBossDefeat(): void {
+    if (this.stageMusicSource) {
+      this.stopStageMusicSource(1.0);
+      this.currentBgmPhase = 'none';
+    }
+  }
+
   public startBGM(phase: 'tetris' | 'shooting'): void {
     if (this.currentBgmPhase === phase) return;
+    // ★ mp3 ステージBGMが使える場合：フェーズが変わっても曲は続ける（ステージの始めから流しっぱなし）
+    if (this.stageMusicState === 'ready' && this.stageMusicSource && this.currentBgmPhase !== 'none') {
+      this.currentBgmPhase = phase;
+      return;
+    }
     this.stopBGM();
     this.currentBgmPhase = phase;
     if (this.isMuted) return;
     this.initContext();
+    if (this.stageMusicState === 'ready') {
+      this.startStageMusic(0);
+      return;
+    }
 
     let step = 0;
     // ドッキング時はムーンクレスタ風の静寂と推進エンジンパルス、シューティング時は緊張感あるベースライン
@@ -1036,11 +1124,20 @@ export class Sound {
       clearInterval(this.bgmIntervalId);
       this.bgmIntervalId = null;
     }
+    if (this.stageMusicSource && this.ctx) {
+      this.stageMusicOffset = this.ctx.currentTime - this.stageMusicStartedAt;
+      this.stopStageMusicSource();
+    }
     this.stopBossLfo();
   }
 
   public resumeBGM(): void {
-    if (this.currentBgmPhase !== 'none' && this.bgmIntervalId === null) {
+    if (this.currentBgmPhase === 'none') return;
+    if (this.stageMusicState === 'ready') {
+      if (!this.stageMusicSource) this.startStageMusic(this.stageMusicOffset);
+      return;
+    }
+    if (this.bgmIntervalId === null) {
       const p = this.currentBgmPhase;
       this.currentBgmPhase = 'none'; // reset to force re-start
       this.startBGM(p);
@@ -1052,6 +1149,8 @@ export class Sound {
       clearInterval(this.bgmIntervalId);
       this.bgmIntervalId = null;
     }
+    this.stopStageMusicSource();
+    this.stageMusicOffset = 0;
     this.currentBgmPhase = 'none';
     this.stopBossLfo();
   }

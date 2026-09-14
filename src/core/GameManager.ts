@@ -1639,6 +1639,7 @@ export class GameManager {
               );
               this.score += enemy.scoreValue;
               this.sound.stopBossLfo();
+              this.onBossDefeatedMusic();
               this.currentBoss = null;
               this.bossDying = true;
               this.bossDeathTimer = 0;
@@ -1753,6 +1754,7 @@ export class GameManager {
             enemy.height
           );
           this.score += enemy.scoreValue;
+          this.onBossDefeatedMusic();
           this.currentBoss = null;
           this.bossDying = true;
           this.bossDeathTimer = 0;
@@ -1771,6 +1773,12 @@ export class GameManager {
     ) {
       this.onBossPhaseEnded();
     }
+  }
+
+  // ★ ステージBGM（mp3版）はボス撃破でフェードアウト。10面のボスラッシュは最後のボスを倒した時のみ
+  private onBossDefeatedMusic(): void {
+    if (this.stage === 10 && this.bossRushIndex < BOSS_RUSH.length - 1) return;
+    this.sound.stopStageMusicOnBossDefeat();
   }
 
   // ★ ボス撃破後の処理：Stage 10 はボスラッシュなので次のボスを予告して呼び出す。それ以外はステージクリア
