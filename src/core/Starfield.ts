@@ -89,22 +89,29 @@ export class Starfield {
         this.galaxyY = Math.random() * (CANVAS_HEIGHT - 200) + 100;
       }
     } else if (this.direction === 'DIAGONAL_UP_RIGHT') {
-      // 斜め右上スクロール（バンガード）：星は左下へ流れる
+      // 斜め右上スクロール（バンガード）：自機が右上へ進む＝星・宇宙雲は左下（-X, +Y）へダイナミックに高速移動
       for (const star of this.stars) {
-        star.x -= star.speed * 0.7 * speedMultiplier * dt;
-        star.y += star.speed * 0.7 * speedMultiplier * dt;
-        if (star.x < 0 || star.y > CANVAS_HEIGHT) {
-          star.x = Math.random() * (CANVAS_WIDTH + 100);
-          star.y = -10;
+        const diagSpeed = star.speed * 1.3 * speedMultiplier * dt;
+        star.x -= diagSpeed;
+        star.y += diagSpeed;
+        // 画面左端または下端を抜けたら、右上領域（X: 0〜CANVAS_WIDTH+200, Y: -10〜0）へ再配置
+        if (star.x < -10 || star.y > CANVAS_HEIGHT + 10) {
+          if (Math.random() > 0.5) {
+            star.x = CANVAS_WIDTH + 10;
+            star.y = Math.random() * (CANVAS_HEIGHT * 0.7);
+          } else {
+            star.x = Math.random() * CANVAS_WIDTH + 50;
+            star.y = -10;
+          }
         }
       }
 
-      this.galaxyX -= 10 * speedMultiplier * dt;
-      this.galaxyY += 10 * speedMultiplier * dt;
+      this.galaxyX -= 25 * speedMultiplier * dt;
+      this.galaxyY += 25 * speedMultiplier * dt;
       this.galaxyRotation += 0.08 * dt;
       if (this.galaxyY > CANVAS_HEIGHT + 250 || this.galaxyX < -250) {
         this.galaxyY = -250;
-        this.galaxyX = CANVAS_WIDTH + 50;
+        this.galaxyX = CANVAS_WIDTH + 100;
       }
     }
   }

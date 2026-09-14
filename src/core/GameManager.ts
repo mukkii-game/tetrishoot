@@ -93,6 +93,7 @@ export class GameManager {
   public battlePiece: FallingPieceItem | null = null;
   public gameOverSelection: 'CONTINUE' | 'TITLE' = 'CONTINUE';
   public pauseMenuSelection: 'RESUME' | 'RESTART_STAGE' | 'TITLE' = 'RESUME';
+  public selectedStage: number = 1; // タイトル画面＆ポーズ画面で選べるステージ (1〜10)
   private rescueSpawnCooldown = 0;
   public dockingTimer = 30.0; // ユーザー要望：ドッキングせよ 30.0から減っていく
 
@@ -117,8 +118,8 @@ export class GameManager {
     if (saved) this.highScore = parseInt(saved, 10) || 0;
   }
 
-  public startNewGame(): void {
-    this.stage = 1;
+  public startNewGame(startStage?: number): void {
+    this.stage = startStage !== undefined ? startStage : this.selectedStage;
     this.score = 0;
     this.deathDelay = 0;
     this.playerDeathSoundPlayed = false;
@@ -264,6 +265,7 @@ export class GameManager {
       if (this.state === 'PLAYING' || this.state === 'STAGE_CLEAR') {
         this.state = 'PAUSED';
         this.screenShake = 0;
+        this.selectedStage = this.stage; // ポーズ時は現在プレイ中のステージに初期化
         this.pauseMenuSelection = 'RESUME';
         this.sound.pauseBGM();
         this.sound.stopBossLfo();
@@ -302,12 +304,17 @@ export class GameManager {
           break;
         }
 
-        // 難易度切り替え（左右キー、または難易度表示エリアのクリック・タップ）
-        if (input.justLeft || input.justRight) {
-          this.difficulty = this.difficulty === 'NORMAL' ? 'HARD' : 'NORMAL';
+        // 難易度切り替え（左右キー：ステージ選択と兼ねてタイトル操作）
+        if (input.justLeft) {
+          this.selectedStage = this.selectedStage > 1 ? this.selectedStage - 1 : 10;
+          this.sound.playHit();
+        } else if (input.justRight) {
+          this.selectedStage = this.selectedStage < 10 ? this.selectedStage + 1 : 1;
           this.sound.playHit();
         }
-        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 425 && input.mouseY <= 520) {
+
+        // 難易度切り替えタップ判定 (Y: 420..465)
+        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 420 && input.mouseY <= 468) {
           if (input.mouseX !== null) {
             this.difficulty = input.mouseX < CANVAS_WIDTH / 2 ? 'NORMAL' : 'HARD';
           } else {
@@ -317,8 +324,23 @@ export class GameManager {
           break;
         }
 
+        // 面セレクト切り替えタップ判定 (Y: 475..528)
+        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 475 && input.mouseY <= 528) {
+          if (input.mouseX !== null) {
+            if (input.mouseX < CANVAS_WIDTH / 2) {
+              this.selectedStage = this.selectedStage > 1 ? this.selectedStage - 1 : 10;
+            } else {
+              this.selectedStage = this.selectedStage < 10 ? this.selectedStage + 1 : 1;
+            }
+          } else {
+            this.selectedStage = this.selectedStage < 10 ? this.selectedStage + 1 : 1;
+          }
+          this.sound.playHit();
+          break;
+        }
+
         // ゲーム開始（単発Space、Enter、またはゲーム開始エリアのタップ）
-        if (input.justShoot || input.justEnter || (input.justMouseDown && (input.mouseY === null || input.mouseY < 425 || input.mouseY > 520))) {
+        if (input.justShoot || input.justEnter || (input.justMouseDown && (input.mouseY === null || input.mouseY < 420 || input.mouseY > 530))) {
           this.startNewGame();
         }
         break;
@@ -328,6 +350,15 @@ export class GameManager {
         break;
 
       case 'PAUSED':
+        // 左右キーでSTAGE切り替え (1〜10)
+        if (input.justLeft) {
+          this.selectedStage = this.selectedStage > 1 ? this.selectedStage - 1 : 10;
+          this.sound.playHit();
+        } else if (input.justRight) {
+          this.selectedStage = this.selectedStage < 10 ? this.selectedStage + 1 : 1;
+          this.sound.playHit();
+        }
+
         // 上下キーまたはW/Sキーで選択切り替え
         if (input.justRotate) {
           if (this.pauseMenuSelection === 'RESUME') this.pauseMenuSelection = 'TITLE';
@@ -343,22 +374,38 @@ export class GameManager {
 
         // マウス位置での選択
         if (input.mouseY !== null) {
-          if (input.mouseY >= 360 && input.mouseY <= 405) {
+          if (input.mouseY >= 395 && input.mouseY <= 440) {
             this.pauseMenuSelection = 'RESUME';
-          } else if (input.mouseY >= 420 && input.mouseY <= 465) {
+          } else if (input.mouseY >= 445 && input.mouseY <= 490) {
             this.pauseMenuSelection = 'RESTART_STAGE';
-          } else if (input.mouseY >= 480 && input.mouseY <= 525) {
+          } else if (input.mouseY >= 495 && input.mouseY <= 540) {
             this.pauseMenuSelection = 'TITLE';
           }
         }
 
+        // PAUSE画面の面セレクト枠タップ (Y: 340..390)
+        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 340 && input.mouseY <= 390) {
+          if (input.mouseX !== null) {
+            if (input.mouseX < CANVAS_WIDTH / 2) {
+              this.selectedStage = this.selectedStage > 1 ? this.selectedStage - 1 : 10;
+            } else {
+              this.selectedStage = this.selectedStage < 10 ? this.selectedStage + 1 : 1;
+            }
+          } else {
+            this.selectedStage = this.selectedStage < 10 ? this.selectedStage + 1 : 1;
+          }
+          this.sound.playHit();
+          input.clearTransientInputs();
+          break;
+        }
+
         // スペースキー、Enterキー、またはマウスクリックで決定（単発押し判定）
-        if (input.justShoot || input.justEnter || (input.justMouseDown && input.mouseY !== null && input.mouseY >= 360 && input.mouseY <= 530)) {
+        if (input.justShoot || input.justEnter || (input.justMouseDown && input.mouseY !== null && input.mouseY >= 395 && input.mouseY <= 545)) {
           this.handlePauseConfirm(input);
         }
 
-        // 無敵モードのタップ切替（PAUSE画面で Y: 540..575 をタップ）
-        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 540 && input.mouseY <= 575) {
+        // 無敵モードのタップ切替（PAUSE画面で Y: 550..585 をタップ）
+        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 550 && input.mouseY <= 585) {
           this.isInvincibleMode = !this.isInvincibleMode;
           this.player.isInvincible = this.isInvincibleMode;
           this.sound.playDock();
@@ -1645,7 +1692,8 @@ export class GameManager {
       this.currentBoss = null;
       this.player.isDead = false;
       this.player.initInitialPiece();
-      this.startTetrisPhase(); // 現在のStageの最初（ドッキング）からリスタート！
+      this.stage = this.selectedStage; // 選択したSTAGEからリスタート！
+      this.startTetrisPhase();
     } else if (this.pauseMenuSelection === 'TITLE') {
       this.sound.stopBGM();
       this.sound.stopBossLfo();
@@ -2076,7 +2124,7 @@ export class GameManager {
       const isNormal = this.difficulty === 'NORMAL';
       const isHard = this.difficulty === 'HARD';
 
-      ctx.font = '900 18px monospace';
+      ctx.font = '900 17px monospace';
       ctx.textAlign = 'center';
 
       // NORMAL
@@ -2084,11 +2132,11 @@ export class GameManager {
         ctx.fillStyle = '#00f0ff';
         ctx.shadowColor = '#00f0ff';
         ctx.shadowBlur = 12;
-        ctx.fillText('▶ [ NORMAL ] ◀', CANVAS_WIDTH / 2 - 110, 445);
+        ctx.fillText('▶ [ NORMAL ] ◀', CANVAS_WIDTH / 2 - 110, 435);
       } else {
         ctx.fillStyle = '#667788';
         ctx.shadowBlur = 0;
-        ctx.fillText('  [ NORMAL ]  ', CANVAS_WIDTH / 2 - 110, 445);
+        ctx.fillText('  [ NORMAL ]  ', CANVAS_WIDTH / 2 - 110, 435);
       }
 
       // HARD
@@ -2096,37 +2144,71 @@ export class GameManager {
         ctx.fillStyle = '#ff2255';
         ctx.shadowColor = '#ff2255';
         ctx.shadowBlur = 14;
-        ctx.fillText('▶ [ HARD ] ◀', CANVAS_WIDTH / 2 + 110, 445);
+        ctx.fillText('▶ [ HARD ] ◀', CANVAS_WIDTH / 2 + 110, 435);
       } else {
         ctx.fillStyle = '#667788';
         ctx.shadowBlur = 0;
-        ctx.fillText('  [ HARD ]  ', CANVAS_WIDTH / 2 + 110, 445);
+        ctx.fillText('  [ HARD ]  ', CANVAS_WIDTH / 2 + 110, 435);
       }
 
       ctx.shadowBlur = 0;
-      ctx.font = 'bold 12px monospace';
+      ctx.font = 'bold 11px monospace';
       ctx.fillStyle = isHard ? '#ff8899' : '#88ddff';
       ctx.fillText(
         isHard ? '★ HARD: ボスHP2倍！ 敵出現数2倍＆多彩な奇襲！' : '★ NORMAL: 標準バランス（80sレトロSTG体験）',
         CANVAS_WIDTH / 2,
-        478
+        462
       );
 
-      ctx.font = '11px monospace';
-      ctx.fillStyle = '#778899';
-      ctx.fillText('←/→キー または タップで難易度切替', CANVAS_WIDTH / 2, 502);
+      // 3. 面セレクト（STAGE SELECT: ◀ STAGE [ X ] ▶）
+      const stageNames = [
+        '1: ムーンクレスタ(縦)',
+        '2: ギャラガ(縦)',
+        '3: 沙羅曼蛇洞窟(縦・壁)',
+        '4: メテオゾーン(縦)',
+        '5: 浮遊要塞(斜め45°)',
+        '6: 沙羅曼蛇回廊(横・壁)',
+        '7: アトミック強襲(縦)',
+        '8: インフィニティ(縦)',
+        '9: 激動迷宮(縦・壁)',
+        '10: 最終決戦',
+      ];
+      const stageDesc = stageNames[this.selectedStage - 1] || `STAGE ${this.selectedStage}`;
 
-      // 3. スタートプロンプト
+      // 面セレクト背景枠
+      ctx.fillStyle = 'rgba(0, 40, 80, 0.45)';
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(CANVAS_WIDTH / 2 - 190, 478, 380, 48, 8);
+      else ctx.rect(CANVAS_WIDTH / 2 - 190, 478, 380, 48);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.font = '900 19px monospace';
+      ctx.fillStyle = '#00ffff';
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 10;
+      ctx.fillText(`◀  STAGE  [ ${this.selectedStage} ]  ▶`, CANVAS_WIDTH / 2, 498);
+
+      ctx.font = 'bold 12px "DotGothic16", monospace';
+      ctx.fillStyle = '#ffe600';
+      ctx.shadowColor = '#ffe600';
+      ctx.shadowBlur = 6;
+      ctx.fillText(stageDesc, CANVAS_WIDTH / 2, 517);
+      ctx.shadowBlur = 0;
+
+      // 4. スタートプロンプト
       const blink = Math.sin(Date.now() / 250) > 0;
       if (blink) {
-        ctx.font = 'bold 18px "Courier New", monospace';
+        ctx.font = 'bold 17px "Courier New", monospace';
         ctx.fillStyle = '#ffea00';
         ctx.shadowColor = '#ffea00';
         ctx.shadowBlur = 10;
-        ctx.fillText('TAP OR PRESS SPACE TO START', CANVAS_WIDTH / 2, 550);
+        ctx.fillText('TAP OR PRESS SPACE TO START', CANVAS_WIDTH / 2, 554);
       }
 
-      // 4. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
+      // 5. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
       this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 608);
 
       ctx.restore();
@@ -2151,54 +2233,92 @@ export class GameManager {
       const isRestart = this.pauseMenuSelection === 'RESTART_STAGE';
       const isTitle = this.pauseMenuSelection === 'TITLE';
 
-      // 1. ゲームに戻る (RESUME)
-      ctx.font = '900 22px monospace';
+      // 1. 面セレクト（PAUSE画面でSTAGE選択＆ワープ）
+      const stageNames = [
+        '1: ムーンクレスタ(縦)',
+        '2: ギャラガ(縦)',
+        '3: 沙羅曼蛇洞窟(縦・壁)',
+        '4: メテオゾーン(縦)',
+        '5: 浮遊要塞(斜め45°)',
+        '6: 沙羅曼蛇回廊(横・壁)',
+        '7: アトミック強襲(縦)',
+        '8: インフィニティ(縦)',
+        '9: 激動迷宮(縦・壁)',
+        '10: 最終決戦',
+      ];
+      const stageDesc = stageNames[this.selectedStage - 1] || `STAGE ${this.selectedStage}`;
+
+      // 面セレクト背景枠
+      ctx.fillStyle = 'rgba(0, 30, 60, 0.6)';
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(CANVAS_WIDTH / 2 - 180, 345, 360, 44, 6);
+      else ctx.rect(CANVAS_WIDTH / 2 - 180, 345, 360, 44);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.font = '900 17px monospace';
+      ctx.fillStyle = '#00ffff';
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 8;
+      ctx.fillText(`◀ STAGE [ ${this.selectedStage} ] ▶`, CANVAS_WIDTH / 2, 363);
+
+      ctx.font = 'bold 11px "DotGothic16", monospace';
+      ctx.fillStyle = '#ffe600';
+      ctx.shadowColor = '#ffe600';
+      ctx.shadowBlur = 4;
+      ctx.fillText(stageDesc, CANVAS_WIDTH / 2, 379);
+      ctx.shadowBlur = 0;
+
+      // 2. ゲームに戻る (RESUME)
+      ctx.font = '900 20px monospace';
       if (isResume) {
         ctx.fillStyle = '#ffff00';
         ctx.shadowColor = '#ffff00';
         ctx.shadowBlur = 12;
-        ctx.fillText('> ゲームに戻る (RESUME) <', CANVAS_WIDTH / 2, 390);
+        ctx.fillText('> ゲームに戻る (RESUME) <', CANVAS_WIDTH / 2, 420);
       } else {
         ctx.fillStyle = '#888888';
         ctx.shadowBlur = 0;
-        ctx.fillText('  ゲームに戻る (RESUME)  ', CANVAS_WIDTH / 2, 390);
+        ctx.fillText('  ゲームに戻る (RESUME)  ', CANVAS_WIDTH / 2, 420);
       }
 
-      // 2. STAGEの最初から (RESTART STAGE)
+      // 3. STAGEの最初から (RESTART / WARP)
       if (isRestart) {
         ctx.fillStyle = '#ffff00';
         ctx.shadowColor = '#ffff00';
         ctx.shadowBlur = 12;
-        ctx.fillText(`> STAGEの最初から (RESTART STAGE ${this.stage}) <`, CANVAS_WIDTH / 2, 450);
+        ctx.fillText(`> STAGE ${this.selectedStage} を開始 (START STAGE ${this.selectedStage}) <`, CANVAS_WIDTH / 2, 470);
       } else {
         ctx.fillStyle = '#888888';
         ctx.shadowBlur = 0;
-        ctx.fillText(`  STAGEの最初から (RESTART STAGE ${this.stage})  `, CANVAS_WIDTH / 2, 450);
+        ctx.fillText(`  STAGE ${this.selectedStage} を開始 (START STAGE ${this.selectedStage})  `, CANVAS_WIDTH / 2, 470);
       }
 
-      // 3. タイトルに戻る (RETURN TO TITLE)
+      // 4. タイトルに戻る (RETURN TO TITLE)
       if (isTitle) {
         ctx.fillStyle = '#ffff00';
         ctx.shadowColor = '#ffff00';
         ctx.shadowBlur = 12;
-        ctx.fillText('> タイトルに戻る (TITLE) <', CANVAS_WIDTH / 2, 510);
+        ctx.fillText('> タイトルに戻る (TITLE) <', CANVAS_WIDTH / 2, 520);
       } else {
         ctx.fillStyle = '#888888';
         ctx.shadowBlur = 0;
-        ctx.fillText('  タイトルに戻る (TITLE)  ', CANVAS_WIDTH / 2, 510);
+        ctx.fillText('  タイトルに戻る (TITLE)  ', CANVAS_WIDTH / 2, 520);
       }
 
-      // 4. 撮影用無敵モード切替表示
-      ctx.font = 'bold 15px monospace';
+      // 5. 撮影用無敵モード切替表示
+      ctx.font = 'bold 14px monospace';
       ctx.fillStyle = this.isInvincibleMode ? '#ffea00' : '#778899';
       ctx.shadowColor = this.isInvincibleMode ? '#ffea00' : 'transparent';
       ctx.shadowBlur = this.isInvincibleMode ? 6 : 0;
-      ctx.fillText(`★ 撮影用無敵モード: [ ${this.isInvincibleMode ? 'ON (有効)' : 'OFF (通常)'} ] (Iキー/タップ)`, CANVAS_WIDTH / 2, 558);
+      ctx.fillText(`★ 撮影用無敵モード: [ ${this.isInvincibleMode ? 'ON (有効)' : 'OFF (通常)'} ] (Iキー/タップ)`, CANVAS_WIDTH / 2, 565);
 
       ctx.shadowBlur = 0;
-      ctx.font = '13px monospace';
+      ctx.font = '12px monospace';
       ctx.fillStyle = '#8b949e';
-      ctx.fillText('SELECT & DECIDE: TAP / CLICK / ARROWS / SPACE', CANVAS_WIDTH / 2, 600);
+      ctx.fillText('◀/▶: STAGE切替   ▲/▼: 項目選択   SPACE/ENTER: 決定', CANVAS_WIDTH / 2, 605);
       ctx.restore();
     } else if (this.state === 'GAMEOVER') {
       ctx.save();

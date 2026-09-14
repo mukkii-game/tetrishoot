@@ -265,13 +265,17 @@ export class TerrainManager {
       if (y < w1) return true;
       if (y > CANVAS_HEIGHT - w2) return true;
     } else if (this.direction === 'DIAGONAL_UP_RIGHT') {
-      // 斜めスクロール：対角線に沿った山鳴り地形判定
-      const diagCoord = (x + y) * 0.707;
+      // 斜めスクロール：左下壁と右上壁の判定
+      const diagCoord = (CANVAS_HEIGHT - y) * 0.9 + this.scrollOffset;
       const { w1, w2 } = this.getWallThickness(diagCoord);
-      // 左下壁（xが小さくyが大きい領域）
-      if (x + (CANVAS_HEIGHT - y) < w1 * 1.4) return true;
-      // 右上壁（xが大きくyが小さい領域）
-      if ((CANVAS_WIDTH - x) + y < w2 * 1.4) return true;
+      if (w1 > 0) {
+        const leftDepth = w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * 0.45);
+        if (leftDepth > 0 && x < leftDepth) return true;
+      }
+      if (w2 > 0) {
+        const rightDepth = w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * 0.45);
+        if (rightDepth > 0 && x > CANVAS_WIDTH - rightDepth) return true;
+      }
     }
     return false;
   }
@@ -367,26 +371,46 @@ export class TerrainManager {
         }
       }
     } else if (this.direction === 'DIAGONAL_UP_RIGHT') {
-      const start = -((this.scrollOffset) % blockSize);
-      for (let y = start; y < CANVAS_HEIGHT + blockSize; y += blockSize) {
-        const { w1, w2 } = this.getWallThickness(y + blockSize / 2);
+      // ★ 45度斜めスクロール（自機が右上へ進む）：左下側と右上側から迫る45度斜め階段状ブロック地形！
+      // y行ごとに、スクロール量とy座標から対角線座標 diagCoord を求めて各行の張り出し幅を決定
+      for (let y = 0; y < CANVAS_HEIGHT + blockSize; y += blockSize) {
+        const diagCoord = (CANVAS_HEIGHT - y) * 0.9 + this.scrollOffset;
+        const { w1, w2 } = this.getWallThickness(diagCoord);
+
+        // 左下壁: 画面下に行くほどせり出し、時間とともに左下へ流れていく
         if (w1 > 0) {
-          ctx.fillStyle = '#280038';
-          ctx.fillRect(0, y, w1, blockSize);
-          const edgeBx = Math.max(0, w1 - blockSize);
-          ctx.fillStyle = '#770088';
-          ctx.fillRect(edgeBx, y, blockSize, blockSize);
-          ctx.fillStyle = '#cc00ff';
-          ctx.fillRect(edgeBx + 1, y + 1, blockSize - 2, 2);
+          const depth = w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * 0.45);
+          if (depth > 0) {
+            const drawW = Math.min(CANVAS_WIDTH - 120, Math.floor(depth / blockSize) * blockSize);
+            if (drawW > 0) {
+              ctx.fillStyle = '#280038';
+              ctx.fillRect(0, y, drawW, blockSize);
+              const edgeBx = Math.max(0, drawW - blockSize);
+              ctx.fillStyle = '#770088';
+              ctx.fillRect(edgeBx, y, blockSize, blockSize);
+              ctx.fillStyle = '#cc00ff';
+              ctx.fillRect(edgeBx + 1, y + 1, blockSize - 2, 2);
+              ctx.fillRect(edgeBx + 1, y + 1, 2, blockSize - 2);
+            }
+          }
         }
+
+        // 右上壁: 画面上に行くほどせり出し、時間とともに左下へ流れていく
         if (w2 > 0) {
-          const rx = CANVAS_WIDTH - w2;
-          ctx.fillStyle = '#280038';
-          ctx.fillRect(rx, y, w2, blockSize);
-          ctx.fillStyle = '#770088';
-          ctx.fillRect(rx, y, blockSize, blockSize);
-          ctx.fillStyle = '#cc00ff';
-          ctx.fillRect(rx + 1, y + 1, blockSize - 2, 2);
+          const depth = w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * 0.45);
+          if (depth > 0) {
+            const drawW = Math.min(CANVAS_WIDTH - 120, Math.floor(depth / blockSize) * blockSize);
+            if (drawW > 0) {
+              const rx = CANVAS_WIDTH - drawW;
+              ctx.fillStyle = '#280038';
+              ctx.fillRect(rx, y, drawW, blockSize);
+              ctx.fillStyle = '#770088';
+              ctx.fillRect(rx, y, blockSize, blockSize);
+              ctx.fillStyle = '#cc00ff';
+              ctx.fillRect(rx + 1, y + 1, blockSize - 2, 2);
+              ctx.fillRect(rx + 1, y + 1, 2, blockSize - 2);
+            }
+          }
         }
       }
     }
