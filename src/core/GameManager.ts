@@ -1010,6 +1010,17 @@ export class GameManager {
       }
     }
 
+    // ★ ユーザー要望：mp3 ステージBGMがある版では、ドッキング完了で曲が鳴り始めてから3秒待って敵を出す
+    if (this.sound.hasStageMusic()) {
+      const MUSIC_INTRO = 3.0;
+      for (const e of this.enemies) {
+        e.delaySpawn(MUSIC_INTRO);
+      }
+      this.terrain.siloStartDelay += MUSIC_INTRO;
+      this.shootingTimeTotal += MUSIC_INTRO;
+      this.shootingTimeLimit += MUSIC_INTRO;
+    }
+
     // ★ 予定された最後のザコが出現する時刻を記録（この時刻までは「残り敵が少ない」判定でボスを呼ばない）
     this.lastScriptedSpawnTime = 0;
     for (const e of this.enemies) {

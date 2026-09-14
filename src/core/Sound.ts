@@ -1068,6 +1068,11 @@ export class Sound {
     this.stageMusicGain = null;
   }
 
+  // mp3 ステージBGMが使える状態か（ゲーム側の「ドッキング後3秒イントロ」判定に使用）
+  public hasStageMusic(): boolean {
+    return this.stageMusicState === 'ready';
+  }
+
   // ボス撃破時：ステージBGM（mp3）をフェードアウトして止める。合成BGMは従来どおりクリア処理で止まる
   public stopStageMusicOnBossDefeat(): void {
     if (this.stageMusicSource) {
