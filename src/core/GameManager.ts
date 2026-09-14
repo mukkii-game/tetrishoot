@@ -1637,16 +1637,22 @@ export class GameManager {
       let hitPy = enemy.y + enemy.height / 2;
       const isLarge = enemy.isBoss || enemy.width >= 56 || enemy.height >= 56;
       if (isLarge) {
+        // ★ ユーザー要望：ボス（大型敵）の体当たり判定は見た目より小さく、中心の縦横1/2の矩形のみ（かすり死防止）
+        const shrink = enemy.isBoss ? 0.5 : 0.75;
+        const hw = enemy.width * shrink;
+        const hh = enemy.height * shrink;
+        const hx = enemy.x + (enemy.width - hw) / 2;
+        const hy = enemy.y + (enemy.height - hh) / 2;
         let overlap = false;
         for (const attached of this.player.pieces) {
           for (const cell of attached.piece.cells) {
             const cx = this.player.anchorX + (attached.relGx + cell.gx) * BLOCK_SIZE;
             const cy = this.player.anchorY + (attached.relGy + cell.gy) * BLOCK_SIZE;
             if (
-              cx < enemy.x + enemy.width &&
-              cx + BLOCK_SIZE > enemy.x &&
-              cy < enemy.y + enemy.height &&
-              cy + BLOCK_SIZE > enemy.y
+              cx < hx + hw &&
+              cx + BLOCK_SIZE > hx &&
+              cy < hy + hh &&
+              cy + BLOCK_SIZE > hy
             ) {
               hitPx = cx + BLOCK_SIZE / 2;
               hitPy = cy + BLOCK_SIZE / 2;
