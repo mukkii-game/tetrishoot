@@ -82,7 +82,8 @@ export class TerrainManager {
 
       // 画面内（Y=140〜520）に進入したとき、未発射なら予備動作（警告・振動フェーズ）を開始
       if (!silo.launched && !silo.isDead) {
-        if (!silo.isWarning && screenY >= 140 && screenY <= 520) {
+        // ★ ステージ開幕2.5秒は発射台を起動しない（ドッキング直後の即死防止）
+        if (!silo.isWarning && this.elapsedTime >= 2.5 && screenY >= 140 && screenY <= 520) {
           silo.isWarning = true;
           silo.warningTimer = 0.9;
         } else if (silo.isWarning) {

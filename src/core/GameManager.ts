@@ -43,6 +43,7 @@ export interface FallingPieceItem {
   fallTimer: number;
   settled: boolean;
   dockCooldown?: number; // ショット直後の反動・誤合体防止クールダウン
+  hitCount?: number; // ★ 弾を当てた回数（当てるたびに落下・左右速度が少しずつ上がる）
 }
 
 // 切断されて浮遊・落下中のパーツ（再回収可能）
@@ -619,9 +620,12 @@ export class GameManager {
         item.dockCooldown -= dt;
       }
 
-      // 重力加速度＆ムーンクレスタ風の慣性落下ダイナミクス
-      const GRAVITY = 110;
-      const MAX_FALL_SPEED = 60;
+      // ★ ユーザー要望：弾を当てるたびに落下速度・左右速度が少しずつ上がる（1発ごとに+6%、最大2倍）
+      const speedMul = Math.min(2.0, 1 + (item.hitCount || 0) * 0.06);
+
+      // 重力加速度＆慣性落下ダイナミクス
+      const GRAVITY = 110 * speedMul;
+      const MAX_FALL_SPEED = 60 * speedMul;
 
       // 弾による打ち上げ・反動インパルスからの重力落下
       item.vy += GRAVITY * dt;
@@ -631,7 +635,7 @@ export class GameManager {
 
       // 横方向の自然なゆったりドリフト＋減衰
       item.vx *= (1 - 0.5 * dt);
-      item.vx += Math.sin(item.fallTimer * 1.5) * 15 * dt;
+      item.vx += Math.sin(item.fallTimer * 1.5) * 15 * speedMul * dt;
 
       // 移動適用
       item.x += item.vx * dt;
@@ -668,20 +672,24 @@ export class GameManager {
           this.particles.emitSparks(pb.x, pb.y, item.piece.color, 12);
           this.sound.playHit();
 
+          // ★ 当てるたびにカウントを増やし、反動・ノックバックも少しずつ強く
+          item.hitCount = (item.hitCount || 0) + 1;
+          const hitMul = Math.min(2.0, 1 + item.hitCount * 0.06);
+
           // 1. 上方向への力強い反動インパルス（お手玉・浮遊）
-          item.vy = -130;
+          item.vy = -130 * hitMul;
 
           // 2. ショット位置に応じた回転と左右ノックバック
           const hitOffset = pb.x - pieceCenterX;
           if (hitOffset < -6) {
             item.piece.rotate(); // 左側ヒット：時計回り（右回転）
-            item.vx = Math.min(item.vx + 45, 90);
+            item.vx = Math.min(item.vx + 45 * hitMul, 90 * hitMul);
           } else if (hitOffset > 6) {
             item.piece.rotateCounter(); // 右側ヒット：反時計回り（左回転）
-            item.vx = Math.max(item.vx - 45, -90);
+            item.vx = Math.max(item.vx - 45 * hitMul, -90 * hitMul);
           } else {
             // ど真ん中ヒット：真上に大ジャンプ！
-            item.vy = -165;
+            item.vy = -165 * hitMul;
           }
 
           // 3. 撃った直後は合体不可（0.4秒間ドッキング判定をオフにし、誤合体を防止）
@@ -936,6 +944,14 @@ export class GameManager {
           this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 8), 0, 1.4 + i * 0.1));
         }
         break;
+    }
+
+    // ★ ユーザー要望：面の最初、ドッキング直後に即死しないよう全ステージ共通で開幕セーフティ時間を保証
+    // （Stage 6〜10 は個別ディレイが 0.1〜2.2 秒と短かったため、一律 START_DELAY 分だけ後ろ倒し）
+    if (this.stage >= 6) {
+      for (const e of this.enemies) {
+        e.delaySpawn(START_DELAY);
+      }
     }
   }
 
@@ -2230,7 +2246,9 @@ export class GameManager {
       ctx.fillStyle = '#00ffff';
       ctx.shadowColor = '#00ffff';
       ctx.shadowBlur = 10;
-      ctx.fillText(`◀  STAGE  [ ${this.selectedStage} ]  ▶`, CANVAS_WIDTH / 2, 508);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`◀  STAGE  [ ${this.selectedStage} ]  ▶`, CANVAS_WIDTH / 2, 478 + 24); // 枠(478〜526)の上下中央
+      ctx.textBaseline = 'alphabetic';
       ctx.shadowBlur = 0;
 
       // 4. スタートプロンプト
@@ -2283,7 +2301,9 @@ export class GameManager {
       ctx.fillStyle = '#00ffff';
       ctx.shadowColor = '#00ffff';
       ctx.shadowBlur = 8;
-      ctx.fillText(`◀ STAGE [ ${this.selectedStage} ] ▶`, CANVAS_WIDTH / 2, 372);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`◀ STAGE [ ${this.selectedStage} ] ▶`, CANVAS_WIDTH / 2, 345 + 22); // 枠(345〜389)の上下中央
+      ctx.textBaseline = 'alphabetic';
       ctx.shadowBlur = 0;
 
       // 2. ゲームに戻る (RESUME)

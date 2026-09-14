@@ -149,20 +149,20 @@ export class Enemy {
     // 敵サイズ（一回り大きく迫力満点！）
     switch (rank) {
       case 'GREEN_DRONE':
-        this.width = 34;
-        this.height = 30;
+        this.width = 40;
+        this.height = 36;
         this.maxHp = 1;
         this.scoreValue = 100;
         break;
       case 'RED_GUARD':
-        this.width = 38;
-        this.height = 34;
+        this.width = 44;
+        this.height = 40;
         this.maxHp = 1;
         this.scoreValue = 200;
         break;
       case 'YELLOW_COMMANDER':
-        this.width = 44;
-        this.height = 38;
+        this.width = 50;
+        this.height = 44;
         this.maxHp = 1;
         this.scoreValue = 400;
         break;
@@ -391,8 +391,9 @@ export class Enemy {
       this.vx = fromLeft ? 380 : -380;
       this.vy = (Math.random() - 0.5) * 60;
     } else if (pattern === 'VANGUARD_CRUISE') {
+      // ★ ユーザー要望：画面内直接出現を避け、画面上端の外から降りてくる
       this.x = Math.random() * (CANVAS_WIDTH - this.width);
-      this.y = 70 + (formationRow % 3) * 40;
+      this.y = -50;
       this.moonState = 'HOVER';
       this.movingRight = Math.random() > 0.5;
       this.vx = (this.movingRight ? 1 : -1) * 160;
@@ -419,8 +420,9 @@ export class Enemy {
       this.vy = 260; // まっすぐ突撃
     } else if (pattern === 'DELAYED_DART') {
       // ★ 索敵急加速ミサイル：横にフワッと浮遊
+      // ★ ユーザー要望：開幕に画面内へ直接出現して自機と重ならないよう、画面外の左右端からスタート
       const fromLeft = formationCol % 2 === 0;
-      this.x = fromLeft ? 40 : CANVAS_WIDTH - 40;
+      this.x = fromLeft ? -this.width - 10 : CANVAS_WIDTH + 10;
       this.y = 80 + Math.random() * 120;
       this.vx = (fromLeft ? 1 : -1) * 75; // 最初の索敵慣性移動
       this.vy = 25;
@@ -449,6 +451,11 @@ export class Enemy {
       this.x = -100;
       this.y = -100;
     }
+  }
+
+  // ★ 出現をさらに遅らせる（開幕セーフティ時間用。patternTimer < 0 の間は待機して画面外に留まる）
+  public delaySpawn(seconds: number): void {
+    this.patternTimer -= seconds;
   }
 
   public update(
@@ -531,7 +538,7 @@ export class Enemy {
     switch (this.pattern) {
       // ★ ギャプラス＆ギャラガ完全再現：曲線で連なって流れる美しい大編隊！（速度・旋回力UP！）
       case 'STREAM_CURVE': {
-        this.streamProgress += dt * 1.15; // 進行速度（画面全体をグルングルン回る高速ギャラガスピード）
+        this.streamProgress += dt * 0.77; // ★ ユーザー要望：旋回速度を従来（1.15）の2/3程度に緩和
         const t = this.streamProgress;
 
         if (t < 0) {
@@ -1322,7 +1329,9 @@ export class Enemy {
 
     const f = this.animFrame;
     const isGiant = this.rank === 'GIANT_RED' || this.rank === 'GIANT_YELLOW' || this.rank === 'UFO_MOTHERSHIP';
-    let s = isGiant ? 2.8 : 1.4;
+    // ★ ユーザー要望：ギャラガ風旋回機（緑・赤・黄）はもう一回り大きく表示
+    const isGalagaSmall = this.rank === 'GREEN_DRONE' || this.rank === 'RED_GUARD' || this.rank === 'YELLOW_COMMANDER';
+    let s = isGiant ? 2.8 : (isGalagaSmall ? 1.65 : 1.4);
     if (this.isBoss) {
       s *= 2.0; // ボスの表示サイズを2倍に！
     }
