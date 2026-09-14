@@ -1238,7 +1238,16 @@ export class GameManager {
             const hitRes = this.player.checkHit(cx + BLOCK_SIZE / 2, cy + BLOCK_SIZE / 2, this.particles);
             this.sound.playExplosion(false);
             this.screenShake = 12;
-            this.terrainHitCooldown = 0.35; // 0.35秒の無敵・クールダウンで連続即死を完全防止
+            this.terrainHitCooldown = 0.35; // 最低0.35秒のクールダウンで連続即死を防止
+
+            // ★ ユーザー要望：壁に当たった時、まだ外装テトリミノが付いていればそれが身代わりに壊れ、
+            //   本体は数秒間の無敵時間に入る（壁に沿った連続ヒットで即死しない）
+            if (hitRes.pieceDestroyed && !this.player.isDead) {
+              const WALL_GRACE = 2.5;
+              this.player.barrierTimer = Math.max(this.player.barrierTimer, WALL_GRACE);
+              this.terrainHitCooldown = WALL_GRACE;
+              this.showTransitionText('PART LOST! (INVINCIBLE 2.5 SEC)', 1.1);
+            }
 
             // 壁から弾き返される物理バウンス
             if (this.terrain.direction === 'UP') {
