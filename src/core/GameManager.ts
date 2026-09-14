@@ -86,6 +86,7 @@ export class GameManager {
   public enemies: Enemy[] = [];
   public formationOffsetAngle = 0;
   public shootingTimeLimit = 48;
+  private shootingTimeTotal = 65; // このステージのバトル総時間（ボス予告は残り32秒で発動）
 
   // ボス出現・撃破管理
   public bossSpawned = false;
@@ -195,7 +196,9 @@ export class GameManager {
   private startShootingPhase(): void {
     this.phase = 'SHOOTING';
     this.fallingPieces = [];
-    this.shootingTimeLimit = 65; // バトル時間をさらに延長（ザコ2倍＋高耐久ボス戦に充分な時間）
+    // バトル時間（★ 9面は「一種ずつ→中盤からコンボ」の構成を入れるため 80 秒に延長）
+    this.shootingTimeTotal = this.stage === 9 ? 80 : 65;
+    this.shootingTimeLimit = this.shootingTimeTotal;
     this.bossRushIndex = 0;
     this.formationOffsetAngle = 0;
     this.battlePiece = null;
@@ -918,19 +921,30 @@ export class GameManager {
         break;
 
       case 9:
-        // 【WAVE 9：沙羅曼蛇 3・極限バンガード迷宮要塞】（ザコ72機）
-        // 左右から大きくせり出す山鳴りブロック回廊＋ガリ・索敵ミサイル・トーロイドの猛攻！
-        for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.2 + i * 0.18));
+        // 【WAVE 9：極限バンガード迷宮要塞】
+        // ★ ユーザー要望：最初は敵を一種ずつ順番に、中盤以降で同等のコンボ攻撃
+        //   （開幕10秒は敵なし → 以下の時刻は spawnAlienFleet 末尾の +10 秒シフト後の実時間）
+        // 1. ガリ単独（t=10〜14）
+        for (let i = 0; i < 12; i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.0 + i * 0.35));
         }
-        for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 0.6 + i * 0.16));
+        // 2. 索敵ミサイル単独（t=18〜22）
+        for (let i = 0; i < 10; i++) {
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 8.0 + i * 0.4));
         }
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 1.0 + i * 0.15));
+        // 3. トーロイド単独（t=26〜29）
+        for (let i = 0; i < 10; i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 16.0 + i * 0.3));
         }
-        for (let i = 0; i < 14; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 1.5 + i * 0.15));
+        // 4. コンボA：ガリ＋索敵ミサイル同時（t=33〜37）
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 23.0 + i * 0.5));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + ((i + 3) % 6), 0, 23.2 + i * 0.5));
+        }
+        // 5. コンボB：トーロイド＋ロケット同時（t=39〜43）
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 29.0 + i * 0.5));
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 29.0 + i * 0.5));
         }
         break;
 
@@ -1403,7 +1417,7 @@ export class GameManager {
     if (!this.bossSpawned) {
       // ★ バグ修正：ザコが少ない面（5面など）で開幕即ボスにならないよう、
       //   「残り敵6体以下」条件は予定のザコが全て出現した後にのみ有効
-      const elapsed = 65 - this.shootingTimeLimit;
+      const elapsed = this.shootingTimeTotal - this.shootingTimeLimit;
       const allScriptedSpawned = elapsed >= this.lastScriptedSpawnTime + 1.0;
       if (!this.bossWarningActive && (this.shootingTimeLimit <= 32 || (allScriptedSpawned && this.enemies.length <= 6))) {
         this.bossWarningActive = true;
