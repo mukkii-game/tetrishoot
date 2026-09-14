@@ -593,7 +593,7 @@ export class GameManager {
       x: startX,
       y: startY,
       vx: (Math.random() > 0.5 ? 1 : -1) * 35, // 緩やかな左右ドリフト
-      vy: 42, // ゆっくり降下
+      vy: 55, // ★ ユーザー要望：降下速度の初期値を約3割アップ（42→55）
       gx: Math.round(startX / BLOCK_SIZE),
       gy: Math.round(startY / BLOCK_SIZE),
       fallTimer: 0,
@@ -657,8 +657,8 @@ export class GameManager {
       const speedMul = Math.min(4.0, 1 + (item.hitCount || 0) * 0.24);
 
       // 重力加速度＆慣性落下ダイナミクス
-      const GRAVITY = 110 * speedMul;
-      const MAX_FALL_SPEED = 60 * speedMul;
+      const GRAVITY = 140 * speedMul;
+      const MAX_FALL_SPEED = 78 * speedMul; // ★ 60→78（約3割アップ）
 
       // 弾による打ち上げ・反動インパルスからの重力落下
       item.vy += GRAVITY * dt;
@@ -885,19 +885,34 @@ export class GameManager {
         break;
 
       case 7:
-        // 【WAVE 7：ムーンクレスタ Stage 5&7・アトミック・ファントム＆ベータ・ファントム】（ザコ58機）
-        // 鋭角急加速突撃のアトミック・ファントム＋コウモリ翼ベータ・ファントム＋斜めメテオ乱舞！
-        for (let i = 0; i < 18; i++) {
-          this.enemies.push(new Enemy('ATOMIC_PHANTOM', 'ZIGZAG_DIVE', 1 + (i % 8), 1, 0.2 + i * 0.14));
-        }
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('BETA_PHANTOM', 'MOON_SPLIT_FLOAT', 1 + (i % 7), 0, 0.6 + i * 0.16));
-        }
-        for (let i = 0; i < 16; i++) {
-          this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 8), 0, 1.0 + i * 0.14));
-        }
-        for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 2.2 + i * 0.2));
+        // 【WAVE 7：アトミック・ファントム＆ベータ・ファントム（個性重視・フェーズ制）】
+        // ★ ユーザー要望：一気に大量に出すだけではなく個性を。ガリは外し、敵ごとに固有の動きで順番に出す
+        //   （全ステージ共通の開幕1.5秒シフト後の時刻）
+        // 1. アトミック・ファントム：3機ずつのトリオが上部で静止→震え→自機へ鋭角急加速突撃（t≈1.5〜12）
+        {
+          const trios = this.difficulty === 'HARD' ? 4 : 3;
+          for (let w = 0; w < trios; w++) {
+            for (let k = 0; k < 3; k++) {
+              this.enemies.push(new Enemy('ATOMIC_PHANTOM', 'ATOMIC_CHARGE', 2 + k * 2, 0, 0.0 + w * 3.5 + k * 0.45));
+            }
+          }
+          // 2. ベータ・ファントム：左右から交互に横スイープ、自機の真上で翼を畳んで垂直ダイブ（t≈13〜21）
+          const betas = this.difficulty === 'HARD' ? 10 : 7;
+          for (let i = 0; i < betas; i++) {
+            this.enemies.push(new Enemy('BETA_PHANTOM', 'BETA_WING_SWEEP', i, i, 11.5 + i * 1.2));
+          }
+          // 3. メテオの嵐：斜めメテオが4秒間だけ集中して降り注ぐ（t≈22〜26）
+          const meteors = this.difficulty === 'HARD' ? 16 : 12;
+          for (let i = 0; i < meteors; i++) {
+            this.enemies.push(new Enemy('METEOR_ROCK', 'METEOR_DIAGONAL', 1 + (i % 8), 0, 20.5 + i * 0.3));
+          }
+          // 4. フィナーレ：アトミック＆ベータの混成（t≈27〜31）→ ボス
+          for (let k = 0; k < 4; k++) {
+            this.enemies.push(new Enemy('ATOMIC_PHANTOM', 'ATOMIC_CHARGE', 1 + k * 2, 0, 25.5 + k * 0.5));
+          }
+          for (let i = 0; i < 3; i++) {
+            this.enemies.push(new Enemy('BETA_PHANTOM', 'BETA_WING_SWEEP', i, i + 1, 26.0 + i * 1.3));
+          }
         }
         break;
 
@@ -1132,15 +1147,15 @@ export class GameManager {
         this.battlePiece.dockCooldown -= dt;
       }
 
-      const GRAVITY = 110;
-      const MAX_FALL_SPEED = 60;
+      const GRAVITY = 140;
+      const MAX_FALL_SPEED = 78; // ★ 救済テトリミノも約3割アップ
       this.battlePiece.vy += GRAVITY * dt;
       if (this.battlePiece.vy > MAX_FALL_SPEED) {
         this.battlePiece.vy = MAX_FALL_SPEED;
       }
 
       this.battlePiece.vx *= (1 - 0.5 * dt);
-      if (this.stage !== 5) {
+      if (this.stage !== 5 && this.stage !== 9) {
         this.battlePiece.vx += Math.sin(this.battlePiece.fallTimer * 1.5) * 15 * dt;
       }
 
@@ -1897,12 +1912,13 @@ export class GameManager {
 
     // 自機の横位置付近に投下
     let spawnX = Math.max(60, Math.min(CANVAS_WIDTH - 140, this.player.anchorX + (Math.random() - 0.5) * 80));
-    // ★ ユーザー要望：5面（斜め地形）は壁に紛れやすいので、画面中央付近に投下する
-    if (this.stage === 5) {
+    // ★ ユーザー要望：5面・9面（地形が厳しい面）は壁に紛れやすいので、画面中央付近に投下する
+    const centerDrop = this.stage === 5 || this.stage === 9;
+    if (centerDrop) {
       spawnX = CANVAS_WIDTH / 2 - BLOCK_SIZE * 1.5 + (Math.random() - 0.5) * 40;
     }
-    // 5面は横ドリフトなしでまっすぐ中央を落とす（従来は±35px/sの横流れで落下中に大きくずれていた）
-    const driftVx = this.stage === 5 ? 0 : (Math.random() > 0.5 ? 1 : -1) * 35;
+    // 中央投下の面は横ドリフトなしでまっすぐ落とす（従来は±35px/sの横流れで落下中に大きくずれていた）
+    const driftVx = centerDrop ? 0 : (Math.random() > 0.5 ? 1 : -1) * 35;
 
     this.battlePiece = {
       index: 0,
@@ -1910,7 +1926,7 @@ export class GameManager {
       x: spawnX,
       y: -45,
       vx: driftVx,
-      vy: 55,
+      vy: 72, // ★ 55→72（約3割アップ）
       gx: Math.round(spawnX / BLOCK_SIZE),
       gy: -2,
       settled: false,

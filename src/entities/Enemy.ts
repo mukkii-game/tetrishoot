@@ -61,7 +61,9 @@ export type FlightPattern =
   | 'VANGUARD_CRUISE'     // ★ SNKバンガード：画面上部往復から急降下ダイブ
   | 'TERRAIN_LAUNCH'      // ★ スクランブル：壁から横へ加速発射
   | 'FLYBY_CROSS'         // ★ 水平全速フライバイ
-  | 'SERPENT_SLITHER';    // ★ スペースドラゴン蛇行運動
+  | 'SERPENT_SLITHER'     // ★ スペースドラゴン蛇行運動
+  | 'ATOMIC_CHARGE'       // ★ 7面：アトミック・ファントム。上部で静止→予兆の震え→自機へ鋭角急加速突撃
+  | 'BETA_WING_SWEEP';    // ★ 7面：ベータ・ファントム。翼を広げて横スイープ→自機の真上で翼を畳んで垂直ダイブ
 
 export class Enemy {
   public id: string;
@@ -72,6 +74,14 @@ export class Enemy {
   // ★ 地表ミサイルの予備動作：壁際で上下に揺れてから突っ込む（残り秒数）
   public prelaunchTimer = 0;
   public prelaunchBaseY = 0;
+  // ★ 7面用ステート
+  private chargeState: 'DESCEND' | 'HOVER' | 'CHARGE' | 'EXIT' = 'DESCEND';
+  private chargeTimer = 0;
+  private chargeSpeed = 0;
+  private chargeDirX = 0;
+  private chargeDirY = 1;
+  private betaState: 'SWEEP' | 'DIVE' = 'SWEEP';
+  private betaTurns = 0;
   private terrainArmed = false; // TERRAIN_LAUNCH：初回起動時に予備動作をセット済みか
   public width: number;
   public height: number;
@@ -344,6 +354,18 @@ export class Enemy {
       this.y = -50;
       this.vx = 180;
       this.vy = 120;
+    } else if (pattern === 'ATOMIC_CHARGE') {
+      this.x = this.formationX;
+      this.y = -50;
+      this.vy = 220;
+      this.chargeState = 'DESCEND';
+    } else if (pattern === 'BETA_WING_SWEEP') {
+      // 左右どちらかの画面外から、上部〜中段の高さで進入
+      const fromLeft = formationCol % 2 === 0;
+      this.x = fromLeft ? -60 : CANVAS_WIDTH + 60;
+      this.y = 90 + (formationRow % 4) * 55;
+      this.vx = (fromLeft ? 1 : -1) * 170;
+      this.betaState = 'SWEEP';
     } else if (pattern === 'MOON_SPLIT_FLOAT') {
       this.x = this.formationX;
       this.y = -40;
@@ -519,6 +541,11 @@ export class Enemy {
       } else if (this.pattern === 'MOON_SUPER_EYE') {
         this.x = this.formationX;
         this.y = -40;
+      } else if (this.pattern === 'ATOMIC_CHARGE') {
+        this.x = this.formationX;
+        this.y = -50;
+      } else if (this.pattern === 'BETA_WING_SWEEP') {
+        this.x = this.vx >= 0 ? -60 : CANVAS_WIDTH + 60;
       } else if (this.pattern === 'VANGUARD_CRUISE') {
         this.x = this.formationX;
         this.y = -50;
@@ -833,6 +860,90 @@ export class Enemy {
       }
 
       // ★ ムーンクレスタ風：フォー・フライ等のカクカク不規則移動＆積極的急降下スウィング！
+      // ★ 7面：アトミック・ファントム「静止 → 震える予兆 → 鋭角急加速突撃」
+      case 'ATOMIC_CHARGE': {
+        if (this.chargeState === 'DESCEND') {
+          // 上部の待機高度まで降りてくる
+          this.y += this.vy * dt;
+          if (this.y >= this.formationY) {
+            this.y = this.formationY;
+            this.chargeState = 'HOVER';
+            this.chargeTimer = 0.9 + Math.random() * 0.5;
+          }
+        } else if (this.chargeState === 'HOVER') {
+          // 静止。残り0.4秒で小刻みに震えて予兆を見せる
+          this.chargeTimer -= dt;
+          if (this.chargeTimer < 0.4) {
+            this.x += (Math.random() - 0.5) * 6;
+          } else {
+            this.x += Math.sin(this.timeAlive * 3) * 20 * dt;
+          }
+          if (this.chargeTimer <= 0) {
+            // 自機の現在位置へ向けて鋭角に突撃開始（狙いはこの瞬間に固定）
+            const dx = playerX - (this.x + this.width / 2);
+            const dy = playerY + 20 - (this.y + this.height / 2);
+            const dist = Math.hypot(dx, dy) || 1;
+            this.chargeDirX = dx / dist;
+            this.chargeDirY = Math.max(0.25, dy / dist);
+            this.chargeSpeed = 80;
+            this.chargeState = 'CHARGE';
+            justStartedDive = true;
+          }
+        } else if (this.chargeState === 'CHARGE') {
+          // 急加速（80 → 760 px/s）
+          this.chargeSpeed = Math.min(760, this.chargeSpeed + 1500 * dt);
+          this.x += this.chargeDirX * this.chargeSpeed * dt;
+          this.y += this.chargeDirY * this.chargeSpeed * dt;
+          if (this.y > CANVAS_HEIGHT + 40 || this.x < -80 || this.x > CANVAS_WIDTH + 80) {
+            // 画面外へ抜けたら上部から再突入（別のX位置）
+            this.x = 60 + Math.random() * (CANVAS_WIDTH - 120 - this.width);
+            this.y = -50 - Math.random() * 120;
+            this.formationY = 70 + Math.random() * 90;
+            this.chargeState = 'DESCEND';
+          }
+        }
+        break;
+      }
+
+      // ★ 7面：ベータ・ファントム「翼を広げて横スイープ → 自機の真上で翼を畳んで垂直ダイブ」
+      case 'BETA_WING_SWEEP': {
+        if (this.betaState === 'SWEEP') {
+          this.x += this.vx * dt;
+          // 翼のはためきに合わせて上下にうねる
+          this.y += Math.sin(this.timeAlive * 5) * 45 * dt;
+          const cx = this.x + this.width / 2;
+          // 自機のほぼ真上（±26px）を通過した瞬間、翼を畳んで急降下！
+          if (Math.abs(cx - playerX) < 26 && this.y < playerY - 60) {
+            this.betaState = 'DIVE';
+            this.vy = 140;
+            justStartedDive = true;
+          }
+          // 画面端で折り返し（2回折り返したら次の高さへ）
+          if (this.x < -70 && this.vx < 0) {
+            this.vx = Math.abs(this.vx);
+            this.betaTurns++;
+            this.y = 90 + Math.random() * 200;
+          } else if (this.x > CANVAS_WIDTH + 70 && this.vx > 0) {
+            this.vx = -Math.abs(this.vx);
+            this.betaTurns++;
+            this.y = 90 + Math.random() * 200;
+          }
+        } else {
+          // 垂直ダイブ：加速しながら真下へ
+          this.vy = Math.min(620, this.vy + 900 * dt);
+          this.y += this.vy * dt;
+          if (this.y > CANVAS_HEIGHT + 40) {
+            // 画面外へ抜けたら左右どちらかから再スイープ
+            const fromLeft = Math.random() > 0.5;
+            this.x = fromLeft ? -60 : CANVAS_WIDTH + 60;
+            this.y = 90 + Math.random() * 200;
+            this.vx = (fromLeft ? 1 : -1) * 170;
+            this.betaState = 'SWEEP';
+          }
+        }
+        break;
+      }
+
       case 'MOON_SPLIT_FLOAT': {
         this.y += this.vy * dt;
         // 鋭くリズミカルなステップ移動（スピードを160px/sにアップ）
