@@ -137,7 +137,10 @@ export class Input {
       }
     });
 
-    this.canvas.addEventListener('mousemove', (e) => {
+    // ★ バグ修正：以前はキャンバス上でしかマウス移動を拾っておらず、自機を画面端に押し付けると
+    //   カーソルがキャンバス外へ出て入力が途切れ、戻すまで自機が端に「吸着」したように動かなかった。
+    //   ウィンドウ全体で相対移動量（movementX/Y）を拾うことで、カーソルがどこにあっても常に動かせる。
+    window.addEventListener('mousemove', (e) => {
       if (this.activeTouchId !== null) return;
 
       const rect = this.canvas.getBoundingClientRect();
@@ -147,13 +150,13 @@ export class Input {
       const newMouseX = (e.clientX - rect.left) * scaleX;
       const newMouseY = (e.clientY - rect.top) * scaleY;
 
-      // 前回の位置との差分ベクトルを累積（カーソルワープではなく、動かした方向・移動量だけ自機を動かす）
-      if (this.mouseX !== null && this.mouseY !== null) {
-        this.mouseDeltaX += newMouseX - this.mouseX;
-        this.mouseDeltaY += newMouseY - this.mouseY;
-      } else if (e.movementX !== undefined && e.movementY !== undefined) {
+      // 動かした方向・移動量だけ自機を動かす（カーソル位置へのワープ・スナップはしない）
+      if (typeof e.movementX === 'number' && typeof e.movementY === 'number') {
         this.mouseDeltaX += e.movementX * scaleX;
         this.mouseDeltaY += e.movementY * scaleY;
+      } else if (this.mouseX !== null && this.mouseY !== null) {
+        this.mouseDeltaX += newMouseX - this.mouseX;
+        this.mouseDeltaY += newMouseY - this.mouseY;
       }
 
       this.mouseX = newMouseX;
@@ -178,7 +181,8 @@ export class Input {
       }
     });
 
-    this.canvas.addEventListener('mouseleave', () => {
+    // ブラウザウィンドウ自体からカーソルが出た時のみリセット（キャンバス外に出ただけでは入力を切らない）
+    document.addEventListener('mouseleave', () => {
       if (this.activeTouchId !== null) return;
       this.hasMouseMoved = false;
       this.mouseX = null;
