@@ -62,6 +62,7 @@ export class GameManager {
   public stage = 1;
   public score = 0;
   public highScore = 0;
+  private runStartHighScore = 0; // 今回のプレイ開始時点のハイスコア（新記録判定用）
   public difficulty: 'NORMAL' | 'HARD' = 'NORMAL';
 
   public player: Player;
@@ -142,6 +143,7 @@ export class GameManager {
   public startNewGame(startStage?: number): void {
     this.stage = startStage !== undefined ? startStage : this.selectedStage;
     this.score = 0;
+    this.runStartHighScore = this.highScore;
     this.deathDelay = 0;
     this.playerDeathSoundPlayed = false;
     this.bossWarningActive = false;
@@ -2152,6 +2154,28 @@ export class GameManager {
   }
 
   /** ハイスコア保存（更新があればlocalStorageへ永続化） */
+  // ★ ユーザー要望：SCORE の下にそれまでの最高得点を常時表示。新記録なら「HIGH SCORE!!」を点滅
+  private drawScoreWithHigh(ctx: CanvasRenderingContext2D, y: number): void {
+    const isNewHigh = this.score > 0 && this.score > this.runStartHighScore;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillStyle = '#ffee00';
+    ctx.shadowBlur = 0;
+    ctx.fillText(`SCORE: ${this.score}`, CANVAS_WIDTH / 2, y);
+    ctx.font = 'bold 18px monospace';
+    ctx.fillStyle = '#88ddff';
+    ctx.fillText(`HIGH SCORE: ${this.highScore}`, CANVAS_WIDTH / 2, y + 30);
+    if (isNewHigh && Math.floor(Date.now() / 220) % 2 === 0) {
+      ctx.font = '900 22px monospace';
+      ctx.fillStyle = '#ff3366';
+      ctx.shadowColor = '#ff3366';
+      ctx.shadowBlur = 14;
+      ctx.fillText('★ HIGH SCORE!! ★', CANVAS_WIDTH / 2, y - 32);
+    }
+    ctx.restore();
+  }
+
   private saveHighScore(): void {
     if (this.score > this.highScore) {
       this.highScore = this.score;
@@ -2480,11 +2504,11 @@ export class GameManager {
       ctx.shadowBlur = 20;
       ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, 260);
 
-      ctx.font = 'bold 20px monospace';
+      this.drawScoreWithHigh(ctx, 322);
+      ctx.font = 'bold 18px monospace';
       ctx.fillStyle = '#ffffff';
       ctx.shadowBlur = 0;
-      ctx.fillText(`SCORE: ${this.score}`, CANVAS_WIDTH / 2, 320);
-      ctx.fillText(`STAGE: ${this.stage} / ${MAX_STAGES}`, CANVAS_WIDTH / 2, 360);
+      ctx.fillText(`STAGE: ${this.stage} / ${MAX_STAGES}`, CANVAS_WIDTH / 2, 385);
 
       if (this.stateTimer <= 0) {
         const isContinue = this.gameOverSelection === 'CONTINUE';
@@ -2535,13 +2559,13 @@ export class GameManager {
 
       ctx.font = 'bold 22px monospace';
       ctx.fillStyle = '#ffee00';
-      ctx.fillText(`CONGRATULATIONS!`, CANVAS_WIDTH / 2, 340);
-      ctx.fillText(`TOTAL SCORE: ${this.score}`, CANVAS_WIDTH / 2, 390);
+      ctx.fillText(`CONGRATULATIONS!`, CANVAS_WIDTH / 2, 330);
+      this.drawScoreWithHigh(ctx, 400);
 
       if (this.stateTimer <= 0) {
         ctx.font = '16px monospace';
         ctx.fillStyle = '#ffffff';
-        ctx.fillText('PRESS SPACE TO PLAY AGAIN', CANVAS_WIDTH / 2, 480);
+        ctx.fillText('PRESS SPACE TO PLAY AGAIN', CANVAS_WIDTH / 2, 490);
       }
       ctx.restore();
     }
