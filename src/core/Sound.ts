@@ -184,11 +184,11 @@ export class Sound {
     //   ・1回の一斉発射は最大4発まで発音（5発目以降は省略）
     //   ・同時刻に同じ波形を重ねると濁るので、1発ごとに 28ms ずらして「ダダダッ」と粒立たせる
     //   ・発数が多いほど1発あたりの音量を下げ（1/√n）、ピッチも僅かにばらして位相干渉を回避
+    // ★ ユーザー要望：音量は下げない。被りすぎた時（同時発音が上限超過）だけ新しい音を間引く
     const n = Math.min(4, pieceTypes.length);
-    const volume = Math.max(0.55, 1 / Math.sqrt(n));
     for (let i = 0; i < n; i++) {
       const detune = 1 + (Math.random() - 0.5) * 0.12;
-      this.playShoot(pieceTypes[i], i * 0.028, volume, detune);
+      this.playShoot(pieceTypes[i], i * 0.028, 1.0, detune);
     }
   }
 
@@ -196,11 +196,12 @@ export class Sound {
     if (!this.ctx) throw new Error('no ctx');
     if (!this.shotBus) {
       const comp = this.ctx.createDynamicsCompressor();
-      comp.threshold.value = -18;
-      comp.knee.value = 12;
-      comp.ratio.value = 6;
+      // クリップ防止程度の軽いリミッター（強く潰すと連射時に音が痩せる）
+      comp.threshold.value = -8;
+      comp.knee.value = 6;
+      comp.ratio.value = 3;
       comp.attack.value = 0.002;
-      comp.release.value = 0.08;
+      comp.release.value = 0.05;
       comp.connect(this.ctx.destination);
       this.shotBus = comp;
     }
@@ -211,17 +212,9 @@ export class Sound {
     if (!this.ctx) return null;
     // 鳴り終わったボイスを除去
     this.shootVoices = this.shootVoices.filter(v => v.endTime > now);
-    // 上限超過：最も古いボイスを短くフェードアウトして席を空ける
-    while (this.shootVoices.length >= Sound.MAX_SHOT_VOICES) {
-      const oldest = this.shootVoices.shift()!;
-      try {
-        // 急峻に切るとクリックノイズ（ガガガ）になるため、40msでなめらかにフェード
-        oldest.gain.gain.cancelScheduledValues(now);
-        oldest.gain.gain.setValueAtTime(Math.max(0.001, oldest.gain.gain.value), now);
-        oldest.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
-      } catch {
-        /* ignore */
-      }
+    // 上限超過（被りすぎ）：鳴っている音は切らず、新しい音のほうを間引く
+    if (this.shootVoices.length >= Sound.MAX_SHOT_VOICES) {
+      return null;
     }
     const gain = this.ctx.createGain();
     gain.connect(this.getShotBus());
@@ -243,7 +236,8 @@ export class Sound {
 
     if (useOtoLogicSample && this.shootBuffer) {
       try {
-        const dur = 0.11;
+        const dur = 0.16;
+        const SHOOT_SAMPLE_OFFSET = 0.10; // サンプル先頭の無音（約105ms）をスキップ
         const gain = this.allocShotVoice(now, dur);
         if (!gain) return;
         const src = this.ctx.createBufferSource();
@@ -254,10 +248,13 @@ export class Sound {
         else src.playbackRate.value = 1.0 * detune;
 
         gain.gain.setValueAtTime(0.28 * volume, now);
+        gain.gain.setValueAtTime(0.28 * volume, now + dur * 0.5);
         gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
         src.connect(gain);
-        src.start(now);
+        // ★ バグ修正：このサンプルは先頭約105msが無音で、従来は110msしか再生していなかったため
+        //   実際の発射音がほぼ丸ごと切れていた（I/T/Sミノで「音が出ない」原因）。無音部分を飛ばして再生
+        src.start(now, SHOOT_SAMPLE_OFFSET);
         src.stop(now + dur + 0.01);
         return;
       } catch {
@@ -721,12 +718,17 @@ export class Sound {
         src.buffer = this.playerDeathBuffer;
         src.playbackRate.value = 1.0;
 
+        // ★ ユーザー要望：死亡音が大きすぎたので音量を下げ、2秒でフェードアウト
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(0.95, this.ctx.currentTime);
+        const t0 = this.ctx.currentTime;
+        gain.gain.setValueAtTime(0.55, t0);
+        gain.gain.setValueAtTime(0.55, t0 + 1.2);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 2.0);
 
         src.connect(gain);
         gain.connect(this.ctx.destination);
         src.start(0);
+        src.stop(t0 + 2.05);
         return;
       } catch (e) {
         console.warn('playPlayerDeath error:', e);

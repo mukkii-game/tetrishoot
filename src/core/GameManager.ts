@@ -117,6 +117,7 @@ export class GameManager {
   public dockingTimer = 30.0; // ユーザー要望：ドッキングせよ 30.0から減っていく
 
   private deathDelay = 0; // 自機爆発アニメーション用ディレイ
+  private lastDeathPopTime = 0; // 死亡演出中の連続爆発音の最終再生時刻
   private playerDeathSoundPlayed = false; // プレイヤー死亡音再生フラグ
   private bossWarningActive = false; // ボス出現予告サイレン中か
   private bossWarningTimer = 0;      // ボス出現予告タイマー
@@ -535,6 +536,7 @@ export class GameManager {
     if (this.player.isDead) {
       if (!this.playerDeathSoundPlayed) {
         this.playerDeathSoundPlayed = true;
+        this.lastDeathPopTime = -1;
         this.sound.stopBGM();
         this.sound.stopBossLfo();
         this.sound.stopBossWarning();
@@ -546,11 +548,16 @@ export class GameManager {
       }
       this.deathDelay += dt;
       // プレイヤー死亡演出：時間差で自機位置に連続誘爆・破片火花を放出
+      // ★ ユーザー要望：死亡音が大きく長すぎた（毎フレーム約35%で爆発音が重なっていた）ので、
+      //   爆発音は0.35秒間隔・最初の1.2秒だけに制限。粒子は従来どおり
       if (Math.random() < 0.35) {
         const px = this.player.anchorX + BLOCK_SIZE + (Math.random() - 0.5) * 40;
         const py = this.player.anchorY + BLOCK_SIZE + (Math.random() - 0.5) * 40;
         this.particles.emitExplosion(px, py, Math.random() > 0.5 ? '#ff2200' : '#ffea00', 16, true);
-        this.sound.playExplosion(false);
+      }
+      if (this.deathDelay < 1.2 && this.deathDelay - this.lastDeathPopTime >= 0.35) {
+        this.lastDeathPopTime = this.deathDelay;
+        this.sound.playEnemyPop();
       }
       if (this.deathDelay >= 2.2) {
         this.triggerGameOver();
@@ -1117,7 +1124,9 @@ export class GameManager {
       }
 
       this.battlePiece.vx *= (1 - 0.5 * dt);
-      this.battlePiece.vx += Math.sin(this.battlePiece.fallTimer * 1.5) * 15 * dt;
+      if (this.stage !== 5) {
+        this.battlePiece.vx += Math.sin(this.battlePiece.fallTimer * 1.5) * 15 * dt;
+      }
 
       this.battlePiece.x += this.battlePiece.vx * dt;
       this.battlePiece.y += this.battlePiece.vy * dt;
@@ -1876,13 +1885,15 @@ export class GameManager {
     if (this.stage === 5) {
       spawnX = CANVAS_WIDTH / 2 - BLOCK_SIZE * 1.5 + (Math.random() - 0.5) * 40;
     }
+    // 5面は横ドリフトなしでまっすぐ中央を落とす（従来は±35px/sの横流れで落下中に大きくずれていた）
+    const driftVx = this.stage === 5 ? 0 : (Math.random() > 0.5 ? 1 : -1) * 35;
 
     this.battlePiece = {
       index: 0,
       piece,
       x: spawnX,
       y: -45,
-      vx: (Math.random() > 0.5 ? 1 : -1) * 35,
+      vx: driftVx,
       vy: 55,
       gx: Math.round(spawnX / BLOCK_SIZE),
       gy: -2,
