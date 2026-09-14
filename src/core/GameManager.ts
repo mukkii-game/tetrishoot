@@ -110,6 +110,9 @@ export class GameManager {
   public titleMenuSelection: 'DIFFICULTY' | 'STAGE' = 'DIFFICULTY';
   public selectedStage: number = 1; // タイトル画面＆ポーズ画面で選べるステージ (1〜10)
   private rescueSpawnCooldown = 0;
+  // ★ ユーザー要望：救済テトリミノは1つ目が5秒後、2つ目以降は7秒後
+  private static readonly RESCUE_FIRST_DELAY = 5.0;
+  private static readonly RESCUE_NEXT_DELAY = 7.0;
   public dockingTimer = 30.0; // ユーザー要望：ドッキングせよ 30.0から減っていく
 
   private deathDelay = 0; // 自機爆発アニメーション用ディレイ
@@ -194,7 +197,7 @@ export class GameManager {
     this.bossRushIndex = 0;
     this.formationOffsetAngle = 0;
     this.battlePiece = null;
-    this.rescueSpawnCooldown = 10.0;
+    this.rescueSpawnCooldown = GameManager.RESCUE_FIRST_DELAY;
     this.bossSpawned = false;
     this.bossWarningActive = false;
     this.bossWarningTimer = 0;
@@ -1098,13 +1101,13 @@ export class GameManager {
         this.rescueSpawnCooldown -= dt;
         if (this.rescueSpawnCooldown <= 0) {
           this.spawnRescuePiece();
-          // 次の投下判定までもきっちり10秒
-          this.rescueSpawnCooldown = 10.0;
+          // 次の投下判定まで7秒
+          this.rescueSpawnCooldown = GameManager.RESCUE_NEXT_DELAY;
         }
       }
     } else {
-      // 3つ以上のテトリミノがある時は追加で出さない（タイマーは10秒待機でリセット）
-      this.rescueSpawnCooldown = 10.0;
+      // 3つ以上のテトリミノがある時は追加で出さない（タイマーは7秒待機でリセット）
+      this.rescueSpawnCooldown = GameManager.RESCUE_NEXT_DELAY;
     }
 
     // シューティング中の救済落下テトリミノ更新＆ドッキング判定
@@ -1190,8 +1193,8 @@ export class GameManager {
           this.score += 600;
           this.showTransitionText('DOCK SUCCESS!', 1.2);
           this.battlePiece = null;
-          // 合体後、まだ2パーツ（Oミノ＋1パーツ）なら10秒後に次の救済、3パーツ以上なら救済休止
-          this.rescueSpawnCooldown = this.player.pieces.length < 3 ? 10.0 : 10.0;
+          // 合体後、まだ2パーツ（Oミノ＋1パーツ）なら7秒後に次の救済、3パーツ以上なら救済休止
+          this.rescueSpawnCooldown = GameManager.RESCUE_NEXT_DELAY;
         }
       }
 
