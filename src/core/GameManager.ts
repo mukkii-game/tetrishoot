@@ -1630,7 +1630,35 @@ export class GameManager {
     // 敵本体 vs 自機 体当たり判定（ムーンクレスタ仕様！）
     for (const enemy of this.enemies) {
       if (enemy.isDead) continue;
-      const hitRes = this.player.checkHit(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, this.particles);
+      // ★ バグ修正：従来は敵の中心1点だけを自機セルと照合していたため、ボスなど大型の敵は
+      //   胴体が自機に重なっていても中心点が自機セルに入らず「当たっていない」状態になっていた。
+      //   大型の敵は矩形同士で重なりを判定し、重なった自機セルの中心をヒット位置として渡す
+      let hitPx = enemy.x + enemy.width / 2;
+      let hitPy = enemy.y + enemy.height / 2;
+      const isLarge = enemy.isBoss || enemy.width >= 56 || enemy.height >= 56;
+      if (isLarge) {
+        let overlap = false;
+        for (const attached of this.player.pieces) {
+          for (const cell of attached.piece.cells) {
+            const cx = this.player.anchorX + (attached.relGx + cell.gx) * BLOCK_SIZE;
+            const cy = this.player.anchorY + (attached.relGy + cell.gy) * BLOCK_SIZE;
+            if (
+              cx < enemy.x + enemy.width &&
+              cx + BLOCK_SIZE > enemy.x &&
+              cy < enemy.y + enemy.height &&
+              cy + BLOCK_SIZE > enemy.y
+            ) {
+              hitPx = cx + BLOCK_SIZE / 2;
+              hitPy = cy + BLOCK_SIZE / 2;
+              overlap = true;
+              break;
+            }
+          }
+          if (overlap) break;
+        }
+        if (!overlap) continue;
+      }
+      const hitRes = this.player.checkHit(hitPx, hitPy, this.particles);
       if (hitRes.hit) {
         // 切り離されたパーツが発生した場合は浮遊物としてスポーン
         if (hitRes.detachedPieces && hitRes.detachedPieces.length > 0) {
@@ -1641,6 +1669,10 @@ export class GameManager {
         this.sound.playExplosion(true);
         this.screenShake = 12;
         this.hitStopTimer = 0.05;
+        // 大型の敵が生き残った場合、重なったまま毎フレーム連続ヒットして即全損しないよう猶予無敵を付与
+        if (!killed && isLarge && !this.player.isDead) {
+          this.player.graceTimer = Math.max(this.player.graceTimer, 1.2);
+        }
         if (killed && (enemy === this.currentBoss || enemy.isBoss)) {
           this.sound.playBossExplosion();
           this.particles.emitBossExplosion(
