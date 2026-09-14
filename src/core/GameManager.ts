@@ -229,6 +229,8 @@ export class GameManager {
 
     // 地形は「沙羅曼蛇フォロワー面」で有効化！
     this.terrain.reset(direction, isSalamander);
+    // ★ ユーザー要望：3面は敵を一種類ずつにするため、壁面ミサイル発射台は出さない
+    this.terrain.silosEnabled = this.stage !== 3;
 
     // 洞窟内・ステージ開始時にフィールドアイテムを配置
     this.fieldItems = [];
@@ -795,13 +797,14 @@ export class GameManager {
         for (let i = 0; i < (this.difficulty === 'HARD' ? 16 : 10); i++) {
           this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, START_DELAY + i * 0.4));
         }
-        // フェーズ2（t=9.0〜）：左右ループ走査機（画面端から反対端へループワープする巡航機）
+        // ★ ユーザー要望：3面は地形もあり難しいので、敵種が混ざらないよう各フェーズの間隔を大きく広げて一種類ずつ出す
+        // フェーズ2（t=13.5〜）：左右ループ走査機（画面端から反対端へループワープする巡航機）
         for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, START_DELAY + 7.5 + i * 0.35));
+          this.enemies.push(new Enemy('SIDE_WARP_RUNNER', 'SIDE_WRAP_SWEEP', i % 2 === 0 ? 0 : 7, i % 3, START_DELAY + 12.0 + i * 0.35));
         }
-        // フェーズ3（t=15.5〜）：スターフォース名物 左右端落下→自機Yで90度直角旋回突進！
+        // フェーズ3（t=24.0〜）：左右端落下→自機Yで90度直角旋回突進！
         for (let i = 0; i < (this.difficulty === 'HARD' ? 14 : 8); i++) {
-          this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, START_DELAY + 14.0 + i * 0.38));
+          this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, START_DELAY + 22.5 + i * 0.38));
         }
         break;
 
