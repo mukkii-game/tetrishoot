@@ -596,8 +596,8 @@ export class GameManager {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
-        const soundType = newBullets.find(b => b.pieceType !== 'O')?.pieceType || 'O';
-        this.sound.playShoot(soundType);
+        // ★ ユーザー要望：発射した弾の数だけ音を鳴らす（同時発音数の上限は Sound 側で制御）
+        this.sound.playShootVolley(newBullets.map(b => b.pieceType));
         this.player.fireCooldown = PLAYER_FIRE_INTERVAL;
       }
     }
@@ -1064,7 +1064,8 @@ export class GameManager {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
-        this.sound.playShoot(newBullets[0]?.pieceType);
+        // ★ ユーザー要望：発射した弾の数だけ音を鳴らす（同時発音数の上限は Sound 側で制御）
+        this.sound.playShootVolley(newBullets.map(b => b.pieceType));
         this.player.fireCooldown = PLAYER_FIRE_INTERVAL;
       }
     }

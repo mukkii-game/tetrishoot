@@ -47,10 +47,9 @@ export class Sound {
   private activeClearMusicSource: AudioBufferSourceNode | null = null;
   private activeClearMusicGain: GainNode | null = null;
 
-  // ショット音の過剰な重なり防止用（スロットリング＆ボイススティーリング）
-  private lastShootTime = 0;
-  private shootVoiceIndex = 0;
-  private shootSources: (AudioBufferSourceNode | null)[] = [null, null, null, null];
+  // ショット音の同時発音管理（間引きはせず、同時に鳴る数だけ上限3で古い音から消す）
+  private static readonly MAX_SHOT_VOICES = 3;
+  private shootVoices: { gain: GainNode; endTime: number }[] = [];
 
   constructor() {
     // 遅延デコード（ユーザー操作時に初期化）
@@ -173,23 +172,43 @@ export class Sound {
 
   // 3. ショット音
   // ユーザー要望：
-  // 「発射音の数が少ない気がする。間引きすぎ？」
-  // スロットリング間隔を 0.075s (75ms) から 0.022s (22ms) に大幅短縮し、
-  // 4ボイスのラウンドロビン再生により前の音を切断せず重ねて発音。連射時の抜けを完全解消！
-  public playShoot(pieceType?: string): void {
+  // 「発射している数の割に音が少ない。間引かないで出して。3つ以上被ったら消すなど、うるささを抑える処理はいる」
+  // → 時間による間引きは廃止。弾1発ごとに必ず鳴らし、同時発音は最大3ボイス（超過時は最も古い音をフェードアウト）
+  public playShootVolley(pieceTypes: (string | undefined)[]): void {
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+    // 同一フレームで複数砲門から出た弾は、位相打ち消しを避けるため 12ms ずつずらして発音
+    pieceTypes.forEach((t, idx) => this.playShoot(t, idx * 0.012));
+  }
+
+  private allocShotVoice(now: number, dur: number): GainNode | null {
+    if (!this.ctx) return null;
+    // 鳴り終わったボイスを除去
+    this.shootVoices = this.shootVoices.filter(v => v.endTime > now);
+    // 上限超過：最も古いボイスを短くフェードアウトして席を空ける
+    while (this.shootVoices.length >= Sound.MAX_SHOT_VOICES) {
+      const oldest = this.shootVoices.shift()!;
+      try {
+        oldest.gain.gain.cancelScheduledValues(now);
+        oldest.gain.gain.setValueAtTime(oldest.gain.gain.value, now);
+        oldest.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.015);
+      } catch {
+        /* ignore */
+      }
+    }
+    const gain = this.ctx.createGain();
+    gain.connect(this.ctx.destination);
+    this.shootVoices.push({ gain, endTime: now + dur });
+    return gain;
+  }
+
+  public playShoot(pieceType?: string, delay = 0): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
 
-    const now = this.ctx.currentTime;
-
-    // 1. 極小間隔スロットリング（同一フレーム内での超過剰重なり22msのみガード）
-    if (now - this.lastShootTime < 0.022) return;
-    this.lastShootTime = now;
-
-    // 2. 4ボイス・ラウンドロビン（前の音を急停止させず自然に重ねる）
-    const voiceIdx = this.shootVoiceIndex;
-    this.shootVoiceIndex = (this.shootVoiceIndex + 1) % this.shootSources.length;
+    const now = this.ctx.currentTime + delay;
 
     // I, L, J, T, S, Z ミノにより発射音の音色・ピッチバリエーションを展開
     // I, T, S は OtoLogicのリアルアーケードショット音 (Arcade-Shooter01-1)
@@ -198,6 +217,9 @@ export class Sound {
 
     if (useOtoLogicSample && this.shootBuffer) {
       try {
+        const dur = 0.11;
+        const gain = this.allocShotVoice(now, dur);
+        if (!gain) return;
         const src = this.ctx.createBufferSource();
         src.buffer = this.shootBuffer;
         // テトリミノに応じたピッチの微差（Iは高め、Tは標準、Sは鋭く）
@@ -205,17 +227,12 @@ export class Sound {
         else if (pieceType === 'S') src.playbackRate.value = 1.1;
         else src.playbackRate.value = 1.0;
 
-        const dur = 0.11;
-        const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0.28, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
         src.connect(gain);
-        gain.connect(this.ctx.destination);
         src.start(now);
         src.stop(now + dur + 0.01);
-
-        this.shootSources[voiceIdx] = src;
         return;
       } catch {
         // フォールバック
@@ -223,8 +240,10 @@ export class Sound {
     }
 
     // レトロチップチューン音（ピッチを変調 & 短くキレよく）
+    const dur = 0.08;
+    const gain = this.allocShotVoice(now, dur);
+    if (!gain) return;
     const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
 
     osc.type = 'square';
     let startFreq = 1400;
@@ -238,16 +257,15 @@ export class Sound {
     }
 
     osc.frequency.setValueAtTime(startFreq, now);
-    osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.08);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur);
 
     gain.gain.setValueAtTime(0.12, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.09);
+    osc.stop(now + dur + 0.01);
   }
 
   // 4. ムーンクレスタ ドッキング成功音（ピロリロリロリロピロピロ〜ン！）
