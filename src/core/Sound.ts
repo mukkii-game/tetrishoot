@@ -50,6 +50,8 @@ export class Sound {
   // ショット音の同時発音管理（間引きはせず、同時に鳴る数だけ上限3で古い音から消す）
   private static readonly MAX_SHOT_VOICES = 3;
   private shootVoices: { gain: GainNode; endTime: number }[] = [];
+  // ショット音専用バス（コンプレッサーで多砲門同時発射時のクリップ・濁りを防止）
+  private shotBus: DynamicsCompressorNode | null = null;
 
   constructor() {
     // 遅延デコード（ユーザー操作時に初期化）
@@ -178,8 +180,30 @@ export class Sound {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
-    // 同一フレームで複数砲門から出た弾は、位相打ち消しを避けるため 12ms ずつずらして発音
-    pieceTypes.forEach((t, idx) => this.playShoot(t, idx * 0.012));
+    // ★ 同一フレームの一斉発射：同じ音色を何重にも重ねると「ガガガ」と濁るため、
+    //   音色（テトリミノ種）ごとに1発だけ、最大2音色までを同時刻に発音する
+    const uniq: (string | undefined)[] = [];
+    for (const t of pieceTypes) {
+      if (!uniq.includes(t)) uniq.push(t);
+      if (uniq.length >= 2) break;
+    }
+    const volume = uniq.length > 1 ? 0.75 : 1.0;
+    uniq.forEach(t => this.playShoot(t, 0, volume));
+  }
+
+  private getShotBus(): AudioNode {
+    if (!this.ctx) throw new Error('no ctx');
+    if (!this.shotBus) {
+      const comp = this.ctx.createDynamicsCompressor();
+      comp.threshold.value = -18;
+      comp.knee.value = 12;
+      comp.ratio.value = 6;
+      comp.attack.value = 0.002;
+      comp.release.value = 0.08;
+      comp.connect(this.ctx.destination);
+      this.shotBus = comp;
+    }
+    return this.shotBus;
   }
 
   private allocShotVoice(now: number, dur: number): GainNode | null {
@@ -190,20 +214,21 @@ export class Sound {
     while (this.shootVoices.length >= Sound.MAX_SHOT_VOICES) {
       const oldest = this.shootVoices.shift()!;
       try {
+        // 急峻に切るとクリックノイズ（ガガガ）になるため、40msでなめらかにフェード
         oldest.gain.gain.cancelScheduledValues(now);
-        oldest.gain.gain.setValueAtTime(oldest.gain.gain.value, now);
-        oldest.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.015);
+        oldest.gain.gain.setValueAtTime(Math.max(0.001, oldest.gain.gain.value), now);
+        oldest.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
       } catch {
         /* ignore */
       }
     }
     const gain = this.ctx.createGain();
-    gain.connect(this.ctx.destination);
+    gain.connect(this.getShotBus());
     this.shootVoices.push({ gain, endTime: now + dur });
     return gain;
   }
 
-  public playShoot(pieceType?: string, delay = 0): void {
+  public playShoot(pieceType?: string, delay = 0, volume = 1.0): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
@@ -227,7 +252,7 @@ export class Sound {
         else if (pieceType === 'S') src.playbackRate.value = 1.1;
         else src.playbackRate.value = 1.0;
 
-        gain.gain.setValueAtTime(0.28, now);
+        gain.gain.setValueAtTime(0.28 * volume, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
         src.connect(gain);
@@ -259,7 +284,7 @@ export class Sound {
     osc.frequency.setValueAtTime(startFreq, now);
     osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur);
 
-    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.setValueAtTime(0.12 * volume, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
     osc.connect(gain);
