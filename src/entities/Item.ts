@@ -16,19 +16,28 @@ export class FieldItem {
     this.type = type;
   }
 
-  public update(dt: number, scrollSpeed: number, scrollDir: 'UP' | 'RIGHT' | 'DIAGONAL_UP_RIGHT'): void {
+  public update(dt: number, scrollSpeed: number, scrollDir: 'UP' | 'RIGHT' | 'LEFT' | 'DIAGONAL_UP_RIGHT'): void {
     this.animTimer += dt;
 
     if (scrollDir === 'UP') {
       this.y += scrollSpeed * dt;
     } else if (scrollDir === 'RIGHT') {
       this.x -= scrollSpeed * dt;
+    } else if (scrollDir === 'LEFT') {
+      this.x += scrollSpeed * dt;
     } else if (scrollDir === 'DIAGONAL_UP_RIGHT') {
       this.x -= scrollSpeed * 0.7 * dt;
       this.y += scrollSpeed * 0.7 * dt;
     }
 
-    if (this.y > CANVAS_HEIGHT + 40 || this.x < -40 || this.x > CANVAS_WIDTH + 40 || this.y < -40) {
+    // 画面外へ流れ出たら消滅（スクロール方向の進入側はまだ画面外でも生かしておく）
+    const outBottom = this.y > CANVAS_HEIGHT + 40;
+    const outTop = this.y < -40;
+    const outLeft = this.x < -40;
+    const outRight = this.x > CANVAS_WIDTH + 40;
+    if (scrollDir === 'LEFT') {
+      if (outRight || outTop || outBottom) this.isDead = true;
+    } else if (outBottom || outLeft || outRight || outTop) {
       this.isDead = true;
     }
   }

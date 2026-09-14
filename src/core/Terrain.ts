@@ -1,6 +1,6 @@
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../config';
 
-export type ScrollDirection = 'UP' | 'RIGHT' | 'DIAGONAL_UP_RIGHT';
+export type ScrollDirection = 'UP' | 'RIGHT' | 'LEFT' | 'DIAGONAL_UP_RIGHT';
 
 export interface TerrainSilo {
   id: number;
@@ -158,7 +158,10 @@ export class TerrainManager {
     // ステージ開始直後は洞窟の入口として壁が徐々に迫るようにテーパー（開始即死を完全防止）
     const introFactor = Math.min(1.0, this.elapsedTime / 3.0);
 
-    const worldCoord = screenCoord + this.scrollOffset;
+    // 左スクロール（自機が左へ進む）：地形は画面右から左端へ流れるので、画面座標を反転してワールド座標へ変換
+    const worldCoord = this.direction === 'LEFT'
+      ? (CANVAS_WIDTH - screenCoord) + this.scrollOffset
+      : screenCoord + this.scrollOffset;
     const s = this.seed;
 
     // ユーザー要望：
@@ -260,7 +263,7 @@ export class TerrainManager {
       const { w1, w2 } = this.getWallThickness(y);
       if (x < w1) return true;
       if (x > CANVAS_WIDTH - w2) return true;
-    } else if (this.direction === 'RIGHT') {
+    } else if (this.direction === 'RIGHT' || this.direction === 'LEFT') {
       const { w1, w2 } = this.getWallThickness(x);
       if (y < w1) return true;
       if (y > CANVAS_HEIGHT - w2) return true;
@@ -341,19 +344,27 @@ export class TerrainManager {
           ctx.fillRect(rx, y + blockSize - 2, blockSize, 2);
         }
       }
-    } else if (this.direction === 'RIGHT') {
-      const startX = -((this.scrollOffset) % blockSize);
+    } else if (this.direction === 'RIGHT' || this.direction === 'LEFT') {
+      // 右スクロール：ブロックは左へ流れる／左スクロール（Stage 8）：ブロックは右へ流れる
+      const isLeft = this.direction === 'LEFT';
+      const startX = isLeft
+        ? ((this.scrollOffset) % blockSize) - blockSize
+        : -((this.scrollOffset) % blockSize);
+      // 左スクロール面は緑系の岩盤カラーで差別化
+      const baseColor = isLeft ? '#003818' : '#001844';
+      const edgeColor = isLeft ? '#00994a' : '#0055aa';
+      const hiColor = isLeft ? '#33ff99' : '#00aaff';
       for (let x = startX; x < CANVAS_WIDTH + blockSize; x += blockSize) {
         const { w1, w2 } = this.getWallThickness(x + blockSize / 2);
 
         // 上壁
         if (w1 > 0) {
-          ctx.fillStyle = '#001844';
+          ctx.fillStyle = baseColor;
           ctx.fillRect(x, 0, blockSize, w1);
           const edgeBy = Math.max(0, w1 - blockSize);
-          ctx.fillStyle = '#0055aa';
+          ctx.fillStyle = edgeColor;
           ctx.fillRect(x, edgeBy, blockSize, blockSize);
-          ctx.fillStyle = '#00aaff';
+          ctx.fillStyle = hiColor;
           ctx.fillRect(x + 1, edgeBy + 1, blockSize - 2, 2);
           ctx.fillRect(x + 1, edgeBy + 1, 2, blockSize - 2);
         }
@@ -361,11 +372,11 @@ export class TerrainManager {
         // 下壁
         if (w2 > 0) {
           const by = CANVAS_HEIGHT - w2;
-          ctx.fillStyle = '#001844';
+          ctx.fillStyle = baseColor;
           ctx.fillRect(x, by, blockSize, w2);
-          ctx.fillStyle = '#0055aa';
+          ctx.fillStyle = edgeColor;
           ctx.fillRect(x, by, blockSize, blockSize);
-          ctx.fillStyle = '#00aaff';
+          ctx.fillStyle = hiColor;
           ctx.fillRect(x + 1, by + 1, blockSize - 2, 2);
           ctx.fillRect(x + 1, by + 1, 2, blockSize - 2);
         }

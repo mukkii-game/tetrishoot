@@ -40,6 +40,13 @@ export class Sound {
   private activeBossWarningSource: AudioBufferSourceNode | null = null;
   private activeBossWarningGain: GainNode | null = null;
 
+  // ★ クリア画面BGM（public/audio/game_clear.mp3 を実行時に読み込み）
+  private clearMusicBuffer: AudioBuffer | null = null;
+  private clearMusicLoading = false;
+  private clearMusicRequested = false;
+  private activeClearMusicSource: AudioBufferSourceNode | null = null;
+  private activeClearMusicGain: GainNode | null = null;
+
   // ショット音の過剰な重なり防止用（スロットリング＆ボイススティーリング）
   private lastShootTime = 0;
   private shootVoiceIndex = 0;
@@ -106,6 +113,11 @@ export class Sound {
       this.stopBGM();
       this.stopBossLfo();
       this.stopBossWarning();
+      const wasClearMusic = this.clearMusicRequested;
+      this.stopClearMusic();
+      this.clearMusicRequested = wasClearMusic;
+    } else if (this.clearMusicRequested) {
+      this.playClearMusic();
     }
     return this.isMuted;
   }
@@ -859,6 +871,76 @@ export class Sound {
       osc.start(st);
       osc.stop(st + 0.25);
     });
+  }
+
+  // ★ ユーザー要望：クリア画面で mp3 を流す（ループ再生）
+  // ファイルは public/audio/game_clear.mp3 に配置。読み込めない場合は従来の勝利ジングルにフォールバック。
+  public playClearMusic(): void {
+    this.stopBGM();
+    this.stopBossLfo();
+    this.stopBossWarning();
+    this.clearMusicRequested = true;
+    if (this.isMuted) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    if (this.clearMusicBuffer) {
+      this.startClearMusicSource();
+      return;
+    }
+    if (this.clearMusicLoading) return;
+    this.clearMusicLoading = true;
+    fetch('./audio/game_clear.mp3')
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.arrayBuffer();
+      })
+      .then(data => this.ctx!.decodeAudioData(data))
+      .then(buf => {
+        this.clearMusicBuffer = buf;
+        this.clearMusicLoading = false;
+        if (this.clearMusicRequested) this.startClearMusicSource();
+      })
+      .catch(err => {
+        console.warn('Clear music load failed, falling back to jingle:', err);
+        this.clearMusicLoading = false;
+        if (this.clearMusicRequested) this.playVictory();
+      });
+  }
+
+  private startClearMusicSource(): void {
+    if (!this.ctx || !this.clearMusicBuffer || this.isMuted) return;
+    this.stopClearMusic();
+    this.clearMusicRequested = true;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.clearMusicBuffer;
+    src.loop = true;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.7, this.ctx.currentTime + 0.5);
+    src.connect(gain);
+    gain.connect(this.ctx.destination);
+    src.start();
+    this.activeClearMusicSource = src;
+    this.activeClearMusicGain = gain;
+  }
+
+  public stopClearMusic(): void {
+    this.clearMusicRequested = false;
+    if (this.activeClearMusicSource) {
+      try {
+        if (this.activeClearMusicGain && this.ctx) {
+          this.activeClearMusicGain.gain.cancelScheduledValues(this.ctx.currentTime);
+          this.activeClearMusicGain.gain.setValueAtTime(this.activeClearMusicGain.gain.value, this.ctx.currentTime);
+          this.activeClearMusicGain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.3);
+        }
+        this.activeClearMusicSource.stop(this.ctx ? this.ctx.currentTime + 0.3 : 0);
+      } catch {
+        /* already stopped */
+      }
+      this.activeClearMusicSource = null;
+      this.activeClearMusicGain = null;
+    }
   }
 
   // BGM

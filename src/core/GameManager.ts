@@ -8,7 +8,7 @@ import {
 import { FieldItem } from '../entities/Item';
 import { ParticleManager } from '../effects/Particle';
 import { PlayerBullet } from '../entities/Bullet';
-import { Enemy } from '../entities/Enemy';
+import { Enemy, FlightPattern } from '../entities/Enemy';
 import { Player } from '../entities/Player';
 import { TetrominoPiece, TetrominoType } from '../entities/Tetromino';
 import { drawMoonCrestaText } from '../utils/RetroFont';
@@ -18,6 +18,16 @@ import { Starfield } from './Starfield';
 import { TerrainManager } from './Terrain';
 
 export type GameState = 'TITLE' | 'PLAYING' | 'PAUSED' | 'STAGE_CLEAR' | 'GAMEOVER' | 'VICTORY';
+
+// ★ Stage 10 最終面ボスラッシュ：歴代ボスが順番に襲来し、最後に最強UFO母船が登場！
+type BossRank = 'GIANT_YELLOW' | 'GIANT_RED' | 'UFO_MOTHERSHIP' | 'GIGA_COLD_EYE' | 'SPACE_SERPENT_HEAD';
+const BOSS_RUSH: { rank: BossRank; hp: number; pattern: FlightPattern }[] = [
+  { rank: 'GIANT_YELLOW', hp: 28, pattern: 'FORMATION_LOOP' },
+  { rank: 'GIANT_RED', hp: 36, pattern: 'SURPRISE_FROM_BOTTOM' },
+  { rank: 'GIGA_COLD_EYE', hp: 36, pattern: 'FORMATION_LOOP' },
+  { rank: 'SPACE_SERPENT_HEAD', hp: 40, pattern: 'SERPENT_SLITHER' },
+  { rank: 'UFO_MOTHERSHIP', hp: 96, pattern: 'CAROUSEL_CIRCLE' },
+];
 export type GamePhase = 'TETRIS' | 'SHOOTING';
 
 // 落ちてくるブロックの状態（ドッキング用：自律浮遊＋弾ヒットで回転）
@@ -81,6 +91,8 @@ export class GameManager {
   public currentBoss: Enemy | null = null;
   public bossDying = false;
   public bossDeathTimer = 0;
+  // ★ Stage 10 ボスラッシュ：現在何体目のボスか
+  public bossRushIndex = 0;
   private bossMinionTimer = 0; // ボスが部下を定期的に召喚するタイマー
 
   // 80年代アーケード風ゲームフィール：画面揺れ（シェイク）＆ヒットストップ
@@ -126,6 +138,7 @@ export class GameManager {
     this.bossWarningActive = false;
     this.bossWarningTimer = 0;
     this.sound.stopBossWarning();
+    this.sound.stopClearMusic();
     this.player = new Player();
     this.player.isInvincible = this.isInvincibleMode;
     this.particles.clear();
@@ -175,6 +188,7 @@ export class GameManager {
     this.phase = 'SHOOTING';
     this.fallingPieces = [];
     this.shootingTimeLimit = 65; // バトル時間をさらに延長（ザコ2倍＋高耐久ボス戦に充分な時間）
+    this.bossRushIndex = 0;
     this.formationOffsetAngle = 0;
     this.battlePiece = null;
     this.rescueSpawnCooldown = 10.0;
@@ -200,12 +214,15 @@ export class GameManager {
     // Wave 9: 沙羅曼蛇（上下激動・高密度バンガードブロック迷宮）
     // Wave 10: 最終決戦（全フォロワー総力戦カタストロフィ）
 
-    const isSalamander = this.stage === 3 || this.stage === 5 || this.stage === 6 || this.stage === 9;
-    let direction: 'UP' | 'RIGHT' | 'DIAGONAL_UP_RIGHT' = 'UP';
+    // ★ ユーザー要望：Stage 8 を地形のある左スクロール面に（Stage 6 右スクロールの反対向き）
+    const isSalamander = this.stage === 3 || this.stage === 5 || this.stage === 6 || this.stage === 8 || this.stage === 9;
+    let direction: 'UP' | 'RIGHT' | 'LEFT' | 'DIAGONAL_UP_RIGHT' = 'UP';
     if (this.stage === 5) {
       direction = 'DIAGONAL_UP_RIGHT';
     } else if (this.stage === 6) {
       direction = 'RIGHT';
+    } else if (this.stage === 8) {
+      direction = 'LEFT';
     }
     this.starfield.direction = direction;
 
@@ -214,7 +231,11 @@ export class GameManager {
 
     // 洞窟内・ステージ開始時にフィールドアイテムを配置
     this.fieldItems = [];
-    if (isSalamander) {
+    if (isSalamander && direction === 'LEFT') {
+      // 左スクロール面：アイテムは画面左の外から右へ流れ込んでくる
+      this.fieldItems.push(new FieldItem(-120, CANVAS_HEIGHT * 0.5, 'BARRIER_ORB'));
+      this.fieldItems.push(new FieldItem(-500, CANVAS_HEIGHT * 0.4, 'RESCUE_CAPSULE'));
+    } else if (isSalamander) {
       // 洞窟内にバリアオーブや救済カプセルを配置
       this.fieldItems.push(new FieldItem(CANVAS_WIDTH * 0.5, -120, 'BARRIER_ORB'));
       this.fieldItems.push(new FieldItem(CANVAS_WIDTH * 0.35, -500, 'RESCUE_CAPSULE'));
@@ -418,7 +439,8 @@ export class GameManager {
         if (this.stateTimer <= 0) {
           if (this.stage >= MAX_STAGES) {
             this.state = 'VICTORY';
-            this.sound.playVictory();
+            // ★ ユーザー要望：クリア画面で専用mp3（public/audio/game_clear.mp3）を流す
+            this.sound.playClearMusic();
           } else {
             this.stage++;
             this.state = 'PLAYING';
@@ -459,6 +481,7 @@ export class GameManager {
       case 'VICTORY':
         this.stateTimer -= dt;
         if (this.stateTimer <= 0 && (input.shoot || input.justEnter || input.isMouseDown)) {
+          this.sound.stopClearMusic();
           this.startNewGame();
         }
         break;
@@ -797,28 +820,29 @@ export class GameManager {
         // ユーザー要望：5面とかただやみくもに複数の敵をたくさん出してるだけじゃない？ まず面の最初からたくさん出すなよ
         // 1面の中でも静かに始まって、ところどころスリルのあるところがあって、ものすごくてきがたくさん！みたいなクライマックスがあって、その後ボス！
         //
-        // 1. 【静かな導入】（t=1.5〜）：少数の斥候ドローンが整然と画面を優雅に横断（4機）
-        for (let k = 0; k < 4; k++) {
+        // ★ ユーザー要望：Stage 5 は地形に非常にぶつかりやすく難しいので、出現敵を約半分に削減
+        // 1. 【静かな導入】（t=1.5〜）：少数の斥候ドローンが整然と画面を優雅に横断（2機）
+        for (let k = 0; k < 2; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 3 + k, 1, START_DELAY, 'S_CURVE_LEFT_TO_RIGHT', k));
         }
         // 2. 【スリル・急襲】（t=6.5〜）：突如飛び込んでくる地表ミサイル＆索敵急加速ミサイル！
-        for (let i = 0; i < 6; i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + i, 0, START_DELAY + 5.0 + i * 0.45));
+        for (let i = 0; i < 3; i++) {
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + i * 2, 0, START_DELAY + 5.0 + i * 0.9));
         }
-        for (let i = 0; i < 4; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, START_DELAY + 7.0 + i * 0.5));
+        for (let i = 0; i < 2; i++) {
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, START_DELAY + 7.0 + i * 1.0));
         }
         // 3. 【加速する緊張】（t=12.0〜）：スターフォース「ガリ」の急停止＆急加速アタック！
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 8 : 6); i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 5), 0, START_DELAY + 10.5 + i * 0.38));
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 4 : 3); i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 5), 0, START_DELAY + 10.5 + i * 0.76));
         }
         // 4. 【怒涛のクライマックス大群！】（t=17.0〜）：左右から怒涛の勢いで押し寄せる大編隊クロスラッシュ！
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 16 : 10); k++) {
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 8 : 5); k++) {
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 1 + (k % 4), 2, START_DELAY + 15.5, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 4 + (k % 4), 2, START_DELAY + 15.5, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 10 : 6); i++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 5), 0, START_DELAY + 18.0 + i * 0.25));
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 5 : 3); i++) {
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 5), 0, START_DELAY + 18.0 + i * 0.5));
         }
         break;
 
@@ -857,7 +881,8 @@ export class GameManager {
         break;
 
       case 8:
-        // 【WAVE 8：ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】（ザコ66機）
+        // 【WAVE 8：左スクロール・バンガード岩盤回廊 ＋ ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】（ザコ66機）
+        // ★ ユーザー要望：Stage 8 は地形のある左スクロール面（Stage 6 の反対方向）
         // 画面全方位から押し寄せるギャプラス風ストリーム大編隊＋グラディウス開幕編隊＋フライバイ！
         for (let k = 0; k < 20; k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.12, 'INFINITY_DIVE_LEFT', k));
@@ -920,15 +945,20 @@ export class GameManager {
     this.bossWarningTimer = 0;
     this.sound.stopBossWarning();
     this.sound.playPhaseAlert('shooting');
-    this.showTransitionText(`BOSS ENGAGED!`, 1.3);
+    if (this.stage === 10) {
+      this.showTransitionText(`BOSS ${this.bossRushIndex + 1} / ${BOSS_RUSH.length} ENGAGED!`, 1.3);
+    } else {
+      this.showTransitionText(`BOSS ENGAGED!`, 1.3);
+    }
 
     let bossRank: 'GIANT_YELLOW' | 'GIANT_RED' | 'UFO_MOTHERSHIP' | 'GIGA_COLD_EYE' | 'SPACE_SERPENT_HEAD' = 'GIANT_YELLOW';
     let bossHp = 5;
 
     if (this.stage === 10) {
-      // 最終面ラスボス：最強UFO母船（HPさらに倍：112！）
-      bossRank = 'UFO_MOTHERSHIP';
-      bossHp = 112;
+      // ★ ユーザー要望：最終面はボスが次々と出現するボスラッシュ！（5連戦・最後は最強UFO母船）
+      const rushEntry = BOSS_RUSH[Math.min(this.bossRushIndex, BOSS_RUSH.length - 1)];
+      bossRank = rushEntry.rank;
+      bossHp = rushEntry.hp;
     } else if (this.stage === 6) {
       // Wave 6ボス：沙羅曼蛇・多関節スペースサーペントドラゴン！
       bossRank = 'SPACE_SERPENT_HEAD';
@@ -962,14 +992,14 @@ export class GameManager {
 
     // ★ ユーザー要望：3面ってボスは下から来てもいいよね（SURPRISE_FROM_BOTTOMで画面下部から急上昇！）
     const pattern = this.stage === 10
-      ? 'CAROUSEL_CIRCLE'
+      ? BOSS_RUSH[Math.min(this.bossRushIndex, BOSS_RUSH.length - 1)].pattern
       : (this.stage === 6 ? 'SERPENT_SLITHER' : (this.stage === 3 ? 'SURPRISE_FROM_BOTTOM' : 'FORMATION_LOOP'));
     const boss = new Enemy(bossRank, pattern, 4, 0, 0.1, undefined, 0, true, bossHp);
-    boss.scoreValue = 3000 + this.stage * 1000;
+    boss.scoreValue = 3000 + this.stage * 1000 + (this.stage === 10 ? this.bossRushIndex * 2000 : 0);
     this.currentBoss = boss;
     this.enemies.push(boss);
 
-    // Wave 6：スペースサーペントの多関節ボディセグメントを生成
+    // Wave 6（＆Stage 10 ボスラッシュ）：スペースサーペントの多関節ボディセグメントを生成
     if (bossRank === 'SPACE_SERPENT_HEAD') {
       let prevSeg = boss;
       for (let s = 1; s <= 7; s++) {
@@ -1004,7 +1034,7 @@ export class GameManager {
         // ★ ユーザー要望：落下中ブロックがある場合はそれが落ちきる（または合体する）までクリアにさせない！
         if (!this.battlePiece || this.battlePiece.settled) {
           this.bossDying = false;
-          this.clearStage();
+          this.onBossPhaseEnded();
           return;
         }
       }
@@ -1588,8 +1618,30 @@ export class GameManager {
       (!this.battlePiece || this.battlePiece.settled) &&
       ((this.bossSpawned && !this.currentBoss && this.enemies.length === 0) || this.shootingTimeLimit <= 0)
     ) {
-      this.clearStage();
+      this.onBossPhaseEnded();
     }
+  }
+
+  // ★ ボス撃破後の処理：Stage 10 はボスラッシュなので次のボスを予告して呼び出す。それ以外はステージクリア
+  private onBossPhaseEnded(): void {
+    if (this.stage === 10 && this.bossSpawned && this.bossRushIndex < BOSS_RUSH.length - 1) {
+      this.bossRushIndex++;
+      this.bossSpawned = false;
+      this.currentBoss = null;
+      this.bossDying = false;
+      this.bossDeathTimer = 0;
+      this.bossMinionTimer = 0;
+      // ボスラッシュ中はタイムアップでクリアにならないよう、残り時間を確保
+      this.shootingTimeLimit = Math.max(this.shootingTimeLimit, 60);
+      // 次のボス予告サイレン
+      this.bossWarningActive = true;
+      this.bossWarningTimer = 3.0;
+      this.sound.playBossWarning();
+      this.showTransitionText(`WARNING: NEXT BOSS ${this.bossRushIndex + 1} / ${BOSS_RUSH.length}`, 1.3);
+      this.screenShake = 8;
+      return;
+    }
+    this.clearStage();
   }
 
   private clearStage(): void {
