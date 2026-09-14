@@ -236,6 +236,8 @@ export class GameManager {
     this.terrain.reset(direction, isSalamander);
     // ★ ユーザー要望：3面は敵を一種類ずつにするため、壁面ミサイル発射台は出さない
     this.terrain.silosEnabled = this.stage !== 3;
+    // ★ ユーザー要望：5面は開幕約10秒間、壁面発射台も起動させない
+    this.terrain.siloStartDelay = this.stage === 5 ? 10.0 : 2.5;
 
     // 洞窟内・ステージ開始時にフィールドアイテムを配置
     this.fieldItems = [];
@@ -850,16 +852,13 @@ export class GameManager {
         // 1面の中でも静かに始まって、ところどころスリルのあるところがあって、ものすごくてきがたくさん！みたいなクライマックスがあって、その後ボス！
         //
         // ★ ユーザー要望：Stage 5 は地形に非常にぶつかりやすく難しいので、出現敵を約半分に削減
-        // 1. 【静かな導入】（t=1.5〜）：少数の斥候ドローンが整然と画面を優雅に横断（2機）
-        for (let k = 0; k < 2; k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 3 + k, 1, START_DELAY, 'S_CURVE_LEFT_TO_RIGHT', k));
-        }
-        // 2. 【スリル・急襲】（t=6.5〜）：突如飛び込んでくる地表ミサイル＆索敵急加速ミサイル！
-        for (let i = 0; i < 3; i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + i * 2, 0, START_DELAY + 5.0 + i * 0.9));
-        }
+        // ★ ユーザー要望：5面は難しいので、最初の約10秒は敵をさらに少なめに（地形に慣れる時間）
+        // 1. 【静かな導入】（t=1.5〜）：斥候ドローン1機が優雅に横断
+        this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 3, 1, START_DELAY, 'S_CURVE_LEFT_TO_RIGHT', 0));
+        // 2. 【スリル・急襲】（t=8.0〜）：索敵急加速ミサイル1発、続いて（t=11.5〜）地表ミサイル2発
+        this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1, 0, START_DELAY + 6.5));
         for (let i = 0; i < 2; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, START_DELAY + 7.0 + i * 1.0));
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, START_DELAY + 10.0 + i * 1.0));
         }
         // 3. 【加速する緊張】（t=12.0〜）：スターフォース「ガリ」の急停止＆急加速アタック！
         for (let i = 0; i < (this.difficulty === 'HARD' ? 4 : 3); i++) {
