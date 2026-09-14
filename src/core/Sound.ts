@@ -266,7 +266,8 @@ export class Sound {
     }
 
     // レトロチップチューン音（ピッチを変調 & 短くキレよく）
-    const dur = 0.08;
+    // ★ ユーザー要望：O/L/J/Z ミノの発射音がサンプル音より小さく埋もれていたので音量・長さを引き上げ
+    const dur = 0.10;
     const gain = this.allocShotVoice(now, dur);
     if (!gain) return;
     const osc = this.ctx.createOscillator();
@@ -285,7 +286,7 @@ export class Sound {
     osc.frequency.setValueAtTime(startFreq * detune, now);
     osc.frequency.exponentialRampToValueAtTime(endFreq * detune, now + dur);
 
-    gain.gain.setValueAtTime(0.12 * volume, now);
+    gain.gain.setValueAtTime(0.26 * volume, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
     osc.connect(gain);
