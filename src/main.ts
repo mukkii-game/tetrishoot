@@ -25,6 +25,44 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('pointerdown', unlockAudio, { passive: true });
   window.addEventListener('click', unlockAudio, { passive: true });
 
+  // ★ フル画面切替（Fキー／右下ボタン）。itch.io の埋め込み枠でもブラウザ全体で表示できる
+  const container = document.getElementById('game-container') as HTMLElement;
+  const fsBtn = document.getElementById('fullscreen-btn');
+  const toggleFullscreen = () => {
+    try {
+      if (document.fullscreenElement) {
+        void document.exitFullscreen();
+      } else {
+        void container.requestFullscreen();
+      }
+    } catch (e) {
+      console.warn('fullscreen not available:', e);
+    }
+  };
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyF' && !e.repeat) toggleFullscreen();
+  });
+  if (fsBtn) {
+    // ゲームの入力（mousedown＝ショット／タッチ操作）に伝播させない
+    fsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    fsBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); }, { passive: true });
+    fsBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleFullscreen(); });
+  }
+  // フル画面中：画面に収まる 3:4 の最大サイズを CSS 変数で渡す
+  const updateFullscreenSize = () => {
+    if (!document.fullscreenElement) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const scale = Math.min(vw / CANVAS_WIDTH, vh / CANVAS_HEIGHT);
+    container.style.setProperty('--fs-w', `${Math.floor(CANVAS_WIDTH * scale)}px`);
+    container.style.setProperty('--fs-h', `${Math.floor(CANVAS_HEIGHT * scale)}px`);
+  };
+  document.addEventListener('fullscreenchange', () => {
+    if (fsBtn) fsBtn.textContent = document.fullscreenElement ? '🡼' : '⛶';
+    updateFullscreenSize();
+  });
+  window.addEventListener('resize', updateFullscreenSize);
+
   let lastTime = performance.now();
 
   function gameLoop(currentTime: number): void {

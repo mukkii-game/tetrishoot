@@ -94,6 +94,44 @@
         margin-top: 3px;
       }
     }
+    /* ★ フル画面（Fキー／右下ボタン）。コンテナごとフル画面にしてCRT演出も維持 */
+    #game-container:fullscreen {
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      background: #000;
+    }
+    /* フル画面中はブラウザがコンテナを画面全体に広げるため、キャンバスと演出レイヤーを
+       3:4 のまま中央に収める（サイズは main.ts が --fs-w / --fs-h に設定） */
+    #game-container:fullscreen canvas,
+    #game-container:fullscreen .crt-overlay,
+    #game-container:fullscreen .crt-vignette {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: var(--fs-w, 100%);
+      height: var(--fs-h, 100%);
+      transform: translate(-50%, -50%);
+    }
+    #fullscreen-btn {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      z-index: 12;
+      width: 34px;
+      height: 34px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: rgba(22, 27, 34, 0.75);
+      color: #00ffcc;
+      font-size: 18px;
+      line-height: 32px;
+      text-align: center;
+      cursor: pointer;
+      opacity: 0.6;
+      touch-action: manipulation;
+    }
+    #fullscreen-btn:hover { opacity: 1; }
     kbd {
       background: #161b22;
       border: 1px solid #30363d;
@@ -109,10 +147,11 @@
     <canvas id="game-canvas" width="540" height="720"></canvas>
     <div class="crt-overlay"></div>
     <div class="crt-vignette"></div>
+    <div id="fullscreen-btn" title="フル画面 (F)">⛶</div>
   </div>
   <div id="instructions">
     Galaxtris ｜ <span style="color:#00ffcc">スマホ: 押し続け＋ドラッグで移動＆連射</span><br/>
-    PC: <kbd>WASD</kbd>/マウス移動 ｜ <kbd>Space</kbd>/クリック連射 ｜ <kbd>Esc</kbd>: ポーズ ｜ <kbd>M</kbd>: 音声 ｜ <kbd>I</kbd>: 撮影用無敵
+    PC: <kbd>WASD</kbd>/マウス移動 ｜ <kbd>Space</kbd>/クリック連射 ｜ <kbd>Esc</kbd>: ポーズ ｜ <kbd>M</kbd>: 音声 ｜ <kbd>F</kbd>: フル画面 ｜ <kbd>I</kbd>: 撮影用無敵
   </div>
 
   <script type="module" src="/src/main.ts"></script>
