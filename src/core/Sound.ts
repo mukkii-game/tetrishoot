@@ -48,7 +48,7 @@ export class Sound {
   private activeClearMusicGain: GainNode | null = null;
 
   // ショット音の同時発音管理（間引きはせず、同時に鳴る数だけ上限3で古い音から消す）
-  private static readonly MAX_SHOT_VOICES = 3;
+  private static readonly MAX_SHOT_VOICES = 6;
   private shootVoices: { gain: GainNode; endTime: number }[] = [];
   // ショット音専用バス（コンプレッサーで多砲門同時発射時のクリップ・濁りを防止）
   private shotBus: DynamicsCompressorNode | null = null;
@@ -180,15 +180,16 @@ export class Sound {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
-    // ★ 同一フレームの一斉発射：同じ音色を何重にも重ねると「ガガガ」と濁るため、
-    //   音色（テトリミノ種）ごとに1発だけ、最大2音色までを同時刻に発音する
-    const uniq: (string | undefined)[] = [];
-    for (const t of pieceTypes) {
-      if (!uniq.includes(t)) uniq.push(t);
-      if (uniq.length >= 2) break;
+    // ★ ユーザー要望：基本は全部鳴らし、重なりが多い時だけ抑える
+    //   ・1回の一斉発射は最大4発まで発音（5発目以降は省略）
+    //   ・同時刻に同じ波形を重ねると濁るので、1発ごとに 28ms ずらして「ダダダッ」と粒立たせる
+    //   ・発数が多いほど1発あたりの音量を下げ（1/√n）、ピッチも僅かにばらして位相干渉を回避
+    const n = Math.min(4, pieceTypes.length);
+    const volume = Math.max(0.55, 1 / Math.sqrt(n));
+    for (let i = 0; i < n; i++) {
+      const detune = 1 + (Math.random() - 0.5) * 0.12;
+      this.playShoot(pieceTypes[i], i * 0.028, volume, detune);
     }
-    const volume = uniq.length > 1 ? 0.75 : 1.0;
-    uniq.forEach(t => this.playShoot(t, 0, volume));
   }
 
   private getShotBus(): AudioNode {
@@ -228,7 +229,7 @@ export class Sound {
     return gain;
   }
 
-  public playShoot(pieceType?: string, delay = 0, volume = 1.0): void {
+  public playShoot(pieceType?: string, delay = 0, volume = 1.0, detune = 1.0): void {
     if (this.isMuted) return;
     this.initContext();
     if (!this.ctx) return;
@@ -248,9 +249,9 @@ export class Sound {
         const src = this.ctx.createBufferSource();
         src.buffer = this.shootBuffer;
         // テトリミノに応じたピッチの微差（Iは高め、Tは標準、Sは鋭く）
-        if (pieceType === 'I') src.playbackRate.value = 1.2;
-        else if (pieceType === 'S') src.playbackRate.value = 1.1;
-        else src.playbackRate.value = 1.0;
+        if (pieceType === 'I') src.playbackRate.value = 1.2 * detune;
+        else if (pieceType === 'S') src.playbackRate.value = 1.1 * detune;
+        else src.playbackRate.value = 1.0 * detune;
 
         gain.gain.setValueAtTime(0.28 * volume, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
@@ -281,8 +282,8 @@ export class Sound {
       endFreq = 140;
     }
 
-    osc.frequency.setValueAtTime(startFreq, now);
-    osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur);
+    osc.frequency.setValueAtTime(startFreq * detune, now);
+    osc.frequency.exponentialRampToValueAtTime(endFreq * detune, now + dur);
 
     gain.gain.setValueAtTime(0.12 * volume, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
