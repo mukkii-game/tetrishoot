@@ -72,6 +72,7 @@ export class Enemy {
   // ★ 地表ミサイルの予備動作：壁際で上下に揺れてから突っ込む（残り秒数）
   public prelaunchTimer = 0;
   public prelaunchBaseY = 0;
+  private terrainArmed = false; // TERRAIN_LAUNCH：初回起動時に予備動作をセット済みか
   public width: number;
   public height: number;
   public rank: AlienRank;
@@ -1013,6 +1014,16 @@ export class Enemy {
 
       // ★ コナミ・スクランブル風ミサイル：壁や端から横・斜めへ推進加速！（抜けたら反対側から再突入）
       case 'TERRAIN_LAUNCH': {
+        // ★ ユーザー要望：全てのロケットは必ず予備動作（壁際で上下に揺れる）を見せてから突っ込む
+        //   スクリプト出現のものも、初回起動時に画面端へ配置して予備動作を開始する
+        if (!this.terrainArmed) {
+          this.terrainArmed = true;
+          if (this.prelaunchTimer <= 0) {
+            this.x = this.vx >= 0 ? 12 : CANVAS_WIDTH - this.width - 12;
+            this.prelaunchTimer = 1.3;
+            this.prelaunchBaseY = this.y;
+          }
+        }
         // ★ 予備動作：壁から顔を出し、上下に揺れて「どこから刺すか」を見せてから発射
         if (this.prelaunchTimer > 0) {
           this.prelaunchTimer -= dt;
@@ -1032,15 +1043,19 @@ export class Enemy {
         this.vx *= 1.004; // 緩やかな加速
         this.vy *= 1.003;
 
-        // 画面外へ抜けたら消滅させず、反対側・別高度から再突入！
+        // 画面外へ抜けたら消滅させず、反対側・別高度から再突入（再突入時も必ず予備動作を見せる）
         if (this.x < -60) {
-          this.x = CANVAS_WIDTH + 40;
+          this.x = CANVAS_WIDTH - this.width - 12;
           this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
-          this.vx = -Math.abs(this.vx) * 0.9;
+          this.vx = -Math.abs(this.vx) * 0.6;
+          this.prelaunchTimer = 1.3;
+          this.prelaunchBaseY = this.y;
         } else if (this.x > CANVAS_WIDTH + 60) {
-          this.x = -40;
+          this.x = 12;
           this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
-          this.vx = Math.abs(this.vx) * 0.9;
+          this.vx = Math.abs(this.vx) * 0.6;
+          this.prelaunchTimer = 1.3;
+          this.prelaunchBaseY = this.y;
         }
         if (this.y > CANVAS_HEIGHT + 60) {
           this.y = -30;

@@ -1042,8 +1042,8 @@ export class GameManager {
       }
     }
 
-    // 護衛を2機随伴（高ステージ）
-    if (this.stage >= 4 && bossRank !== 'SPACE_SERPENT_HEAD') {
+    // 護衛を2機随伴（高ステージ。★ 5面は地形だけで十分難しいので護衛なし）
+    if (this.stage >= 4 && this.stage !== 5 && bossRank !== 'SPACE_SERPENT_HEAD') {
       this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SWEEP_FROM_LEFT', 2, 1, 0.3));
       this.enemies.push(new Enemy('YELLOW_COMMANDER', 'SWEEP_FROM_RIGHT', 6, 1, 0.3));
     }
@@ -1413,7 +1413,8 @@ export class GameManager {
     }
 
     // ★ ユーザー要望：ボス戦中、ボス自体が部下のそれなりにめんどくさい敵編隊や変な動きの敵を生み出して撹乱！
-    if (this.currentBoss && !this.currentBoss.isDead && !this.bossDying) {
+    // ★ ユーザー要望：5面のボスはザコを引き連れない
+    if (this.currentBoss && !this.currentBoss.isDead && !this.bossDying && this.stage !== 5) {
       this.bossMinionTimer += dt;
       const spawnInterval = this.difficulty === 'HARD' ? 2.8 : 4.0;
       if (this.bossMinionTimer >= spawnInterval) {
