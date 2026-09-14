@@ -852,26 +852,11 @@ export class GameManager {
         // 1面の中でも静かに始まって、ところどころスリルのあるところがあって、ものすごくてきがたくさん！みたいなクライマックスがあって、その後ボス！
         //
         // ★ ユーザー要望：Stage 5 は地形に非常にぶつかりやすく難しいので、出現敵を約半分に削減
-        // ★ ユーザー要望：5面は開始10秒間は敵を一匹も出さない（地形に慣れる時間）
-        // 1. 【静かな導入】（t=10.0〜）：斥候ドローン1機が優雅に横断
-        this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 3, 1, 10.0, 'S_CURVE_LEFT_TO_RIGHT', 0));
-        // 2. 【スリル・急襲】（t=13.0〜）：索敵急加速ミサイル1発、続いて（t=15.0〜）地表ミサイル2発
-        this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1, 0, 13.0));
-        for (let i = 0; i < 2; i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, 15.0 + i * 1.0));
-        }
-        // ★ ユーザー要望：壁自体が難しいので、中盤以降も敵を少なめにし、種類の混合も減らして一種類ずつ順番に出す
-        // 3. 【加速する緊張】（t=19.0〜）：ガリの急停止＆急加速アタック（2機、間隔広め）
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 3 : 2); i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 5), 0, 19.0 + i * 1.2));
-        }
-        // 4. 【クライマックス】（t=24.0〜）：片側からの旋回編隊のみ（左右同時のクロスラッシュは廃止）
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 5 : 3); k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 1 + (k % 4), 2, 24.0, 'INFINITY_DIVE_LEFT', k));
-        }
-        // 5. （t=29.0〜）：グラディウス編隊は前の編隊が抜けてから、少数で
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 3 : 2); i++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 5), 0, 29.0 + i * 0.8));
+        // ★ ユーザー要望：5面は開始10秒間は敵を一匹も出さず、ザコはロケット（地表ミサイル）のみ。
+        //   壁の回避に集中できるよう、ドローン・索敵ミサイル・ガリ・旋回編隊・グラディウス編隊は出さない
+        //   （壁際から随時発射される地表ミサイルは Terrain 側で別途出現）
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 4 : 3); i++) {
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, 12.0 + i * 4.0));
         }
         break;
 
@@ -1833,7 +1818,11 @@ export class GameManager {
     for (let r = 0; r < rots; r++) piece.rotate();
 
     // 自機の横位置付近に投下
-    const spawnX = Math.max(60, Math.min(CANVAS_WIDTH - 140, this.player.anchorX + (Math.random() - 0.5) * 80));
+    let spawnX = Math.max(60, Math.min(CANVAS_WIDTH - 140, this.player.anchorX + (Math.random() - 0.5) * 80));
+    // ★ ユーザー要望：5面（斜め地形）は壁に紛れやすいので、画面中央付近に投下する
+    if (this.stage === 5) {
+      spawnX = CANVAS_WIDTH / 2 - BLOCK_SIZE * 1.5 + (Math.random() - 0.5) * 40;
+    }
 
     this.battlePiece = {
       index: 0,
