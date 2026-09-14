@@ -1082,9 +1082,9 @@ export class GameManager {
     if (this.stage === 10 && this.bossRushIndex === BOSS_RUSH.length - 1) {
       boss.speedScale = 2.0;
     }
-    // ★ ユーザー要望：HARD のボスは速度 2倍（ラスボスは元々2倍なので 3倍に留める）
+    // ★ ユーザー要望：HARD のボスは NORMAL の 2倍速（ラスボスは NORMAL で既に2倍なので HARD では4倍）
     if (this.difficulty === 'HARD') {
-      boss.speedScale = boss.speedScale >= 2.0 ? 3.0 : 2.0;
+      boss.speedScale *= 2.0;
     }
     this.currentBoss = boss;
     this.enemies.push(boss);
