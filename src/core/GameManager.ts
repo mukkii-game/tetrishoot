@@ -319,7 +319,7 @@ export class GameManager {
     }
 
     if (this.state !== 'PAUSED') {
-      this.starfield.update(dt, this.phase === 'SHOOTING' ? 2.4 : 1.2);
+      this.starfield.update(dt, (this.phase === 'SHOOTING' ? 2.4 : 1.2) * (this.stage === 5 && this.phase === 'SHOOTING' ? 2 / 3 : 1));
       this.particles.update(dt);
 
       if (this.transitionAlpha > 0) {
@@ -1199,7 +1199,9 @@ export class GameManager {
     }
 
     // ★ 地形（洞窟壁）のスクロール更新＆スクランブル風 壁面ミサイル発射台の連動
-    this.terrain.update(dt, this.phase === 'SHOOTING' ? 140 : 60, (lx, ly, vx, vy) => {
+    // ★ ユーザー要望：5面（斜め地形）はスクロール速度を2/3に
+    const terrainSpeedScale = this.stage === 5 ? 2 / 3 : 1;
+    this.terrain.update(dt, (this.phase === 'SHOOTING' ? 140 : 60) * terrainSpeedScale, (lx, ly, vx, vy) => {
       // 洞窟壁から横・斜めへミサイル噴射発射！
       const m = new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 0, 0, 0);
       m.x = lx;
@@ -1330,7 +1332,7 @@ export class GameManager {
     }
 
     // ★ フィールドアイテムの更新＆プレイヤー取得判定
-    const scrollSpeed = 140;
+    const scrollSpeed = 140 * (this.stage === 5 ? 2 / 3 : 1); // 5面は地形と同じく2/3速
     for (let i = this.fieldItems.length - 1; i >= 0; i--) {
       const item = this.fieldItems[i];
       item.update(dt, scrollSpeed, this.terrain.direction);
