@@ -142,8 +142,15 @@ export class GameManager {
     this.particles = new ParticleManager();
     this.terrain = new TerrainManager();
     // ハイスコアをlocalStorageから復元
-    const saved = localStorage.getItem('galaxtris_hiscore');
-    if (saved) this.highScore = parseInt(saved, 10) || 0;
+    // ★ バグ修正：itch.io等の他ドメインiframe埋め込みではSafariのクロスサイト・トラッキング防止で
+    //   localStorageアクセス自体が例外を投げることがあり、ここで無防備だとコンストラクタが
+    //   丸ごと失敗してゲームが一切起動しなくなる（タイトルの描画すら始まらない）
+    try {
+      const saved = localStorage.getItem('galaxtris_hiscore');
+      if (saved) this.highScore = parseInt(saved, 10) || 0;
+    } catch (e) {
+      console.warn('highScore load failed:', e);
+    }
   }
 
   public startNewGame(startStage?: number): void {
