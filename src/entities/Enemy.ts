@@ -538,7 +538,9 @@ export class Enemy {
     switch (this.pattern) {
       // ★ ギャプラス＆ギャラガ完全再現：曲線で連なって流れる美しい大編隊！（速度・旋回力UP！）
       case 'STREAM_CURVE': {
-        this.streamProgress += dt * 0.77; // ★ ユーザー要望：旋回速度を従来（1.15）の2/3程度に緩和
+        // ★ ユーザー要望：登場時（曲線の序盤）は5割速く進入し、その後の旋回は従来（1.15）の2/3程度に緩和
+        const entrySpeed = this.streamProgress < 1.2 ? 0.77 * 1.5 : 0.77;
+        this.streamProgress += dt * entrySpeed;
         const t = this.streamProgress;
 
         if (t < 0) {
