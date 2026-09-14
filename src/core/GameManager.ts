@@ -239,7 +239,7 @@ export class GameManager {
     // ★ ユーザー要望：3面は敵を一種類ずつにするため、壁面ミサイル発射台は出さない
     this.terrain.silosEnabled = this.stage !== 3;
     // ★ ユーザー要望：5面は開幕約10秒間、壁面発射台も起動させない
-    this.terrain.siloStartDelay = this.stage === 5 ? 10.0 : 2.5;
+    this.terrain.siloStartDelay = (this.stage === 5 || this.stage === 9) ? 10.0 : 2.5;
 
     // 洞窟内・ステージ開始時にフィールドアイテムを配置
     this.fieldItems = [];
@@ -959,8 +959,10 @@ export class GameManager {
     // ★ ユーザー要望：面の最初、ドッキング直後に即死しないよう全ステージ共通で開幕セーフティ時間を保証
     // （Stage 6〜10 は個別ディレイが 0.1〜2.2 秒と短かったため、一律 START_DELAY 分だけ後ろ倒し）
     if (this.stage >= 6) {
+      // ★ ユーザー要望：9面は難しいので最初の10秒は敵を出さない（他は1.5秒）
+      const extraDelay = this.stage === 9 ? 10.0 : START_DELAY;
       for (const e of this.enemies) {
-        e.delaySpawn(START_DELAY);
+        e.delaySpawn(extraDelay);
       }
     }
 
