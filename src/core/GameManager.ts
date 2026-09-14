@@ -935,20 +935,20 @@ export class GameManager {
       case 8:
         // 【WAVE 8：左スクロール・バンガード岩盤回廊 ＋ ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】
         // ★ ユーザー要望：Stage 8 は地形のある左スクロール面（Stage 6 の反対方向）
-        // ★ ユーザー要望：最初に一度に出すぎるので、4グループをそれぞれ約2秒ずつずらして出現させ、
-        //   総数も従来（78機）の約2/3（52機）に削減
+        // ★ ユーザー要望：最初に一度に出すぎるので、4グループをそれぞれ約3秒ずつずらして出現させ、
+        //   総数も従来（78機）の約2/3（52機）に削減（2秒間隔だとHARDでまだ3種類が重なるとのことで3秒に拡大）
         for (let k = 0; k < this.hc(13); k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.12, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.12, 'INFINITY_DIVE_RIGHT', k));
         }
         for (let i = 0; i < this.hc(9); i++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 2.2 + i * 0.18));
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 3.2 + i * 0.18));
         }
         for (let i = 0; i < this.hc(9); i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 4.2 + i * 0.16));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 6.2 + i * 0.16));
         }
         for (let i = 0; i < this.hc(7); i++) {
-          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, 6.2 + i * 0.15));
+          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, 9.2 + i * 0.15));
         }
         break;
 
