@@ -2231,21 +2231,23 @@ export class GameManager {
         ctx.fill();
         ctx.stroke();
       };
-      if (selDiff) drawSelectFrame(412, 62);
+      if (selDiff) drawSelectFrame(414, 48);
 
-      ctx.font = '900 17px monospace';
+      // ★ ユーザー要望：NORMAL / HARD はSTAGE選択と同じ大きさの文字に
+      ctx.font = '900 19px monospace';
       ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
 
       // NORMAL
       if (isNormal) {
         ctx.fillStyle = '#00f0ff';
         ctx.shadowColor = '#00f0ff';
         ctx.shadowBlur = 12;
-        ctx.fillText('▶ [ NORMAL ] ◀', CANVAS_WIDTH / 2 - 110, 435);
+        ctx.fillText('▶ [ NORMAL ] ◀', CANVAS_WIDTH / 2 - 100, 438);
       } else {
         ctx.fillStyle = '#667788';
         ctx.shadowBlur = 0;
-        ctx.fillText('  [ NORMAL ]  ', CANVAS_WIDTH / 2 - 110, 435);
+        ctx.fillText('  [ NORMAL ]  ', CANVAS_WIDTH / 2 - 100, 438);
       }
 
       // HARD
@@ -2253,21 +2255,15 @@ export class GameManager {
         ctx.fillStyle = '#ff2255';
         ctx.shadowColor = '#ff2255';
         ctx.shadowBlur = 14;
-        ctx.fillText('▶ [ HARD ] ◀', CANVAS_WIDTH / 2 + 110, 435);
+        ctx.fillText('▶ [ HARD ] ◀', CANVAS_WIDTH / 2 + 100, 438);
       } else {
         ctx.fillStyle = '#667788';
         ctx.shadowBlur = 0;
-        ctx.fillText('  [ HARD ]  ', CANVAS_WIDTH / 2 + 110, 435);
+        ctx.fillText('  [ HARD ]  ', CANVAS_WIDTH / 2 + 100, 438);
       }
 
       ctx.shadowBlur = 0;
-      ctx.font = 'bold 11px monospace';
-      ctx.fillStyle = isHard ? '#ff8899' : '#88ddff';
-      ctx.fillText(
-        isHard ? '★ HARD: ボスHP2倍！ 敵出現数2倍＆多彩な奇襲！' : '★ NORMAL: 標準バランス（80sレトロSTG体験）',
-        CANVAS_WIDTH / 2,
-        462
-      );
+      ctx.textBaseline = 'alphabetic';
 
       // 3. 面セレクト（STAGE SELECT: ◀ STAGE [ X ] ▶）
       if (!selDiff) drawSelectFrame(478, 48);
