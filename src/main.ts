@@ -42,6 +42,22 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyF' && !e.repeat) toggleFullscreen();
   });
+
+  // ★ ユーザー要望：最初から全画面に。ブラウザはユーザー操作なしのフル画面を許可しないため、
+  //   ゲーム開始の最初の操作（クリック／タップ／Space／Enter）の瞬間に一度だけ自動でフル画面を要求する。
+  //   その後ユーザーが解除した場合は再要求しない（F キー／ボタンで任意に切替）
+  let autoFullscreenDone = false;
+  const autoFullscreen = () => {
+    if (autoFullscreenDone) return;
+    autoFullscreenDone = true;
+    if (!document.fullscreenElement && container.requestFullscreen) {
+      container.requestFullscreen().catch(() => { /* iOS Safari など非対応環境は無視 */ });
+    }
+  };
+  window.addEventListener('pointerdown', autoFullscreen, { passive: true });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter') autoFullscreen();
+  });
   if (fsBtn) {
     // ゲームの入力（mousedown＝ショット／タッチ操作）に伝播させない
     fsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
