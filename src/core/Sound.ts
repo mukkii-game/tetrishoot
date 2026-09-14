@@ -873,7 +873,7 @@ export class Sound {
     });
   }
 
-  // ★ ユーザー要望：クリア画面で mp3 を流す（ループ再生）
+  // ★ ユーザー要望：クリア画面で mp3 を流す（ループなし・一回のみ再生）
   // ファイルは public/audio/game_clear.mp3 に配置。読み込めない場合は従来の勝利ジングルにフォールバック。
   public playClearMusic(): void {
     this.stopBGM();
@@ -914,7 +914,13 @@ export class Sound {
     this.clearMusicRequested = true;
     const src = this.ctx.createBufferSource();
     src.buffer = this.clearMusicBuffer;
-    src.loop = true;
+    src.loop = false; // ★ ユーザー要望：ループせず一回だけ再生
+    src.onended = () => {
+      if (this.activeClearMusicSource === src) {
+        this.activeClearMusicSource = null;
+        this.activeClearMusicGain = null;
+      }
+    };
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.7, this.ctx.currentTime + 0.5);
