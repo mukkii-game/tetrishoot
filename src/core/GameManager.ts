@@ -933,21 +933,22 @@ export class GameManager {
         break;
 
       case 8:
-        // 【WAVE 8：左スクロール・バンガード岩盤回廊 ＋ ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】（ザコ66機）
+        // 【WAVE 8：左スクロール・バンガード岩盤回廊 ＋ ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】
         // ★ ユーザー要望：Stage 8 は地形のある左スクロール面（Stage 6 の反対方向）
-        // 画面全方位から押し寄せるギャプラス風ストリーム大編隊＋グラディウス開幕編隊＋フライバイ！
-        for (let k = 0; k < this.hc(20); k++) {
+        // ★ ユーザー要望：最初に一度に出すぎるので、4グループをそれぞれ約2秒ずつずらして出現させ、
+        //   総数も従来（78機）の約2/3（52機）に削減
+        for (let k = 0; k < this.hc(13); k++) {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.12, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.12, 'INFINITY_DIVE_RIGHT', k));
         }
-        for (let i = 0; i < this.hc(14); i++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 0.8 + i * 0.18));
+        for (let i = 0; i < this.hc(9); i++) {
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 2.2 + i * 0.18));
         }
-        for (let i = 0; i < this.hc(14); i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 1.4 + i * 0.16));
+        for (let i = 0; i < this.hc(9); i++) {
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 4.2 + i * 0.16));
         }
-        for (let i = 0; i < this.hc(10); i++) {
-          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, 2.2 + i * 0.15));
+        for (let i = 0; i < this.hc(7); i++) {
+          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, 6.2 + i * 0.15));
         }
         break;
 
@@ -1513,7 +1514,8 @@ export class GameManager {
     // ★ ユーザー要望：5面のボスはザコを引き連れない
     if (this.currentBoss && !this.currentBoss.isDead && !this.bossDying && this.stage !== 5) {
       this.bossMinionTimer += dt;
-      const spawnInterval = this.difficulty === 'HARD' ? 2.8 : 4.0;
+      // ★ ユーザー要望：ボスが出すザコを今の2倍に（間隔を半分に短縮）
+      const spawnInterval = this.difficulty === 'HARD' ? 1.4 : 2.0;
       if (this.bossMinionTimer >= spawnInterval) {
         this.bossMinionTimer = 0;
         const b = this.currentBoss;

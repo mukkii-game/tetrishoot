@@ -683,9 +683,10 @@ export class Enemy {
 
           switch (this.bossPhase) {
             case 'HOVER_BARRAGE': {
-              // 1. 左右巡航移動弾幕（中央で静止留まりせず、左右へ幅広く±120px遊泳しながら射撃）
-              this.x = CANVAS_WIDTH / 2 + Math.sin(this.bossPhaseTimer * 1.5) * 125 - this.width / 2;
-              this.y = this.formationY + Math.cos(this.bossPhaseTimer * 1.8) * 14;
+              // 1. 左右巡航移動弾幕（中央で静止留まりせず、左右へ幅広く遊泳しながら射撃）
+              // ★ ユーザー要望：ボスが弱く感じる（動きが小さい）ので、可動範囲を一回り拡大
+              this.x = CANVAS_WIDTH / 2 + Math.sin(this.bossPhaseTimer * 1.5) * 165 - this.width / 2;
+              this.y = this.formationY + Math.cos(this.bossPhaseTimer * 1.8) * 20;
 
               if (this.bossPhaseTimer >= 2.6) {
                 this.bossPhase = 'WIDE_SWEEP';
@@ -696,10 +697,11 @@ export class Enemy {
 
             case 'WIDE_SWEEP': {
               // 2. 画面横幅いっぱいの大旋回スイープ（4.8秒間：画面左右端まで大きく振り子スイング！）
+              // ★ ユーザー要望：ボスをもう少し大きく動かす（振り幅アップ）
               const sweepProgress = this.bossPhaseTimer / 4.8;
               const angle = sweepProgress * Math.PI * 2.5;
-              this.x = CANVAS_WIDTH / 2 + Math.sin(angle) * (CANVAS_WIDTH * 0.38) - this.width / 2;
-              this.y = this.formationY + Math.sin(angle * 2) * 35;
+              this.x = CANVAS_WIDTH / 2 + Math.sin(angle) * (CANVAS_WIDTH * 0.46) - this.width / 2;
+              this.y = this.formationY + Math.sin(angle * 2) * 48;
 
               if (this.bossPhaseTimer >= 4.8) {
                 // ★ ユーザー要望：ボス、時々10秒に一回くらいでいいので画面中央下の方まで来て戻る、あるいは画面下にまっすぐ降りてそのまま下に消えて上から戻る
