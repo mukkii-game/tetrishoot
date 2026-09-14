@@ -507,9 +507,11 @@ export class GameManager {
 
       case 'VICTORY':
         this.stateTimer -= dt;
-        if (this.stateTimer <= 0 && (input.shoot || input.justEnter || input.isMouseDown)) {
+        // ★ ユーザー要望：クリア画面でボタンを押したらステージ1を始めるのではなく、タイトルに戻る
+        if (this.stateTimer <= 0 && (input.justShoot || input.justEnter || input.justMouseDown)) {
           this.sound.stopClearMusic();
-          this.startNewGame();
+          this.returnToTitle();
+          input.clearTransientInputs();
         }
         break;
     }
@@ -1913,6 +1915,33 @@ export class GameManager {
     }
   }
 
+  // タイトル画面へ戻る（クリア画面・ポーズ・ゲームオーバーから共通）
+  private returnToTitle(): void {
+    this.sound.stopBGM();
+    this.sound.stopBossLfo();
+    this.sound.stopBossWarning();
+    this.bossWarningActive = false;
+    this.bossWarningTimer = 0;
+    this.playerDeathSoundPlayed = false;
+    this.deathDelay = 0;
+    this.state = 'TITLE';
+    this.stage = 1;
+    this.selectedStage = 1;
+    this.titleMenuSelection = 'DIFFICULTY';
+    this.score = 0;
+    this.screenShake = 0;
+    this.fallingPieces = [];
+    this.battlePiece = null;
+    this.detachedPieces = [];
+    this.playerBullets = [];
+    this.enemies = [];
+    this.bossSpawned = false;
+    this.bossDying = false;
+    this.currentBoss = null;
+    this.player.isDead = false;
+    this.player.initInitialPiece();
+  }
+
   // ★ ユーザー要望：Oミノだけになった時の救済テトリミノ投下
   private spawnRescuePiece(): void {
     const candidateTypes: TetrominoType[] = ['T', 'L', 'J', 'I', 'S', 'Z'];
@@ -2597,7 +2626,7 @@ export class GameManager {
       if (this.stateTimer <= 0) {
         ctx.font = '16px monospace';
         ctx.fillStyle = '#ffffff';
-        ctx.fillText('PRESS SPACE TO PLAY AGAIN', CANVAS_WIDTH / 2, 490);
+        ctx.fillText('PRESS SPACE TO RETURN TO TITLE', CANVAS_WIDTH / 2, 490);
       }
       ctx.restore();
     }
