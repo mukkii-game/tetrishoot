@@ -69,6 +69,9 @@ export class Enemy {
   public y: number;
   public vx = 0;
   public vy = 0;
+  // ★ 地表ミサイルの予備動作：壁際で上下に揺れてから突っ込む（残り秒数）
+  public prelaunchTimer = 0;
+  public prelaunchBaseY = 0;
   public width: number;
   public height: number;
   public rank: AlienRank;
@@ -1004,6 +1007,20 @@ export class Enemy {
 
       // ★ コナミ・スクランブル風ミサイル：壁や端から横・斜めへ推進加速！（抜けたら反対側から再突入）
       case 'TERRAIN_LAUNCH': {
+        // ★ 予備動作：壁から顔を出し、上下に揺れて「どこから刺すか」を見せてから発射
+        if (this.prelaunchTimer > 0) {
+          this.prelaunchTimer -= dt;
+          const elapsed = 1.3 - this.prelaunchTimer;
+          // 揺れは次第に速く・大きく（最大±30px）
+          const amp = Math.min(30, 8 + elapsed * 22);
+          this.y = this.prelaunchBaseY + Math.sin(elapsed * 9) * amp;
+          if (this.prelaunchTimer <= 0) {
+            // 発射！狙いは最後に揺れていた高さ。少し勢いを付けて突進
+            this.prelaunchBaseY = this.y;
+            this.vx *= 1.5;
+          }
+          break;
+        }
         this.x += this.vx * dt;
         this.y += this.vy * dt;
         this.vx *= 1.004; // 緩やかな加速

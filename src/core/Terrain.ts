@@ -69,89 +69,44 @@ export class TerrainManager {
       });
     }
 
-    // サイロの更新＆ロケット発射判定
+    // ★ ユーザー要望：壁の小さな発射台は分かりづらいので廃止。
+    //   画面内（Y=140〜520）に入ったらミサイル本体をすぐ壁際に出現させ、予備動作は Enemy 側で行う
     for (let i = this.silos.length - 1; i >= 0; i--) {
       const silo = this.silos[i];
-      if (silo.flashTime > 0) silo.flashTime -= dt;
-
       const screenY = silo.worldY - this.scrollOffset;
 
-      // 画面下端を抜けたら消去
-      if (screenY > CANVAS_HEIGHT + 60) {
+      if (screenY > CANVAS_HEIGHT + 60 || screenY < -60) {
         this.silos.splice(i, 1);
         continue;
       }
 
-      // 画面内（Y=140〜520）に進入したとき、未発射なら予備動作（警告・振動フェーズ）を開始
-      if (!silo.launched && !silo.isDead) {
-        // ★ ステージ開幕2.5秒は発射台を起動しない（ドッキング直後の即死防止）
-        if (!silo.isWarning && this.elapsedTime >= this.siloStartDelay && screenY >= 140 && screenY <= 520) {
-          silo.isWarning = true;
-          silo.warningTimer = 0.9;
-        } else if (silo.isWarning) {
-          silo.warningTimer -= dt;
-          // 予備動作時間が終わったら、速度を従来の半分にして発射！
-          if (silo.warningTimer <= 0) {
-            silo.launched = true;
-            silo.isWarning = false;
-            const { w1, w2 } = this.getWallThickness(screenY);
-            let launchX = 0;
-            let vx = 0;
-            const vy = (Math.random() - 0.5) * 25; // 上下ブレも半減
-
-            // ユーザー要望：速度は半分に（220〜270px/s → 110〜135px/s）
-            if (silo.side === 'LEFT') {
-              launchX = Math.max(16, w1 + 10);
-              vx = 110 + Math.random() * 25;
-            } else {
-              launchX = Math.min(CANVAS_WIDTH - 30, CANVAS_WIDTH - w2 - 20);
-              vx = -(110 + Math.random() * 25);
-            }
-
-            if (onLaunchMissile) {
-              onLaunchMissile(launchX, screenY, vx, vy);
-            }
-          }
+      if (this.elapsedTime >= this.siloStartDelay && screenY >= 140 && screenY <= 520) {
+        const { w1, w2 } = this.getWallThickness(screenY);
+        let launchX = 0;
+        let vx = 0;
+        const vy = (Math.random() - 0.5) * 25;
+        if (silo.side === 'LEFT') {
+          launchX = Math.max(16, w1 + 6);
+          vx = 110 + Math.random() * 25;
+        } else {
+          launchX = Math.min(CANVAS_WIDTH - 30, CANVAS_WIDTH - w2 - 26);
+          vx = -(110 + Math.random() * 25);
         }
+        if (onLaunchMissile) {
+          onLaunchMissile(launchX, screenY, vx, vy);
+        }
+        this.silos.splice(i, 1);
       }
     }
   }
 
-  // 弾 vs 壁面サイロの命中判定（発射前・後どちらも撃破可能！）
+  // 弾 vs 壁面サイロの命中判定（発射台は表示されなくなったため常に命中なし。互換のため残置）
   public checkBulletHit(
-    bx: number,
-    by: number,
-    bw: number,
-    bh: number
+    _bx: number,
+    _by: number,
+    _bw: number,
+    _bh: number
   ): { hit: boolean; score: number; x: number; y: number } | null {
-    if (!this.enabled) return null;
-
-    for (const silo of this.silos) {
-      if (silo.isDead) continue;
-      const screenY = silo.worldY - this.scrollOffset;
-      if (screenY < -30 || screenY > CANVAS_HEIGHT + 30) continue;
-
-      const { w1, w2 } = this.getWallThickness(screenY);
-      const siloX = silo.side === 'LEFT' ? Math.max(8, w1 - 10) : CANVAS_WIDTH - w2 - 12;
-      const siloY = screenY - 12;
-      const sw = 22;
-      const sh = 24;
-
-      if (
-        bx + bw / 2 >= siloX &&
-        bx - bw / 2 <= siloX + sw &&
-        by + bh / 2 >= siloY &&
-        by - bh / 2 <= siloY + sh
-      ) {
-        silo.hp -= 1;
-        silo.flashTime = 0.12;
-        if (silo.hp <= 0) {
-          silo.isDead = true;
-          return { hit: true, score: 500, x: siloX + sw / 2, y: siloY + sh / 2 };
-        }
-        return { hit: true, score: 100, x: siloX + sw / 2, y: siloY + sh / 2 };
-      }
-    }
     return null;
   }
 
@@ -427,84 +382,6 @@ export class TerrainManager {
           }
         }
       }
-    }
-
-    // ★ コナミ・スクランブル風 壁面ミサイル発射台（Silo）の描画
-    for (const silo of this.silos) {
-      if (silo.isDead) continue;
-      const screenY = silo.worldY - this.scrollOffset;
-      if (screenY < -30 || screenY > CANVAS_HEIGHT + 30) continue;
-
-      const { w1, w2 } = this.getWallThickness(screenY);
-      const baseX = silo.side === 'LEFT' ? Math.max(8, w1 - 10) : CANVAS_WIDTH - w2 - 12;
-      let siloX = baseX;
-      let siloY = screenY - 10;
-
-      // ユーザー要望：発射前にしばらく揺れている演出
-      if (silo.isWarning) {
-        const shake = Math.sin(Date.now() / 25) * 2.5;
-        siloX += shake;
-        siloY += (Math.cos(Date.now() / 30) * 1.5);
-      }
-
-      ctx.save();
-      // 被弾点滅
-      if (silo.flashTime > 0) {
-        ctx.fillStyle = '#ffffff';
-      } else {
-        ctx.fillStyle = '#667788'; // 発射台フレーム
-      }
-      ctx.fillRect(siloX, siloY + 4, 24, 18);
-      ctx.fillStyle = '#334455';
-      ctx.fillRect(siloX + 2, siloY + 6, 20, 14);
-
-      // ミサイル本体（未発射時）
-      if (!silo.launched) {
-        // 予備動作中：エンジン点火の火花＆警告フラッシュ
-        if (silo.isWarning) {
-          const sparkOffset = (Math.random() - 0.5) * 6;
-          ctx.fillStyle = Math.random() > 0.5 ? '#ff4400' : '#ffea00';
-          if (silo.side === 'LEFT') {
-            ctx.fillRect(siloX - 4, siloY + 11 + sparkOffset, 5, 4);
-          } else {
-            ctx.fillRect(siloX + 23, siloY + 11 + sparkOffset, 5, 4);
-          }
-        }
-
-        // 弾頭（赤、長めの先端コーン）
-        ctx.fillStyle = '#ff2244';
-        if (silo.side === 'LEFT') {
-          // 右向き弾頭
-          ctx.beginPath();
-          ctx.moveTo(siloX + 24, siloY + 13);
-          ctx.lineTo(siloX + 16, siloY + 8);
-          ctx.lineTo(siloX + 16, siloY + 18);
-          ctx.closePath();
-          ctx.fill();
-        } else {
-          // 左向き弾頭
-          ctx.beginPath();
-          ctx.moveTo(siloX, siloY + 13);
-          ctx.lineTo(siloX + 8, siloY + 8);
-          ctx.lineTo(siloX + 8, siloY + 18);
-          ctx.closePath();
-          ctx.fill();
-        }
-        // ミサイル胴体（白、少し長め）
-        ctx.fillStyle = '#f0f4f8';
-        ctx.fillRect(siloX + 5, siloY + 10, 14, 6);
-
-        // 発射前点滅ランプ（警告中は超高速点滅）
-        const blinkRate = silo.isWarning ? 40 : 120;
-        const blink = Math.sin(Date.now() / blinkRate) > 0;
-        ctx.fillStyle = silo.isWarning ? (blink ? '#ff0033' : '#ffff00') : (blink ? '#ffff00' : '#ff0000');
-        ctx.fillRect(siloX + 10, siloY + 1, 4, 4);
-      } else {
-        // 発射済みの空サイロ（黒煙痕）
-        ctx.fillStyle = '#111122';
-        ctx.fillRect(siloX + 4, siloY + 8, 16, 10);
-      }
-      ctx.restore();
     }
 
     ctx.restore();

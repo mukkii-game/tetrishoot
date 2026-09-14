@@ -1214,9 +1214,11 @@ export class GameManager {
       m.y = ly;
       m.vx = vx;
       m.vy = vy;
+      // ★ 壁際で約1.3秒、上下に揺れる予備動作を見せてから突っ込む
+      m.prelaunchTimer = 1.3;
+      m.prelaunchBaseY = ly;
       this.enemies.push(m);
       this.particles.emitSparks(lx, ly, '#ff4400', 8);
-      this.sound.playShoot();
     });
 
     // 要望②：自機 vs 地形の衝突判定（狭窄洞窟でパーツ破損・Oミノ破壊でゲームオーバー）
