@@ -642,8 +642,8 @@ export class GameManager {
         item.dockCooldown -= dt;
       }
 
-      // ★ ユーザー要望：弾を当てるたびに落下速度・左右速度が少しずつ上がる（1発ごとに+6%、最大2倍）
-      const speedMul = Math.min(2.0, 1 + (item.hitCount || 0) * 0.06);
+      // ★ ユーザー要望：弾を当てるたびに落下速度・左右速度が上がる（1発ごとに+12%、最大2.5倍）
+      const speedMul = Math.min(2.5, 1 + (item.hitCount || 0) * 0.12);
 
       // 重力加速度＆慣性落下ダイナミクス
       const GRAVITY = 110 * speedMul;
@@ -696,7 +696,7 @@ export class GameManager {
 
           // ★ 当てるたびにカウントを増やし、反動・ノックバックも少しずつ強く
           item.hitCount = (item.hitCount || 0) + 1;
-          const hitMul = Math.min(2.0, 1 + item.hitCount * 0.06);
+          const hitMul = Math.min(2.5, 1 + item.hitCount * 0.12);
 
           // 1. 上方向への力強い反動インパルス（お手玉・浮遊）
           item.vy = -130 * hitMul;
