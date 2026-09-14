@@ -46,9 +46,22 @@ window.addEventListener('DOMContentLoaded', () => {
   // ★ ユーザー要望：最初から全画面に。ブラウザはユーザー操作なしのフル画面を許可しないため、
   //   ゲーム開始の最初の操作（クリック／タップ／Space／Enter）の瞬間に一度だけ自動でフル画面を要求する。
   //   その後ユーザーが解除した場合は再要求しない（F キー／ボタンで任意に切替）
+  // ★ バグ調査：itch.io（iframe埋め込み）+ スマホで動かないとの報告。
+  //   スマホ／iframe埋め込み環境では Fullscreen API の対応がブラウザにより不安定
+  //   （iOS Safariは非対応、Android版はiframeに allowfullscreen が無いと拒否される等）で、
+  //   万一 requestFullscreen() の呼び出し自体やその周辺処理が例外を投げると、この関数を呼んでいる
+  //   タッチイベント自体の処理が壊れ、以降の操作を受け付けなくなる恐れがある。
+  //   自動フル画面は「iframeに埋め込まれていない・タッチ主体でない（PC）」場合に限定し、
+  //   スマホ／itch.io埋め込み環境では常にスキップして安全側に倒す。
+  const isEmbeddedFrame = (() => {
+    try { return window.self !== window.top; } catch { return true; }
+  })();
+  const isCoarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const allowAutoFullscreen = !isEmbeddedFrame && !isCoarsePointer;
+
   let autoFullscreenDone = false;
   const autoFullscreen = () => {
-    if (autoFullscreenDone) return;
+    if (autoFullscreenDone || !allowAutoFullscreen) return;
     autoFullscreenDone = true;
     if (!document.fullscreenElement && container.requestFullscreen) {
       container.requestFullscreen().catch(() => { /* iOS Safari など非対応環境は無視 */ });
