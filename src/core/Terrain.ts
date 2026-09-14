@@ -110,6 +110,22 @@ export class TerrainManager {
     return null;
   }
 
+  // ★ 斜めスクロール面（5面）の斜め張り出し勾配。開放ゾーンでは勾配を大きく弱め、道が広く・地形面積が減る区間を作る
+  private getDiagGradient(diagCoord: number): number {
+    const zonePeriod = 1400;
+    const zonePhase = ((diagCoord + this.seed * 200) % zonePeriod + zonePeriod) % zonePeriod;
+    const zoneRatio = zonePhase / zonePeriod;
+    // 開放ゾーン（0.20〜0.35 / 0.55〜0.70 / 0.90〜1.00）は勾配 0.12、その他は 0.32（従来 0.45）
+    const isOpen = (zoneRatio >= 0.20 && zoneRatio < 0.35) || (zoneRatio >= 0.55 && zoneRatio < 0.70) || zoneRatio >= 0.90;
+    if (isOpen) return 0.12;
+    // ゾーン境界付近はなめらかに補間
+    const edges = [0.20, 0.35, 0.55, 0.70, 0.90];
+    let nearest = 1;
+    for (const e of edges) nearest = Math.min(nearest, Math.abs(zoneRatio - e));
+    const blend = Math.min(1, nearest / 0.04);
+    return 0.12 + (0.32 - 0.12) * blend;
+  }
+
   public getWallThickness(screenCoord: number): { w1: number; w2: number } {
     if (!this.enabled) return { w1: 0, w2: 0 };
 
@@ -229,12 +245,13 @@ export class TerrainManager {
       // 斜めスクロール：左下壁と右上壁の判定
       const diagCoord = (CANVAS_HEIGHT - y) * 0.9 + this.scrollOffset;
       const { w1, w2 } = this.getWallThickness(diagCoord);
+      const grad = this.getDiagGradient(diagCoord + this.scrollOffset);
       if (w1 > 0) {
-        const leftDepth = w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * 0.45);
+        const leftDepth = w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * grad);
         if (leftDepth > 0 && x < leftDepth) return true;
       }
       if (w2 > 0) {
-        const rightDepth = w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * 0.45);
+        const rightDepth = w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * grad);
         if (rightDepth > 0 && x > CANVAS_WIDTH - rightDepth) return true;
       }
     }
@@ -345,10 +362,11 @@ export class TerrainManager {
       for (let y = 0; y < CANVAS_HEIGHT + blockSize; y += blockSize) {
         const diagCoord = (CANVAS_HEIGHT - y) * 0.9 + this.scrollOffset;
         const { w1, w2 } = this.getWallThickness(diagCoord);
+        const grad = this.getDiagGradient(diagCoord + this.scrollOffset);
 
         // 左下壁: 画面下に行くほどせり出し、時間とともに左下へ流れていく
         if (w1 > 0) {
-          const depth = w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * 0.45);
+          const depth = w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * grad);
           if (depth > 0) {
             const drawW = Math.min(CANVAS_WIDTH - 120, Math.floor(depth / blockSize) * blockSize);
             if (drawW > 0) {
@@ -366,7 +384,7 @@ export class TerrainManager {
 
         // 右上壁: 画面上に行くほどせり出し、時間とともに左下へ流れていく
         if (w2 > 0) {
-          const depth = w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * 0.45);
+          const depth = w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * grad);
           if (depth > 0) {
             const drawW = Math.min(CANVAS_WIDTH - 120, Math.floor(depth / blockSize) * blockSize);
             if (drawW > 0) {
