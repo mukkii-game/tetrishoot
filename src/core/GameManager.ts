@@ -89,6 +89,7 @@ export class GameManager {
 
   // ボス出現・撃破管理
   public bossSpawned = false;
+  private lastScriptedSpawnTime = 0; // spawnAlienFleet で予定した最後のザコ出現時刻（秒）
   public currentBoss: Enemy | null = null;
   public bossDying = false;
   public bossDeathTimer = 0;
@@ -959,6 +960,12 @@ export class GameManager {
         e.delaySpawn(START_DELAY);
       }
     }
+
+    // ★ 予定された最後のザコが出現する時刻を記録（この時刻までは「残り敵が少ない」判定でボスを呼ばない）
+    this.lastScriptedSpawnTime = 0;
+    for (const e of this.enemies) {
+      this.lastScriptedSpawnTime = Math.max(this.lastScriptedSpawnTime, e.getSpawnDelay());
+    }
   }
 
   private spawnWaveBoss(): void {
@@ -1380,7 +1387,11 @@ export class GameManager {
 
     // ★ ユーザー要望：宇宙基地サイレンはボス登場時に鳴らす、予告として そしてボス登場
     if (!this.bossSpawned) {
-      if (!this.bossWarningActive && (this.shootingTimeLimit <= 32 || this.enemies.length <= 6)) {
+      // ★ バグ修正：ザコが少ない面（5面など）で開幕即ボスにならないよう、
+      //   「残り敵6体以下」条件は予定のザコが全て出現した後にのみ有効
+      const elapsed = 65 - this.shootingTimeLimit;
+      const allScriptedSpawned = elapsed >= this.lastScriptedSpawnTime + 1.0;
+      if (!this.bossWarningActive && (this.shootingTimeLimit <= 32 || (allScriptedSpawned && this.enemies.length <= 6))) {
         this.bossWarningActive = true;
         this.bossWarningTimer = 3.5;
         this.sound.playBossWarning();

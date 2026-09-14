@@ -461,6 +461,11 @@ export class Enemy {
     this.patternTimer -= seconds;
   }
 
+  // 出現までの残り秒数（未出現なら正、出現済みなら0）
+  public getSpawnDelay(): number {
+    return Math.max(0, -this.patternTimer);
+  }
+
   public update(
     dt: number,
     formationOffsetAngle: number,
