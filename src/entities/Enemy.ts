@@ -81,6 +81,7 @@ export class Enemy {
   private chargeDirX = 0;
   private chargeDirY = 1;
   private betaState: 'SWEEP' | 'DIVE' = 'SWEEP';
+  private meteorT = 0; // 斜めメテオ：進入してからの経過秒（最初の1秒は超スロー、そこから急加速）
   private betaTurns = 0;
   private terrainArmed = false; // TERRAIN_LAUNCH：初回起動時に予備動作をセット済みか
   public width: number;
@@ -199,8 +200,8 @@ export class Enemy {
         this.scoreValue = 5000;
         break;
       case 'METEOR_ROCK':
-        this.width = 42;
-        this.height = 42;
+        this.width = 84; // ★ ユーザー要望：縦横2倍
+        this.height = 84;
         this.maxHp = 1; // ユーザー要望：ザコは基本一撃で死ぬように
         this.scoreValue = 300;
         break;
@@ -431,6 +432,7 @@ export class Enemy {
       this.y = -30 + Math.random() * 80;
       this.vx = (fromLeft ? 1 : -1) * (260 + Math.random() * 100);
       this.vy = 320 + Math.random() * 80;
+      this.meteorT = 0;
     } else if (pattern === 'STARFORCE_GARI_MOVE') {
       // ★ スターフォース・ガリ：画面上部から高速降下
       this.x = Math.max(40, Math.min(CANVAS_WIDTH - 40 - this.width, this.formationX));
@@ -1204,14 +1206,18 @@ export class Enemy {
 
       // ★ ユーザー要望：斜めに素早く画面をすり抜けるメテオ（抜けたら反対側上空から再突入）
       case 'METEOR_DIAGONAL': {
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
-        if (this.y > CANVAS_HEIGHT + 50 || this.x < -60 || this.x > CANVAS_WIDTH + 60) {
+        // ★ ユーザー要望：最初の約1秒はすごく遅く、そこからぐんと加速
+        this.meteorT += dt;
+        const speedFactor = this.meteorT < 1.0 ? 0.12 : Math.min(1.0, 0.12 + (this.meteorT - 1.0) * 1.6);
+        this.x += this.vx * speedFactor * dt;
+        this.y += this.vy * speedFactor * dt;
+        if (this.y > CANVAS_HEIGHT + 50 || this.x < -100 || this.x > CANVAS_WIDTH + 100) {
           const fromLeft = Math.random() > 0.5;
           this.x = fromLeft ? -30 : CANVAS_WIDTH + 30;
           this.y = -40 + Math.random() * 80;
           this.vx = (fromLeft ? 1 : -1) * (260 + Math.random() * 100);
           this.vy = 320 + Math.random() * 80;
+          this.meteorT = 0;
           this.justFiredLaser = true;
         }
         break;
@@ -1633,7 +1639,8 @@ export class Enemy {
 
       // ★ ムーンクレスタ名物：隕石メテオ（不揃いな岩石ピクセル＆回転炎）
       case 'METEOR_ROCK': {
-        // 回転しながら飛ぶ岩石
+        // 回転しながら飛ぶ岩石（★ ユーザー要望：表示も縦横2倍）
+        ctx.scale(2, 2);
         ctx.rotate(this.timeAlive * 6);
         ctx.fillStyle = '#8b5a2b';
         ctx.fillRect(-9, -9, 18, 18);
