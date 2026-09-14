@@ -97,6 +97,7 @@ export class GameManager {
   // ボス出現・撃破管理
   public bossSpawned = false;
   private lastScriptedSpawnTime = 0; // spawnAlienFleet で予定した最後のザコ出現時刻（秒）
+  private stageTextDelay = 0; // mp3 イントロ待ち：0 になった時点で「STAGE n」表示＆本編開始
   public currentBoss: Enemy | null = null;
   public bossDying = false;
   public bossDeathTimer = 0;
@@ -172,6 +173,7 @@ export class GameManager {
   // ==========================================
   private startTetrisPhase(): void {
     this.phase = 'TETRIS';
+    this.stageTextDelay = 0;
     this.playerBullets = [];
     this.enemies = [];
     this.battlePiece = null;
@@ -262,9 +264,15 @@ export class GameManager {
     // ギャラガ＆ムーンクレスタ風 多彩な大編隊をスポーン！
     this.spawnAlienFleet();
 
-    this.sound.playPhaseAlert('shooting');
     this.sound.startBGM('shooting');
-    this.showTransitionText(`STAGE ${this.stage}`, 1.8);
+    // ★ ユーザー要望：mp3 ステージBGMがある版では、ドッキングした瞬間に曲を鳴らし始め、
+    //   曲の3秒のイントロが終わってから「STAGE n」を表示してステージ本編を開始する
+    if (this.sound.hasStageMusic()) {
+      this.stageTextDelay = 3.0;
+    } else {
+      this.sound.playPhaseAlert('shooting');
+      this.showTransitionText(`STAGE ${this.stage}`, 1.8);
+    }
   }
 
   private showTransitionText(text: string, scale = 1.0): void {
@@ -1128,6 +1136,16 @@ export class GameManager {
   }
 
   private updateShootingPhase(dt: number, input: Input): void {
+    // ★ mp3 イントロ待ち（3秒）：時間が来たら「STAGE n」表示。敵の出現はこの3秒分あらかじめ遅らせてある
+    if (this.stageTextDelay > 0) {
+      this.stageTextDelay -= dt;
+      if (this.stageTextDelay <= 0) {
+        this.stageTextDelay = 0;
+        this.sound.playPhaseAlert('shooting');
+        this.showTransitionText(`STAGE ${this.stage}`, 1.8);
+      }
+    }
+
     // ★ ボス撃破後の爆発鑑賞ディレイ処理
     if (this.bossDying) {
       this.bossDeathTimer += dt;
