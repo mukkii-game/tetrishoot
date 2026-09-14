@@ -853,12 +853,8 @@ export class GameManager {
         // 1面の中でも静かに始まって、ところどころスリルのあるところがあって、ものすごくてきがたくさん！みたいなクライマックスがあって、その後ボス！
         //
         // ★ ユーザー要望：Stage 5 は地形に非常にぶつかりやすく難しいので、出現敵を約半分に削減
-        // ★ ユーザー要望：5面は開始10秒間は敵を一匹も出さず、ザコはロケット（地表ミサイル）のみ。
-        //   壁の回避に集中できるよう、ドローン・索敵ミサイル・ガリ・旋回編隊・グラディウス編隊は出さない
-        //   （壁際から随時発射される地表ミサイルは Terrain 側で別途出現）
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 4 : 3); i++) {
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, 12.0 + i * 4.0));
-        }
+        // ★ ユーザー要望：5面のザコは地形（壁際から発射される地表ミサイル）だけ。スクリプト出現の敵は無し
+        //   （開始10秒間は壁の発射も止めているので、最初は地形のみ）
         break;
 
       case 6:
@@ -965,6 +961,10 @@ export class GameManager {
     this.lastScriptedSpawnTime = 0;
     for (const e of this.enemies) {
       this.lastScriptedSpawnTime = Math.max(this.lastScriptedSpawnTime, e.getSpawnDelay());
+    }
+    // スクリプト出現の敵が無い面（5面）は、残り敵数によるボス呼び出しをせず時間切れ（残り32秒）でボスへ
+    if (this.enemies.length === 0) {
+      this.lastScriptedSpawnTime = 999;
     }
   }
 
@@ -1239,7 +1239,8 @@ export class GameManager {
             //   本体は数秒間の無敵時間に入る（壁に沿った連続ヒットで即死しない）
             if (hitRes.pieceDestroyed && !this.player.isDead) {
               const WALL_GRACE = 2.5;
-              this.player.barrierTimer = Math.max(this.player.barrierTimer, WALL_GRACE);
+              // ★ バリアのリングではなく、点滅＋白フラッシュの猶予無敵で表示
+              this.player.graceTimer = Math.max(this.player.graceTimer, WALL_GRACE);
               this.terrainHitCooldown = WALL_GRACE;
               this.showTransitionText('PART LOST! (INVINCIBLE 2.5 SEC)', 1.1);
             }

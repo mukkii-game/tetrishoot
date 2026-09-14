@@ -522,7 +522,8 @@ export class Enemy {
         this.x = this.formationX;
         this.y = -50;
       } else if (this.pattern === 'TERRAIN_LAUNCH') {
-        this.x = this.vx > 0 ? -50 : CANVAS_WIDTH + 50;
+        // 待機中は完全に画面外へ（-50 だと先端が左上に覗いていた）
+        this.x = this.vx > 0 ? -this.width - 80 : CANVAS_WIDTH + 80;
         this.y = this.formationY;
       } else {
         this.x = -100;

@@ -17,6 +17,8 @@ export class Player {
   public pieces: AttachedPiece[] = [];
   public fireCooldown = 0;
   public barrierTimer = 0;
+  // ★ 壁衝突後などの猶予無敵（点滅＋白フラッシュで表示。バリアのリングは出さない）
+  public graceTimer = 0;
   public isInvincible = false; // 撮影用無敵モードフラグ
   public isDead = false;
 
@@ -359,6 +361,9 @@ export class Player {
     if (this.barrierTimer > 0) {
       this.barrierTimer -= dt;
     }
+    if (this.graceTimer > 0) {
+      this.graceTimer -= dt;
+    }
 
     for (const attached of this.pieces) {
       attached.piece.update(dt);
@@ -575,6 +580,11 @@ export class Player {
       particles.emitSparks(px, py, '#00ffff', 8);
       return { hit: false, pieceDestroyed: false };
     }
+    // 猶予無敵中はダメージ無効（火花のみ）
+    if (this.graceTimer > 0) {
+      particles.emitSparks(px, py, '#ffffff', 6);
+      return { hit: false, pieceDestroyed: false };
+    }
 
     for (let i = this.pieces.length - 1; i >= 0; i--) {
       const attached = this.pieces[i];
@@ -662,6 +672,16 @@ export class Player {
       occupiedMap.add(`${cell.gx},${cell.gy}`);
     }
 
+    // ★ 猶予無敵中：高速点滅（半透明⇔通常）＋周期的な白フラッシュで「一定時間だけの猶予」を表現
+    const graceActive = this.graceTimer > 0;
+    const gracePhase = graceActive ? Math.floor(Date.now() / 70) % 4 : -1; // 0..3 を約70msごとに巡回
+    const graceDim = graceActive && (gracePhase === 1 || gracePhase === 3);
+    const graceFlash = graceActive && gracePhase === 0;
+    if (graceDim) {
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+    }
+
     for (const attached of this.pieces) {
       const piece = attached.piece;
       for (const cell of piece.cells) {
@@ -693,7 +713,18 @@ export class Player {
         }
 
         piece.drawCell(ctx, px, py, undefined, 1.0, hasActiveGun, activeAngle);
+
+        // 白フラッシュ：セルを白く塗りつぶす
+        if (graceFlash) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+          ctx.restore();
+        }
       }
+    }
+    if (graceDim) {
+      ctx.restore();
     }
 
     // スラスター炎
