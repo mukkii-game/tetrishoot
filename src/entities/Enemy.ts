@@ -74,6 +74,8 @@ export class Enemy {
   // ★ 地表ミサイルの予備動作：壁際で上下に揺れてから突っ込む（残り秒数）
   public prelaunchTimer = 0;
   public prelaunchBaseY = 0;
+  // ★ 個体ごとの時間倍率（ラスボスの倍速化などに使用。移動・フェーズ切替・アニメ全てに効く）
+  public speedScale = 1.0;
   // ★ 7面用ステート
   private chargeState: 'DESCEND' | 'HOVER' | 'CHARGE' | 'EXIT' = 'DESCEND';
   private chargeTimer = 0;
@@ -499,6 +501,10 @@ export class Enemy {
     canDive: boolean
   ): boolean {
     let justStartedDive = false;
+    // 出現待機中（patternTimer < 0）は倍率を掛けず、行動開始後のみ時間を加速
+    if (this.speedScale !== 1.0 && this.patternTimer >= 0) {
+      dt *= this.speedScale;
+    }
     const prevPatternTimer = this.patternTimer;
     this.timeAlive += dt;
     this.patternTimer += dt;

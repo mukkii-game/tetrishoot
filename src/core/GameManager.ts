@@ -26,7 +26,7 @@ const BOSS_RUSH: { rank: BossRank; hp: number; pattern: FlightPattern }[] = [
   { rank: 'GIANT_RED', hp: 36, pattern: 'SURPRISE_FROM_BOTTOM' },
   { rank: 'GIGA_COLD_EYE', hp: 36, pattern: 'FORMATION_LOOP' },
   { rank: 'SPACE_SERPENT_HEAD', hp: 40, pattern: 'SERPENT_SLITHER' },
-  { rank: 'UFO_MOTHERSHIP', hp: 96, pattern: 'CAROUSEL_CIRCLE' },
+  { rank: 'UFO_MOTHERSHIP', hp: 144, pattern: 'CAROUSEL_CIRCLE' }, // ★ ラスボス：HP 1.5倍（96→144）、動きは倍速
 ];
 export type GamePhase = 'TETRIS' | 'SHOOTING';
 
@@ -1072,6 +1072,10 @@ export class GameManager {
       : (this.stage === 6 ? 'SERPENT_SLITHER' : (this.stage === 3 ? 'SURPRISE_FROM_BOTTOM' : 'FORMATION_LOOP'));
     const boss = new Enemy(bossRank, pattern, 4, 0, 0.1, undefined, 0, true, bossHp);
     boss.scoreValue = 3000 + this.stage * 1000 + (this.stage === 10 ? this.bossRushIndex * 2000 : 0);
+    // ★ ユーザー要望：ラスボス（ボスラッシュ最後のUFO母船）は全ての動きを倍速に
+    if (this.stage === 10 && this.bossRushIndex === BOSS_RUSH.length - 1) {
+      boss.speedScale = 2.0;
+    }
     this.currentBoss = boss;
     this.enemies.push(boss);
 
