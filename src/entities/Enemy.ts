@@ -1053,15 +1053,27 @@ export class Enemy {
 
       // ★ ゼビウス風：直角クランク移動（横直進→直角折れ曲がり急降下→再び横直進）
       case 'XEVIOUS_TOROID': {
-        const cycle = this.timeAlive % 4.0;
+        // ★ ユーザー要望：同じ場所（画面端の地形と重なる帯）に居続けないよう、
+        //   往路1.4秒・復路0.7秒の非対称ジグザグで毎サイクル画面を横断していく
+        const cycle = this.timeAlive % 3.6;
         if (cycle < 1.4) {
           this.x += this.vx * dt; // 水平高速直進
         } else if (cycle < 2.0) {
           this.y += 180 * dt; // 直角急降下！
-        } else if (cycle < 3.4) {
-          this.x -= this.vx * dt; // 逆方向に水平直進！
+        } else if (cycle < 2.7) {
+          this.x -= this.vx * dt; // 短い逆走（差し引きで前進）
         } else {
           this.y += 120 * dt;
+        }
+        // 画面端（地形帯）に達したら進行方向を反転して中央側へ戻る
+        const minX = 50;
+        const maxX = CANVAS_WIDTH - 50 - this.width;
+        if (this.x < minX && this.vx < 0) {
+          this.x = minX;
+          this.vx = Math.abs(this.vx);
+        } else if (this.x > maxX && this.vx > 0) {
+          this.x = maxX;
+          this.vx = -Math.abs(this.vx);
         }
 
         if (this.y > CANVAS_HEIGHT + 40) {
