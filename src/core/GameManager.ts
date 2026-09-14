@@ -1178,18 +1178,23 @@ export class GameManager {
     // ・2つのテトリミノ（Oミノ＋1つ）になってから10秒たったらまたテトリミノが落ちてくる
     // ・もし3つ以上のテトリミノの時は特に追加で出さない
     const pieceCount = this.player.pieces.length;
-    if (pieceCount < 3) {
-      if (!this.battlePiece || this.battlePiece.settled) {
-        this.rescueSpawnCooldown -= dt;
-        if (this.rescueSpawnCooldown <= 0) {
-          this.spawnRescuePiece();
-          // 次の投下判定まで7秒
-          this.rescueSpawnCooldown = GameManager.RESCUE_NEXT_DELAY;
+    // ★ ユーザー要望：mp3 イントロ待ち中（stageTextDelay > 0）はレスキュー猶予を全く消費しない
+    //   （減算もリセットもしない）。「STAGE n」表示（本編開始）と同時にカウントを開始し、
+    //   そこから RESCUE_FIRST_DELAY 秒後に最初のレスキューが出る
+    if (this.stageTextDelay <= 0) {
+      if (pieceCount < 3) {
+        if (!this.battlePiece || this.battlePiece.settled) {
+          this.rescueSpawnCooldown -= dt;
+          if (this.rescueSpawnCooldown <= 0) {
+            this.spawnRescuePiece();
+            // 次の投下判定まで7秒
+            this.rescueSpawnCooldown = GameManager.RESCUE_NEXT_DELAY;
+          }
         }
+      } else {
+        // 3つ以上のテトリミノがある時は追加で出さない（タイマーは7秒待機でリセット）
+        this.rescueSpawnCooldown = GameManager.RESCUE_NEXT_DELAY;
       }
-    } else {
-      // 3つ以上のテトリミノがある時は追加で出さない（タイマーは7秒待機でリセット）
-      this.rescueSpawnCooldown = GameManager.RESCUE_NEXT_DELAY;
     }
 
     // シューティング中の救済落下テトリミノ更新＆ドッキング判定
