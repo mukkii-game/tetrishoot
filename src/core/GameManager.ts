@@ -1800,10 +1800,16 @@ export class GameManager {
     }
 
     // タイムオーバーまたは敵全滅クリア判定（落下ブロックがある場合は落ちきるまで待つ）
+    // ★ バグ修正：ボス出現後は「残り時間切れ」だけではクリアにしない。
+    //   以前はボスが生きたまま時間切れになると、撃破演出なしで静かにステージクリアしてしまっていた
+    //   （HARDでボスHPが上がり撃破が間に合わないと発生しやすかった）。
+    //   ボス戦中は必ず撃破（bossSpawned && !currentBoss）が条件になる。ザコ戦中の時間切れは従来どおり有効
+    const bossAliveOrPending = this.bossSpawned && !!this.currentBoss;
     if (
       !this.bossDying &&
+      !bossAliveOrPending &&
       (!this.battlePiece || this.battlePiece.settled) &&
-      ((this.bossSpawned && !this.currentBoss && this.enemies.length === 0) || this.shootingTimeLimit <= 0)
+      ((this.bossSpawned && this.enemies.length === 0) || this.shootingTimeLimit <= 0)
     ) {
       this.onBossPhaseEnded();
     }
