@@ -248,25 +248,26 @@ export class TerrainManager {
     }
   }
 
-  public isColliding(x: number, y: number): boolean {
+  // forgive: 壁表面から何pxまでめり込みを許容するか（★ ユーザー要望：自機は表面の1ブロック分は当たらない）
+  public isColliding(x: number, y: number, forgive = 0): boolean {
     if (!this.enabled) return false;
 
     if (this.direction === 'UP') {
       const { w1, w2 } = this.getWallThickness(y);
-      if (x < w1) return true;
-      if (x > CANVAS_WIDTH - w2) return true;
+      if (w1 > 0 && x < w1 - forgive) return true;
+      if (w2 > 0 && x > CANVAS_WIDTH - w2 + forgive) return true;
     } else if (this.direction === 'RIGHT' || this.direction === 'LEFT') {
       const { w1, w2 } = this.getWallThickness(x);
-      if (y < w1) return true;
-      if (y > CANVAS_HEIGHT - w2) return true;
+      if (w1 > 0 && y < w1 - forgive) return true;
+      if (w2 > 0 && y > CANVAS_HEIGHT - w2 + forgive) return true;
     } else if (this.direction === 'DIAGONAL_UP_RIGHT') {
       // 斜めスクロール：左下壁と右上壁の判定
       const { left, right } = this.getDiagDepths(y);
       // 描画と同じブロック単位に量子化して判定（見た目と当たりを一致させる）
       const leftQ = Math.floor(left / 20) * 20;
       const rightQ = Math.floor(right / 20) * 20;
-      if (leftQ > 0 && x < leftQ) return true;
-      if (rightQ > 0 && x > CANVAS_WIDTH - rightQ) return true;
+      if (leftQ > 0 && x < leftQ - forgive) return true;
+      if (rightQ > 0 && x > CANVAS_WIDTH - rightQ + forgive) return true;
     }
     return false;
   }
@@ -284,8 +285,10 @@ export class TerrainManager {
       { x: x + width, y: y + height / 2 },
     ];
 
+    // 自機は壁の表面1ブロック（20px）に触れても当たらない（奥のブロックに達したら衝突）
+    const SURFACE_FORGIVE = 20;
     for (const pt of samplePoints) {
-      if (this.isColliding(pt.x, pt.y)) return true;
+      if (this.isColliding(pt.x, pt.y, SURFACE_FORGIVE)) return true;
     }
     return false;
   }
