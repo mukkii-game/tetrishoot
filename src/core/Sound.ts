@@ -63,11 +63,19 @@ export class Sound {
   private shotBus: DynamicsCompressorNode | null = null;
 
   constructor() {
-    // 遅延デコード（ユーザー操作時に初期化）
+    // ★ バグ修正：以前は初回のユーザー操作（クリック等）でAudioContextを作成し、
+    //   そこから mp3 ステージBGM（数MB）のフェッチ＆デコードを始めていた。
+    //   タイトル操作からドッキング完了までの数秒では読み込みが間に合わず、
+    //   「合成音が鳴った後、数秒遅れて本物の曲が最初から割り込む」ように聞こえていた。
+    //   AudioContext の生成・デコードはユーザー操作なしでも可能（resume() だけが操作を要求する）
+    //   ため、ページ読み込み直後に前倒しで開始する。
+    this.initContext();
   }
 
   public resumeAudio(): void {
-    this.initContext();
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
   }
 
   private initContext(): void {
