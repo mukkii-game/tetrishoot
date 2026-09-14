@@ -860,17 +860,18 @@ export class GameManager {
         for (let i = 0; i < 2; i++) {
           this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', i, 0, START_DELAY + 10.0 + i * 1.0));
         }
-        // 3. 【加速する緊張】（t=12.0〜）：スターフォース「ガリ」の急停止＆急加速アタック！
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 4 : 3); i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 5), 0, START_DELAY + 10.5 + i * 0.76));
+        // ★ ユーザー要望：壁自体が難しいので、中盤以降も敵を少なめにし、種類の混合も減らして一種類ずつ順番に出す
+        // 3. 【加速する緊張】（t=16.0〜）：ガリの急停止＆急加速アタック（2機、間隔広め）
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 3 : 2); i++) {
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 5), 0, START_DELAY + 14.5 + i * 1.2));
         }
-        // 4. 【怒涛のクライマックス大群！】（t=17.0〜）：左右から怒涛の勢いで押し寄せる大編隊クロスラッシュ！
-        for (let k = 0; k < (this.difficulty === 'HARD' ? 8 : 5); k++) {
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 1 + (k % 4), 2, START_DELAY + 15.5, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 4 + (k % 4), 2, START_DELAY + 15.5, 'INFINITY_DIVE_RIGHT', k));
+        // 4. 【クライマックス】（t=22.0〜）：片側からの旋回編隊のみ（左右同時のクロスラッシュは廃止）
+        for (let k = 0; k < (this.difficulty === 'HARD' ? 5 : 3); k++) {
+          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 1 + (k % 4), 2, START_DELAY + 20.5, 'INFINITY_DIVE_LEFT', k));
         }
-        for (let i = 0; i < (this.difficulty === 'HARD' ? 5 : 3); i++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 5), 0, START_DELAY + 18.0 + i * 0.5));
+        // 5. （t=28.0〜）：グラディウス編隊は前の編隊が抜けてから、少数で
+        for (let i = 0; i < (this.difficulty === 'HARD' ? 3 : 2); i++) {
+          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 5), 0, START_DELAY + 26.5 + i * 0.8));
         }
         break;
 
