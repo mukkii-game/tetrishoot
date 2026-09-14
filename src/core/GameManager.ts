@@ -110,8 +110,8 @@ export class GameManager {
   public titleMenuSelection: 'DIFFICULTY' | 'STAGE' = 'DIFFICULTY';
   public selectedStage: number = 1; // タイトル画面＆ポーズ画面で選べるステージ (1〜10)
   private rescueSpawnCooldown = 0;
-  // ★ ユーザー要望：救済テトリミノは1つ目も2つ目以降も5秒後
-  private static readonly RESCUE_FIRST_DELAY = 5.0;
+  // ★ ユーザー要望：救済テトリミノは1つ目が3秒後、2つ目以降は5秒後
+  private static readonly RESCUE_FIRST_DELAY = 3.0;
   private static readonly RESCUE_NEXT_DELAY = 5.0;
   public dockingTimer = 30.0; // ユーザー要望：ドッキングせよ 30.0から減っていく
 
