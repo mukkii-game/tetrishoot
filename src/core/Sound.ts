@@ -1019,8 +1019,8 @@ export class Sound {
       .then(buf => {
         this.stageMusicBuffer = buf;
         this.stageMusicState = 'ready';
-        // 読み込み完了時に既にステージ中なら、合成BGMから mp3 に切り替える
-        if (this.currentBgmPhase !== 'none' && this.bgmIntervalId !== null) {
+        // 読み込み完了時に既にシューティング中なら、合成BGMから mp3 に切り替える
+        if (this.currentBgmPhase === 'shooting' && this.bgmIntervalId !== null) {
           clearInterval(this.bgmIntervalId);
           this.bgmIntervalId = null;
           this.startStageMusic(0);
@@ -1078,16 +1078,13 @@ export class Sound {
 
   public startBGM(phase: 'tetris' | 'shooting'): void {
     if (this.currentBgmPhase === phase) return;
-    // ★ mp3 ステージBGMが使える場合：フェーズが変わっても曲は続ける（ステージの始めから流しっぱなし）
-    if (this.stageMusicState === 'ready' && this.stageMusicSource && this.currentBgmPhase !== 'none') {
-      this.currentBgmPhase = phase;
-      return;
-    }
     this.stopBGM();
     this.currentBgmPhase = phase;
     if (this.isMuted) return;
     this.initContext();
-    if (this.stageMusicState === 'ready') {
+    // ★ ユーザー要望：mp3 ステージBGMはドッキング完了（シューティング開始）の瞬間から鳴らす。
+    //   ドッキング中は従来の合成BGMのまま
+    if (this.stageMusicState === 'ready' && phase === 'shooting') {
       this.startStageMusic(0);
       return;
     }
@@ -1133,7 +1130,7 @@ export class Sound {
 
   public resumeBGM(): void {
     if (this.currentBgmPhase === 'none') return;
-    if (this.stageMusicState === 'ready') {
+    if (this.stageMusicState === 'ready' && this.currentBgmPhase === 'shooting') {
       if (!this.stageMusicSource) this.startStageMusic(this.stageMusicOffset);
       return;
     }
