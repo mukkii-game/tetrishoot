@@ -1019,10 +1019,11 @@ export class Enemy {
         if (!this.terrainArmed) {
           this.terrainArmed = true;
           if (this.prelaunchTimer <= 0) {
-            this.x = this.vx >= 0 ? 12 : CANVAS_WIDTH - this.width - 12;
             this.prelaunchTimer = 1.3;
             this.prelaunchBaseY = this.y;
           }
+          // ★ ユーザー要望：予備動作の位置は必ず画面の左端か右端（出どころに関わらず統一）
+          this.x = this.vx >= 0 ? 12 : CANVAS_WIDTH - this.width - 12;
         }
         // ★ 予備動作：壁から顔を出し、上下に揺れて「どこから刺すか」を見せてから発射
         if (this.prelaunchTimer > 0) {

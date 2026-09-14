@@ -81,15 +81,15 @@ export class TerrainManager {
       }
 
       if (this.elapsedTime >= this.siloStartDelay && screenY >= 140 && screenY <= 520) {
-        const { w1, w2 } = this.getWallThickness(screenY);
+        // ★ ユーザー要望：出現位置は壁の厚みに関係なく、必ず画面の左端か右端のどちらか
         let launchX = 0;
         let vx = 0;
         const vy = (Math.random() - 0.5) * 25;
         if (silo.side === 'LEFT') {
-          launchX = Math.max(16, w1 + 6);
+          launchX = 12;
           vx = 110 + Math.random() * 25;
         } else {
-          launchX = Math.min(CANVAS_WIDTH - 30, CANVAS_WIDTH - w2 - 26);
+          launchX = CANVAS_WIDTH - 80 - 12; // ミサイル幅80px
           vx = -(110 + Math.random() * 25);
         }
         if (onLaunchMissile) {
