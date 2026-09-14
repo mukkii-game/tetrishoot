@@ -3,6 +3,30 @@ import { GameManager } from './core/GameManager';
 import { Input } from './core/Input';
 import { Sound } from './core/Sound';
 
+// ★ デバッグ用：捕捉されなかったエラーを画面上に直接表示する（Macが無くてもiPhone単体で原因が分かるように）。
+//   スクリプトの一番最初（DOMContentLoaded より前）で登録するので、初期化中の同期エラーも拾える。
+//   通常時は何も表示されず、実害はない。
+function showErrorOverlay(message: string): void {
+  let box = document.getElementById('__err_overlay');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = '__err_overlay';
+    box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#a00;color:#fff;' +
+      'font:12px/1.4 monospace;padding:8px;white-space:pre-wrap;word-break:break-all;max-height:50vh;overflow:auto;';
+    document.body.appendChild(box);
+  }
+  const line = document.createElement('div');
+  line.textContent = message;
+  line.style.cssText = 'border-top:1px solid rgba(255,255,255,0.3);padding-top:4px;margin-top:4px;';
+  box.appendChild(line);
+}
+window.addEventListener('error', (e) => {
+  showErrorOverlay(`[error] ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  showErrorOverlay(`[promise] ${e.reason}`);
+});
+
 window.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
   const ctx = canvas.getContext('2d')!;
