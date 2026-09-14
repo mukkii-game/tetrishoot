@@ -197,7 +197,7 @@ export class GameManager {
     this.phase = 'SHOOTING';
     this.fallingPieces = [];
     // バトル時間（★ 9面は「一種ずつ→中盤からコンボ」の構成を入れるため 80 秒に延長）
-    this.shootingTimeTotal = this.stage === 9 ? 80 : 65;
+    this.shootingTimeTotal = this.stage === 9 ? 100 : 65;
     this.shootingTimeLimit = this.shootingTimeTotal;
     this.bossRushIndex = 0;
     this.formationOffsetAngle = 0;
@@ -937,29 +937,36 @@ export class GameManager {
 
       case 9:
         // 【WAVE 9：極限バンガード迷宮要塞】
-        // ★ ユーザー要望：最初は敵を一種ずつ順番に、中盤以降で同等のコンボ攻撃
-        //   （開幕10秒は敵なし → 以下の時刻は spawnAlienFleet 末尾の +10 秒シフト後の実時間）
-        // 1. ガリ単独（t=10〜14）
+        // ★ ユーザー要望：敵は必ず一種ずつ順番に（倒し遅れて次と混ざる程度はOK）。総数はそのまま、
+        //   まとめて出すのを遅らせて面を長くする（バトル時間 100 秒、ボスは約68秒）
+        //   （開幕10秒は敵なし → 以下は +10 秒シフト後の実時間）
+        // 1. ガリ 12機（t=10〜15）
         for (let i = 0; i < 12; i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.0 + i * 0.35));
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 0.0 + i * 0.45));
         }
-        // 2. 索敵ミサイル単独（t=18〜22）
+        // 2. 索敵ミサイル 10機（t=20〜24）
         for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 8.0 + i * 0.4));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 10.0 + i * 0.45));
         }
-        // 3. トーロイド単独（t=26〜29）
+        // 3. トーロイド 10機（t=29〜33）
         for (let i = 0; i < 10; i++) {
-          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 16.0 + i * 0.3));
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 19.0 + i * 0.4));
         }
-        // 4. コンボA：ガリ＋索敵ミサイル同時（t=33〜37）
+        // 4. ガリ第2波 8機（t=38〜42）
         for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 23.0 + i * 0.5));
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + ((i + 3) % 6), 0, 23.2 + i * 0.5));
+          this.enemies.push(new Enemy('STARFORCE_GARI', 'STARFORCE_GARI_MOVE', 1 + (i % 6), 0, 28.0 + i * 0.5));
         }
-        // 5. コンボB：トーロイド＋ロケット同時（t=39〜43）
+        // 5. 索敵ミサイル第2波 8機（t=46〜50）
         for (let i = 0; i < 8; i++) {
-          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 29.0 + i * 0.5));
-          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 29.0 + i * 0.5));
+          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + ((i + 3) % 6), 0, 36.0 + i * 0.5));
+        }
+        // 6. トーロイド第2波 8機（t=54〜57）
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'XEVIOUS_TOROID', 1 + (i % 7), 1, 44.0 + i * 0.45));
+        }
+        // 7. ロケット 8機（t=60〜64）→ ボス（約68秒）
+        for (let i = 0; i < 8; i++) {
+          this.enemies.push(new Enemy('TERRAIN_MISSILE', 'TERRAIN_LAUNCH', 1 + (i % 6), 0, 50.0 + i * 0.5));
         }
         break;
 
