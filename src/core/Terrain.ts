@@ -126,6 +126,24 @@ export class TerrainManager {
     return 0.12 + (0.32 - 0.12) * blend;
   }
 
+  // ★ 斜めスクロール面：画面Y座標ごとの左下壁・右上壁の張り出し幅（px）。
+  //   ユーザー要望：通路は最低でも画面幅の1/3を保証（テトリミノを多く付けていても抜けられるように）
+  public getDiagDepths(y: number): { left: number; right: number } {
+    const diagCoord = (CANVAS_HEIGHT - y) * 0.9 + this.scrollOffset;
+    const { w1, w2 } = this.getWallThickness(diagCoord);
+    const grad = this.getDiagGradient(diagCoord + this.scrollOffset);
+    let left = w1 > 0 ? Math.max(0, w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * grad)) : 0;
+    let right = w2 > 0 ? Math.max(0, w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * grad)) : 0;
+    const minPassage = Math.floor(CANVAS_WIDTH / 3);
+    const maxTotal = CANVAS_WIDTH - minPassage;
+    if (left + right > maxTotal) {
+      const scale = maxTotal / (left + right);
+      left = Math.floor(left * scale);
+      right = Math.floor(right * scale);
+    }
+    return { left, right };
+  }
+
   public getWallThickness(screenCoord: number): { w1: number; w2: number } {
     if (!this.enabled) return { w1: 0, w2: 0 };
 
@@ -243,17 +261,12 @@ export class TerrainManager {
       if (y > CANVAS_HEIGHT - w2) return true;
     } else if (this.direction === 'DIAGONAL_UP_RIGHT') {
       // 斜めスクロール：左下壁と右上壁の判定
-      const diagCoord = (CANVAS_HEIGHT - y) * 0.9 + this.scrollOffset;
-      const { w1, w2 } = this.getWallThickness(diagCoord);
-      const grad = this.getDiagGradient(diagCoord + this.scrollOffset);
-      if (w1 > 0) {
-        const leftDepth = w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * grad);
-        if (leftDepth > 0 && x < leftDepth) return true;
-      }
-      if (w2 > 0) {
-        const rightDepth = w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * grad);
-        if (rightDepth > 0 && x > CANVAS_WIDTH - rightDepth) return true;
-      }
+      const { left, right } = this.getDiagDepths(y);
+      // 描画と同じブロック単位に量子化して判定（見た目と当たりを一致させる）
+      const leftQ = Math.floor(left / 20) * 20;
+      const rightQ = Math.floor(right / 20) * 20;
+      if (leftQ > 0 && x < leftQ) return true;
+      if (rightQ > 0 && x > CANVAS_WIDTH - rightQ) return true;
     }
     return false;
   }
@@ -360,43 +373,35 @@ export class TerrainManager {
       // ★ 45度斜めスクロール（自機が右上へ進む）：左下側と右上側から迫る45度斜め階段状ブロック地形！
       // y行ごとに、スクロール量とy座標から対角線座標 diagCoord を求めて各行の張り出し幅を決定
       for (let y = 0; y < CANVAS_HEIGHT + blockSize; y += blockSize) {
-        const diagCoord = (CANVAS_HEIGHT - y) * 0.9 + this.scrollOffset;
-        const { w1, w2 } = this.getWallThickness(diagCoord);
-        const grad = this.getDiagGradient(diagCoord + this.scrollOffset);
+        const { left, right } = this.getDiagDepths(y);
 
         // 左下壁: 画面下に行くほどせり出し、時間とともに左下へ流れていく
-        if (w1 > 0) {
-          const depth = w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * grad);
-          if (depth > 0) {
-            const drawW = Math.min(CANVAS_WIDTH - 120, Math.floor(depth / blockSize) * blockSize);
-            if (drawW > 0) {
-              ctx.fillStyle = '#280038';
-              ctx.fillRect(0, y, drawW, blockSize);
-              const edgeBx = Math.max(0, drawW - blockSize);
-              ctx.fillStyle = '#770088';
-              ctx.fillRect(edgeBx, y, blockSize, blockSize);
-              ctx.fillStyle = '#cc00ff';
-              ctx.fillRect(edgeBx + 1, y + 1, blockSize - 2, 2);
-              ctx.fillRect(edgeBx + 1, y + 1, 2, blockSize - 2);
-            }
+        if (left > 0) {
+          const drawW = Math.floor(left / blockSize) * blockSize;
+          if (drawW > 0) {
+            ctx.fillStyle = '#280038';
+            ctx.fillRect(0, y, drawW, blockSize);
+            const edgeBx = Math.max(0, drawW - blockSize);
+            ctx.fillStyle = '#770088';
+            ctx.fillRect(edgeBx, y, blockSize, blockSize);
+            ctx.fillStyle = '#cc00ff';
+            ctx.fillRect(edgeBx + 1, y + 1, blockSize - 2, 2);
+            ctx.fillRect(edgeBx + 1, y + 1, 2, blockSize - 2);
           }
         }
 
         // 右上壁: 画面上に行くほどせり出し、時間とともに左下へ流れていく
-        if (w2 > 0) {
-          const depth = w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * grad);
-          if (depth > 0) {
-            const drawW = Math.min(CANVAS_WIDTH - 120, Math.floor(depth / blockSize) * blockSize);
-            if (drawW > 0) {
-              const rx = CANVAS_WIDTH - drawW;
-              ctx.fillStyle = '#280038';
-              ctx.fillRect(rx, y, drawW, blockSize);
-              ctx.fillStyle = '#770088';
-              ctx.fillRect(rx, y, blockSize, blockSize);
-              ctx.fillStyle = '#cc00ff';
-              ctx.fillRect(rx + 1, y + 1, blockSize - 2, 2);
-              ctx.fillRect(rx + 1, y + 1, 2, blockSize - 2);
-            }
+        if (right > 0) {
+          const drawW = Math.floor(right / blockSize) * blockSize;
+          if (drawW > 0) {
+            const rx = CANVAS_WIDTH - drawW;
+            ctx.fillStyle = '#280038';
+            ctx.fillRect(rx, y, drawW, blockSize);
+            ctx.fillStyle = '#770088';
+            ctx.fillRect(rx, y, blockSize, blockSize);
+            ctx.fillStyle = '#cc00ff';
+            ctx.fillRect(rx + 1, y + 1, blockSize - 2, 2);
+            ctx.fillRect(rx + 1, y + 1, 2, blockSize - 2);
           }
         }
       }
