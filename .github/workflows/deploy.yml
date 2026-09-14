@@ -36,6 +36,24 @@ jobs:
       - name: Build
         run: npm run build
 
+      # ★ お試し版：trial ブランチ（ステージBGM mp3 入り）を /trial/ 配下に同居させて Pages に載せる
+      #   itch.io には main のビルドしか送らないので、お試し版は Pages だけで遊べる
+      - name: Checkout trial branch
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: trial
+          path: trial-src
+
+      - name: Build trial variant
+        if: hashFiles('trial-src/package.json') != ''
+        run: |
+          cd trial-src
+          npm ci
+          npm run build
+          mkdir -p ../dist/trial
+          cp -r dist/. ../dist/trial/
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
