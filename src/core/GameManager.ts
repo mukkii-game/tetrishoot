@@ -1624,6 +1624,8 @@ export class GameManager {
 
   // ★ ボス撃破後の処理：Stage 10 はボスラッシュなので次のボスを予告して呼び出す。それ以外はステージクリア
   private onBossPhaseEnded(): void {
+    // ★ ユーザー要望：ボスと相打ちでプレイヤーが死んだ場合は、クリアや次ボスへ進まずゲームオーバーを優先
+    if (this.player.isDead) return;
     if (this.stage === 10 && this.bossSpawned && this.bossRushIndex < BOSS_RUSH.length - 1) {
       this.bossRushIndex++;
       this.bossSpawned = false;
@@ -1645,6 +1647,7 @@ export class GameManager {
   }
 
   private clearStage(): void {
+    if (this.player.isDead) return; // 自機死亡中はクリア不可（相打ち時はゲームオーバー）
     this.sound.stopBGM();
     this.sound.stopBossLfo();
     this.sound.stopBossWarning();
