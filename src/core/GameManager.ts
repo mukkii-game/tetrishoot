@@ -2213,20 +2213,6 @@ export class GameManager {
       );
 
       // 3. 面セレクト（STAGE SELECT: ◀ STAGE [ X ] ▶）
-      const stageNames = [
-        '1: コールドアイ(縦)',
-        '2: 大旋回編隊(縦)',
-        '3: 岩盤洞窟(縦・壁)',
-        '4: メテオゾーン(縦)',
-        '5: 浮遊要塞(斜め45°)',
-        '6: 岩盤回廊(右・壁)',
-        '7: アトミック強襲(縦)',
-        '8: 岩盤回廊(左・壁)',
-        '9: 激動迷宮(縦・壁)',
-        '10: 最終決戦',
-      ];
-      const stageDesc = stageNames[this.selectedStage - 1] || `STAGE ${this.selectedStage}`;
-
       // 面セレクト背景枠
       ctx.fillStyle = 'rgba(0, 40, 80, 0.45)';
       ctx.strokeStyle = '#00ffff';
@@ -2241,13 +2227,7 @@ export class GameManager {
       ctx.fillStyle = '#00ffff';
       ctx.shadowColor = '#00ffff';
       ctx.shadowBlur = 10;
-      ctx.fillText(`◀  STAGE  [ ${this.selectedStage} ]  ▶`, CANVAS_WIDTH / 2, 498);
-
-      ctx.font = 'bold 12px "DotGothic16", monospace';
-      ctx.fillStyle = '#ffe600';
-      ctx.shadowColor = '#ffe600';
-      ctx.shadowBlur = 6;
-      ctx.fillText(stageDesc, CANVAS_WIDTH / 2, 517);
+      ctx.fillText(`◀  STAGE  [ ${this.selectedStage} ]  ▶`, CANVAS_WIDTH / 2, 508);
       ctx.shadowBlur = 0;
 
       // 4. スタートプロンプト
@@ -2286,20 +2266,6 @@ export class GameManager {
       const isTitle = this.pauseMenuSelection === 'TITLE';
 
       // 1. 面セレクト（PAUSE画面でSTAGE選択＆ワープ）
-      const stageNames = [
-        '1: コールドアイ(縦)',
-        '2: 大旋回編隊(縦)',
-        '3: 岩盤洞窟(縦・壁)',
-        '4: メテオゾーン(縦)',
-        '5: 浮遊要塞(斜め45°)',
-        '6: 岩盤回廊(右・壁)',
-        '7: アトミック強襲(縦)',
-        '8: 岩盤回廊(左・壁)',
-        '9: 激動迷宮(縦・壁)',
-        '10: 最終決戦',
-      ];
-      const stageDesc = stageNames[this.selectedStage - 1] || `STAGE ${this.selectedStage}`;
-
       // 面セレクト背景枠
       ctx.fillStyle = 'rgba(0, 30, 60, 0.6)';
       ctx.strokeStyle = '#00ffff';
@@ -2314,13 +2280,7 @@ export class GameManager {
       ctx.fillStyle = '#00ffff';
       ctx.shadowColor = '#00ffff';
       ctx.shadowBlur = 8;
-      ctx.fillText(`◀ STAGE [ ${this.selectedStage} ] ▶`, CANVAS_WIDTH / 2, 363);
-
-      ctx.font = 'bold 11px "DotGothic16", monospace';
-      ctx.fillStyle = '#ffe600';
-      ctx.shadowColor = '#ffe600';
-      ctx.shadowBlur = 4;
-      ctx.fillText(stageDesc, CANVAS_WIDTH / 2, 379);
+      ctx.fillText(`◀ STAGE [ ${this.selectedStage} ] ▶`, CANVAS_WIDTH / 2, 372);
       ctx.shadowBlur = 0;
 
       // 2. ゲームに戻る (RESUME)
