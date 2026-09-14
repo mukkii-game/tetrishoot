@@ -35,10 +35,16 @@ export class FieldItem {
     const outTop = this.y < -40;
     const outLeft = this.x < -40;
     const outRight = this.x > CANVAS_WIDTH + 40;
+    // ★ バグ修正：従来は上スクロール面でも「画面上端より上」で即消滅していたため、
+    //   上空（y<-40）に配置したアイテムが一度も画面に入らず消えていた。進入側では消さない
     if (scrollDir === 'LEFT') {
       if (outRight || outTop || outBottom) this.isDead = true;
-    } else if (outBottom || outLeft || outRight || outTop) {
-      this.isDead = true;
+    } else if (scrollDir === 'RIGHT') {
+      if (outLeft || outTop || outBottom) this.isDead = true;
+    } else if (scrollDir === 'DIAGONAL_UP_RIGHT') {
+      if (outLeft || outBottom) this.isDead = true;
+    } else {
+      if (outBottom || outLeft || outRight) this.isDead = true;
     }
   }
 

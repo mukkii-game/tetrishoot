@@ -63,6 +63,11 @@ export class GameManager {
   public score = 0;
   public highScore = 0;
   private runStartHighScore = 0; // 今回のプレイ開始時点のハイスコア（新記録判定用）
+  // ★ バリアオーブ出現ルール：ザコ撃破の累計（プレイ全体で通算）が閾値の倍数に達するたびに1個出現
+  //   閾値は「敵の多い面の全敵の約2/3」＝ 40 機
+  private static readonly BARRIER_KILL_INTERVAL = 40;
+  private totalKills = 0;
+  private nextBarrierKills = GameManager.BARRIER_KILL_INTERVAL;
   public difficulty: 'NORMAL' | 'HARD' = 'NORMAL';
 
   public player: Player;
@@ -144,6 +149,8 @@ export class GameManager {
     this.stage = startStage !== undefined ? startStage : this.selectedStage;
     this.score = 0;
     this.runStartHighScore = this.highScore;
+    this.totalKills = 0;
+    this.nextBarrierKills = GameManager.BARRIER_KILL_INTERVAL;
     this.deathDelay = 0;
     this.playerDeathSoundPlayed = false;
     this.bossWarningActive = false;
@@ -246,19 +253,9 @@ export class GameManager {
     // ★ ユーザー要望：5面は開幕約10秒間、壁面発射台も起動させない
     this.terrain.siloStartDelay = (this.stage === 5 || this.stage === 9) ? 10.0 : 2.5;
 
-    // 洞窟内・ステージ開始時にフィールドアイテムを配置
+    // ★ ユーザー要望：アイテムはステージ開始時の固定配置ではなく、累計撃破数に応じて出現（spawnBarrierOrb 参照）
+    //   救済カプセルはいったん廃止
     this.fieldItems = [];
-    if (isSalamander && direction === 'LEFT') {
-      // 左スクロール面：アイテムは画面左の外から右へ流れ込んでくる
-      this.fieldItems.push(new FieldItem(-120, CANVAS_HEIGHT * 0.5, 'BARRIER_ORB'));
-      this.fieldItems.push(new FieldItem(-500, CANVAS_HEIGHT * 0.4, 'RESCUE_CAPSULE'));
-    } else if (isSalamander) {
-      // 洞窟内にバリアオーブや救済カプセルを配置
-      this.fieldItems.push(new FieldItem(CANVAS_WIDTH * 0.5, -120, 'BARRIER_ORB'));
-      this.fieldItems.push(new FieldItem(CANVAS_WIDTH * 0.35, -500, 'RESCUE_CAPSULE'));
-    } else if (this.stage >= 4) {
-      this.fieldItems.push(new FieldItem(CANVAS_WIDTH * 0.5, -80, 'BARRIER_ORB'));
-    }
 
     // ギャラガ＆ムーンクレスタ風 多彩な大編隊をスポーン！
     this.spawnAlienFleet();
@@ -1660,6 +1657,7 @@ export class GameManager {
                 this.sound.playExplosion(true);
               } else {
                 this.sound.playEnemyPop(enemy.rank);
+                this.registerZakoKill();
               }
               this.particles.emitExplosion(
                 enemy.x + enemy.width / 2,
@@ -2158,6 +2156,36 @@ export class GameManager {
   }
 
   /** ハイスコア保存（更新があればlocalStorageへ永続化） */
+  // ★ ザコ撃破をカウントし、累計が閾値を超えるたびにバリアオーブを画面外（スクロールの進行方向側）から流し込む
+  private registerZakoKill(): void {
+    this.totalKills++;
+    if (this.totalKills >= this.nextBarrierKills) {
+      this.nextBarrierKills += GameManager.BARRIER_KILL_INTERVAL;
+      this.spawnBarrierOrb();
+    }
+  }
+
+  private spawnBarrierOrb(): void {
+    const dir = this.terrain.direction;
+    let x = CANVAS_WIDTH * 0.5;
+    let y = -60;
+    if (dir === 'RIGHT') {
+      x = CANVAS_WIDTH + 60;
+      y = CANVAS_HEIGHT * (0.3 + Math.random() * 0.4);
+    } else if (dir === 'LEFT') {
+      x = -60;
+      y = CANVAS_HEIGHT * (0.3 + Math.random() * 0.4);
+    } else if (dir === 'DIAGONAL_UP_RIGHT') {
+      x = CANVAS_WIDTH * 0.65;
+      y = -60;
+    } else {
+      x = CANVAS_WIDTH * (0.3 + Math.random() * 0.4);
+    }
+    this.fieldItems.push(new FieldItem(x, y, 'BARRIER_ORB'));
+    this.showTransitionText('BARRIER ORB!', 1.1);
+    this.sound.playItemScore();
+  }
+
   // ★ ユーザー要望：SCORE の下にそれまでの最高得点を常時表示。新記録なら「HIGH SCORE!!」を点滅
   private drawScoreWithHigh(ctx: CanvasRenderingContext2D, y: number): void {
     const isNewHigh = this.score > 0 && this.score > this.runStartHighScore;
