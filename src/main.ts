@@ -30,6 +30,33 @@ window.addEventListener('unhandledrejection', (e) => {
   showErrorOverlay(`[promise] ${e.reason}`);
 });
 
+// ★ 自動キャッシュ復旧：itch.io は butler で更新しても index.html の URL が変わらないため、
+//   端末／CDN に古い index.html が残ると、そこから参照される古いハッシュ付きJSを
+//   いつまでも実行し続けてしまう（「直したはずなのに直らない」の正体）。
+//   起動時に version.json を no-store で取得し、自分のビルドIDと食い違っていたら
+//   ?v=<新しいID> を付けて読み直す。URL が変わるので必ず新しい実体が取得される。
+//   無限リロードを防ぐため、既に同じIDで読み直している場合は何もしない。
+function checkForNewerBuild(): void {
+  try {
+    const probe = new URL('version.json', document.baseURI);
+    probe.searchParams.set('_', String(Date.now()));
+    void fetch(probe.toString(), { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { build?: string } | null) => {
+        const latest = data && typeof data.build === 'string' ? data.build : null;
+        if (!latest || latest === __BUILD_ID__) return;
+        const here = new URL(window.location.href);
+        if (here.searchParams.get('v') === latest) return; // すでに読み直し済み
+        here.searchParams.set('v', latest);
+        window.location.replace(here.toString());
+      })
+      .catch(() => { /* オフライン等は無視 */ });
+  } catch {
+    /* 何があってもゲーム本体には影響させない */
+  }
+}
+checkForNewerBuild();
+
 window.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
   const ctx = canvas.getContext('2d')!;
