@@ -59,7 +59,10 @@ checkForNewerBuild();
 
 window.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
-  const ctx = canvas.getContext('2d')!;
+  // ★ 性能：alpha: false で不透明キャンバスにする。
+  //   透明キャンバスはブラウザが毎フレーム背景と合成する必要があり、
+  //   スマホのGPUでは特に不利。背景は元々ほぼ黒なので見た目は変わらない。
+  const ctx = (canvas.getContext('2d', { alpha: false }) || canvas.getContext('2d'))!;
 
   canvas.width = CANVAS_WIDTH;
   canvas.height = CANVAS_HEIGHT;

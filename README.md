@@ -50,3 +50,5 @@
 - **Developer**: **MUKKII**
 - **仕様書**: [SPECIFICATION.md](./SPECIFICATION.md)
 - **AI引き継ぎ書**: [HANDOFF.md](./HANDOFF.md)
+- **itch.io × スマホ 実践ノート**: [docs/ITCH-MOBILE.md](./docs/ITCH-MOBILE.md)
+  （「itch.io の iPhone だけ動かない」を数日かけて潰した記録。次回作を作る前に必読）
