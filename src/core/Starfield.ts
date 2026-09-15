@@ -7,6 +7,7 @@ interface Star {
   color: string;
   size: number;
   twinkleOffset: number;
+  twinkleGroup: number; // ★ 性能対策：またたきを8グループに集約して描画状態の切替回数を減らす
 }
 
 interface GalaxyArmPoint {
@@ -27,16 +28,27 @@ export class Starfield {
 
   constructor(count = 100) {
     const colors = ['#ffffff', '#ffff88', '#88ccff', '#ff8888', '#00ffff'];
+    const TWINKLE_GROUPS = 8;
     for (let i = 0; i < count; i++) {
+      const group = Math.floor(Math.random() * TWINKLE_GROUPS);
       this.stars.push({
         x: Math.random() * CANVAS_WIDTH,
         y: Math.random() * CANVAS_HEIGHT,
         speed: Math.random() * 90 + 25,
         color: colors[Math.floor(Math.random() * colors.length)],
         size: Math.random() > 0.85 ? 2.5 : 1.5,
-        twinkleOffset: Math.random() * Math.PI * 2,
+        // グループごとに位相を共有すると、同じ不透明度の星が連続して並ぶので
+        // globalAlpha の切替がまとめられる（見た目のランダム感はほぼ変わらない）
+        twinkleOffset: (group / TWINKLE_GROUPS) * Math.PI * 2,
+        twinkleGroup: group,
       });
     }
+    // ★ 性能対策：色→グループ順に並べておくと、描画ループで
+    //   fillStyle / globalAlpha の設定が「星ごと」から「連続した塊ごと」に減る。
+    //   星は個々の識別が不要なので並べ替えても見た目は変わらない。
+    this.stars.sort((a, b) =>
+      a.color === b.color ? a.twinkleGroup - b.twinkleGroup : (a.color < b.color ? -1 : 1)
+    );
 
     // 渦巻き銀河の星々を生成（2本の渦巻き腕）
     const armColors = ['#cc44ff', '#00f0ff', '#ff00aa', '#ffffff', '#8888ff'];
@@ -132,60 +144,96 @@ export class Starfield {
     }
   }
 
-  // ★ 性能対策：グラデーションは毎フレーム同じものを作り直していたので使い回す
-  private nebulaGrad: CanvasGradient | null = null;
-  private coreGrad: CanvasGradient | null = null;
+  // ★ 性能対策：渦巻き銀河（ネビュラ＋コア＋腕の星182個）は中身が変化しないので、
+  //   一度だけオフスクリーンに描いておき、毎フレームは回転付きで1回 drawImage するだけにする。
+  //   （以前は毎フレーム グラデーション2個の生成 + fillRect 182回 を行っていた）
+  private galaxySprite: HTMLCanvasElement | null = null;
+  private static readonly GALAXY_R = 190; // スプライト半径（腕は最大160＋余白）
+
+  private buildGalaxySprite(): HTMLCanvasElement | null {
+    const r = Starfield.GALAXY_R;
+    const size = r * 2;
+    let c: HTMLCanvasElement;
+    try {
+      c = document.createElement('canvas');
+    } catch {
+      return null;
+    }
+    c.width = size;
+    c.height = size;
+    const g = c.getContext('2d');
+    if (!g) return null;
+    g.translate(r, r);
+
+    // 深宇宙のネビュラ
+    const nebula = g.createRadialGradient(0, 0, 10, 0, 0, 180);
+    nebula.addColorStop(0, 'rgba(160, 40, 220, 0.22)');
+    nebula.addColorStop(0.4, 'rgba(0, 180, 255, 0.12)');
+    nebula.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    g.fillStyle = nebula;
+    g.fillRect(-180, -180, 360, 360);
+
+    // 銀河の中心コア発光
+    const core = g.createRadialGradient(0, 0, 0, 0, 0, 40);
+    core.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+    core.addColorStop(0.3, 'rgba(255, 200, 255, 0.4)');
+    core.addColorStop(1, 'rgba(255, 100, 200, 0)');
+    g.fillStyle = core;
+    g.beginPath();
+    g.arc(0, 0, 40, 0, Math.PI * 2);
+    g.fill();
+
+    // 銀河の腕の星々（同じ色が続くよう並べ替えて fillStyle の切替を減らす）
+    const pts = this.galaxyPoints.slice().sort((a, b) => (a.color < b.color ? -1 : a.color > b.color ? 1 : 0));
+    let lastColor = '';
+    for (const p of pts) {
+      if (p.color !== lastColor) {
+        g.fillStyle = p.color;
+        lastColor = p.color;
+      }
+      g.fillRect(Math.cos(p.angleOffset) * p.dist, Math.sin(p.angleOffset) * p.dist * 0.7, p.size, p.size);
+    }
+    return c;
+  }
 
   public draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
 
-    // 1. 深宇宙のネビュラ（星雲の局所描画で大幅高速化）
-    ctx.save();
-    ctx.translate(this.galaxyX, this.galaxyY);
-    if (!this.nebulaGrad) {
-      const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 180);
-      g.addColorStop(0, 'rgba(160, 40, 220, 0.22)');
-      g.addColorStop(0.4, 'rgba(0, 180, 255, 0.12)');
-      g.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.nebulaGrad = g;
+    // 1〜2. ネビュラ＋渦巻き銀河（事前描画したスプライトを回転して1回だけ転送）
+    //   ★ 性能対策：銀河は画面外へ流れていく時間帯が長いので、
+    //     完全に画面外なら転送自体を省く。実測でここが描画コストのほぼ全て
+    //     （CPU 1/6速・DPR3 の stage10 HARD で約1.07ms/frame）だったため効果が大きい。
+    const r = Starfield.GALAXY_R;
+    const onScreen =
+      this.galaxyX + r > 0 && this.galaxyX - r < CANVAS_WIDTH &&
+      this.galaxyY + r > 0 && this.galaxyY - r < CANVAS_HEIGHT;
+    if (onScreen) {
+      if (!this.galaxySprite) this.galaxySprite = this.buildGalaxySprite();
+      if (this.galaxySprite) {
+        ctx.save();
+        ctx.translate(this.galaxyX, this.galaxyY);
+        ctx.rotate(this.galaxyRotation);
+        ctx.drawImage(this.galaxySprite, -r, -r);
+        ctx.restore();
+      }
     }
-    ctx.fillStyle = this.nebulaGrad;
-    ctx.fillRect(-180, -180, 360, 360);
-    ctx.restore();
-
-    // 2. 渦巻き銀河（Spiral Galaxy）の描画
-    ctx.save();
-    ctx.translate(this.galaxyX, this.galaxyY);
-    ctx.rotate(this.galaxyRotation);
-
-    // 銀河の中心コア発光
-    if (!this.coreGrad) {
-      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 40);
-      g.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-      g.addColorStop(0.3, 'rgba(255, 200, 255, 0.4)');
-      g.addColorStop(1, 'rgba(255, 100, 200, 0)');
-      this.coreGrad = g;
-    }
-    ctx.fillStyle = this.coreGrad;
-    ctx.beginPath();
-    ctx.arc(0, 0, 40, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 銀河の腕の星々
-    for (const p of this.galaxyPoints) {
-      const px = Math.cos(p.angleOffset) * p.dist;
-      const py = Math.sin(p.angleOffset) * p.dist * 0.7; // 楕円傾斜
-      ctx.fillStyle = p.color;
-      ctx.fillRect(px, py, p.size, p.size);
-    }
-    ctx.restore();
 
     // 3. 多層スターフィールド（きらめく星々）
-    const time = Date.now() / 300;
+    //    色・またたきグループ順に並べてあるので、状態変更は塊ごとに1回で済む
+    const time = performance.now() / 300;
+    let lastColor = '';
+    let lastAlpha = -1;
     for (const star of this.stars) {
-      const alpha = 0.5 + Math.sin(time + star.twinkleOffset) * 0.5;
-      ctx.globalAlpha = Math.max(0.2, alpha);
-      ctx.fillStyle = star.color;
+      const raw = 0.5 + Math.sin(time + star.twinkleOffset) * 0.5;
+      const alpha = Math.round(Math.max(0.2, raw) * 8) / 8;
+      if (alpha !== lastAlpha) {
+        ctx.globalAlpha = alpha;
+        lastAlpha = alpha;
+      }
+      if (star.color !== lastColor) {
+        ctx.fillStyle = star.color;
+        lastColor = star.color;
+      }
       ctx.fillRect(Math.floor(star.x), Math.floor(star.y), star.size, star.size);
     }
 
