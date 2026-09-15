@@ -11,8 +11,11 @@ function showErrorOverlay(message: string): void {
   if (!box) {
     box = document.createElement('div');
     box.id = '__err_overlay';
+    // ★ pointer-events:none は必須。これが無いとエラーバーが画面上部のタップを吸い込み、
+    //   「表示はされるがタップに反応しない」状態をデバッグ表示自身が作ってしまう。
     box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#a00;color:#fff;' +
-      'font:12px/1.4 monospace;padding:8px;white-space:pre-wrap;word-break:break-all;max-height:50vh;overflow:auto;';
+      'font:12px/1.4 monospace;padding:8px;white-space:pre-wrap;word-break:break-all;max-height:50vh;' +
+      'overflow:hidden;pointer-events:none;';
     document.body.appendChild(box);
   }
   const line = document.createElement('div');
@@ -38,13 +41,11 @@ window.addEventListener('DOMContentLoaded', () => {
   const sound = new Sound();
   const game = new GameManager(sound);
 
-  // モバイル環境での Web Audio API 再生制限解除（初回タッチ・クリック時にオーディオコンテキストをアクティブ化）
-  const unlockAudio = () => {
-    sound.resumeAudio();
-    window.removeEventListener('touchstart', unlockAudio);
-    window.removeEventListener('pointerdown', unlockAudio);
-    window.removeEventListener('click', unlockAudio);
-  };
+  // モバイル環境での Web Audio API 再生制限解除（タッチ・クリック時にオーディオコンテキストをアクティブ化）
+  // ★ リスナーは外さない。iOS では着信・バックグラウンド復帰・最初の resume() 失敗などで
+  //   AudioContext が再び suspended に戻ることがあり、一度きりの解除だと無音のままになる。
+  //   毎回の操作で（既に running なら何もしないので）安全に再解除できるようにしておく。
+  const unlockAudio = () => sound.resumeAudio();
   window.addEventListener('touchstart', unlockAudio, { passive: true });
   window.addEventListener('pointerdown', unlockAudio, { passive: true });
   window.addEventListener('click', unlockAudio, { passive: true });
@@ -52,12 +53,18 @@ window.addEventListener('DOMContentLoaded', () => {
   // ★ フル画面切替（Fキー／右下ボタン）。itch.io の埋め込み枠でもブラウザ全体で表示できる
   const container = document.getElementById('game-container') as HTMLElement;
   const fsBtn = document.getElementById('fullscreen-btn');
+  // iPhone の Safari は要素のフル画面に非対応（document.fullscreenEnabled === false）。
+  // 押しても何も起きないボタンが画面右下＝ショット領域に居座ってタップを食うだけなので消す。
+  const fullscreenSupported = !!document.fullscreenEnabled && typeof container.requestFullscreen === 'function';
+  if (fsBtn && !fullscreenSupported) fsBtn.style.display = 'none';
+
   const toggleFullscreen = () => {
+    if (!fullscreenSupported) return;
     try {
       if (document.fullscreenElement) {
-        void document.exitFullscreen();
+        void document.exitFullscreen().catch(() => { /* 非対応環境は無視 */ });
       } else {
-        void container.requestFullscreen();
+        void container.requestFullscreen().catch(() => { /* 非対応環境は無視 */ });
       }
     } catch (e) {
       console.warn('fullscreen not available:', e);
@@ -81,22 +88,25 @@ window.addEventListener('DOMContentLoaded', () => {
     try { return window.self !== window.top; } catch { return true; }
   })();
   const isCoarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-  const allowAutoFullscreen = !isEmbeddedFrame && !isCoarsePointer;
+  const allowAutoFullscreen = !isEmbeddedFrame && !isCoarsePointer && fullscreenSupported;
 
   let autoFullscreenDone = false;
   const autoFullscreen = () => {
     if (autoFullscreenDone || !allowAutoFullscreen) return;
     autoFullscreenDone = true;
-    if (!document.fullscreenElement && container.requestFullscreen) {
-      container.requestFullscreen().catch(() => { /* iOS Safari など非対応環境は無視 */ });
-    }
+    try {
+      if (!document.fullscreenElement) {
+        container.requestFullscreen().catch(() => { /* iOS Safari など非対応環境は無視 */ });
+      }
+    } catch { /* 何があってもタッチ処理を巻き込まない */ }
   };
   window.addEventListener('pointerdown', autoFullscreen, { passive: true });
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter') autoFullscreen();
   });
   if (fsBtn) {
-    // ゲームの入力（mousedown＝ショット／タッチ操作）に伝播させない
+    // ゲームの入力（ショット／タッチ操作）に伝播させない
+    fsBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     fsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     fsBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); }, { passive: true });
     fsBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleFullscreen(); });
@@ -118,14 +128,29 @@ window.addEventListener('DOMContentLoaded', () => {
 
   let lastTime = performance.now();
 
+  // ★ 重要：requestAnimationFrame の再登録は必ず finally で行う。
+  //   以前は update / draw の後ろに書いていたため、1回でも例外が飛ぶとループが二度と回らず、
+  //   「キャンバスには最後に描かれたタイトル画面が残ったまま、タップしても永久に無反応」
+  //   という、一見『入力が効かない』ようにしか見えない致命的な停止に陥っていた。
+  //   （画面は正常に見えるので原因が極めて分かりにくい）
+  //   ここで握って1フレーム落とすだけに留め、原因はエラーオーバーレイに出す。
+  let loopErrorReported = false;
   function gameLoop(currentTime: number): void {
-    const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
-    lastTime = currentTime;
+    try {
+      const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+      lastTime = currentTime;
 
-    game.update(dt, input);
-    game.draw(ctx);
-
-    requestAnimationFrame(gameLoop);
+      game.update(dt, input);
+      game.draw(ctx);
+    } catch (e) {
+      // 毎フレーム同じ例外で画面を埋めないよう、表示は最初の1回だけ
+      if (!loopErrorReported) {
+        loopErrorReported = true;
+        showErrorOverlay(`[loop] ${e instanceof Error ? e.message : String(e)}`);
+      }
+    } finally {
+      requestAnimationFrame(gameLoop);
+    }
   }
 
   requestAnimationFrame(gameLoop);

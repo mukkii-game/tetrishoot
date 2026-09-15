@@ -291,9 +291,9 @@ export class Player {
       down: boolean;
       mouseX?: number | null;
       mouseY?: number | null;
-      mouseDeltaX?: number;
-      mouseDeltaY?: number;
-      hasMouseMoved?: boolean;
+      // ★ スマホ画面左半分の仮想スティック（-1..1、合成長は最大1）
+      moveVecX?: number;
+      moveVecY?: number;
     }
   ): void {
     const bounds = this.getBoundingBox();
@@ -319,19 +319,24 @@ export class Player {
       this.vy *= 0.7071;
     }
 
-    // キーボード入力による移動
+    // ★ ユーザー要望：スマホは画面左半分の仮想スティックで移動する。
+    //   「キー移動と同じ動き、ただし8方向ではなく全方向」なので、
+    //   最大振れ幅でちょうど PLAYER_SPEED になるよう合成速度をクランプする。
+    //   （PCのマウス移動では自機を動かさない ＝ 旧 mouseDelta 加算は廃止）
+    const stickX = inputs.moveVecX ?? 0;
+    const stickY = inputs.moveVecY ?? 0;
+    if (stickX !== 0 || stickY !== 0) {
+      this.vx += stickX * PLAYER_SPEED;
+      this.vy += stickY * PLAYER_SPEED;
+      const speed = Math.hypot(this.vx, this.vy);
+      if (speed > PLAYER_SPEED) {
+        this.vx = (this.vx / speed) * PLAYER_SPEED;
+        this.vy = (this.vy / speed) * PLAYER_SPEED;
+      }
+    }
+
     this.anchorX += this.vx * dt;
     this.anchorY += this.vy * dt;
-
-    // ★ ユーザー要望：マウスでも動かせるようにする。
-    // 「ただし、カーソルに合うのではなく、そのベクトルにうごくだけ」
-    // カーソル位置へワープ・スナップするのではなく、マウスを振った量・方向（相対移動ベクトル）をそのまま自機に加算！
-    if (inputs.mouseDeltaX !== undefined && inputs.mouseDeltaX !== 0) {
-      this.anchorX += inputs.mouseDeltaX;
-    }
-    if (inputs.mouseDeltaY !== undefined && inputs.mouseDeltaY !== 0) {
-      this.anchorY += inputs.mouseDeltaY;
-    }
 
     // 画面外境界クランプ（滑らかな当たり）
     const minAnchorX = minScreenX - (bounds.minX - this.anchorX);

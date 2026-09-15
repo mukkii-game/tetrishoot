@@ -19,7 +19,10 @@ export class TerrainManager {
   public enabled = false;
   public silosEnabled = true; // 壁面ミサイル発射台の生成可否（ステージごとに切替）
   public siloStartDelay = 2.5; // ステージ開幕後、発射台が起動し始めるまでの秒数
-  public siloSpacing = 260; // 壁際ロケットの出現間隔（スクロールpx）
+  public siloSpacing = 260; // 壁際ロケットの出現間隔（スクロールpx。小さいほどミサイルが増える）
+  // ★ ユーザー要望：ミサイルと「90度直角旋回機」が重ならないよう時間帯で棲み分ける。
+  //   ここに入れた時間帯（ステージ開始からの秒数）はミサイルを一切発射しない
+  public siloQuietWindows: Array<{ start: number; end: number }> = [];
   private scrollOffset = 0;
   private seed = 42;
   public elapsedTime = 0;
@@ -82,6 +85,12 @@ export class TerrainManager {
       }
 
       if (this.elapsedTime >= this.siloStartDelay && screenY >= 140 && screenY <= 520) {
+        // ★ 静粛時間帯（他の敵の担当時間）は発射せずそのまま消す。
+        //   持ち越すと時間帯明けにまとめて撃たれて逆に重なるため、ここで破棄する
+        if (this.isSiloQuiet()) {
+          this.silos.splice(i, 1);
+          continue;
+        }
         // ★ ユーザー要望：出現位置は壁の厚みに関係なく、必ず画面の左端か右端のどちらか
         let launchX = 0;
         let vx = 0;
@@ -99,6 +108,14 @@ export class TerrainManager {
         this.silos.splice(i, 1);
       }
     }
+  }
+
+  /** 今がミサイルを撃たない「静粛時間帯」かどうか */
+  private isSiloQuiet(): boolean {
+    for (const w of this.siloQuietWindows) {
+      if (this.elapsedTime >= w.start && this.elapsedTime < w.end) return true;
+    }
+    return false;
   }
 
   // 弾 vs 壁面サイロの命中判定（発射台は表示されなくなったため常に命中なし。互換のため残置）
