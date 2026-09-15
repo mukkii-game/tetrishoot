@@ -110,6 +110,10 @@ export class GameManager {
   public bossSpawned = false;
   private lastScriptedSpawnTime = 0; // spawnAlienFleet で予定した最後のザコ出現時刻（秒）
   private lastInput: Input | null = null; // 直近フレームの入力（仮想スティックHUD描画用）
+  // ★ click しか届かないアプリ内ブラウザ用の代替操作
+  private clickMoveTargetX: number | null = null;
+  private clickMoveTargetY: number | null = null;
+  private clickFireTimer = 0;
   private stageTextDelay = 0; // mp3 イントロ待ち：0 になった時点で「STAGE n」表示＆本編開始
   public currentBoss: Enemy | null = null;
   public bossDying = false;
@@ -586,7 +590,8 @@ export class GameManager {
         return;
       }
 
-      this.player.updateMovement(dt, input);
+      this.applyClickOnlyControls(dt, input);
+    this.player.updateMovement(dt, input);
       this.updateShootingPhase(dt, input);
     }
 
@@ -673,6 +678,7 @@ export class GameManager {
     }
 
     // 1. 自機の操作（エクセリオン風慣性移動）
+    this.applyClickOnlyControls(dt, input);
     this.player.updateMovement(dt, input);
 
     // 発射ロックアウト減算（ゲーム開始直後の誤射防止）
@@ -681,7 +687,7 @@ export class GameManager {
     // 2. 自機ショット発射（弾を撃って落下中ミノに当てる！）
     // ★ justShoot も見る：iOS の一部環境では押した直後に pointercancel が来て
     //   同じフレーム内で shoot が降ろされてしまう。単発のタップでも必ず1発は出るようにする
-    if ((input.shoot || input.isMouseDown || input.justShoot) && this.player.fireCooldown <= 0 && this.fireLockout <= 0) {
+    if ((input.shoot || input.isMouseDown || input.justShoot || this.clickFireTimer > 0) && this.player.fireCooldown <= 0 && this.fireLockout <= 0) {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
@@ -1229,7 +1235,7 @@ export class GameManager {
     this.formationOffsetAngle += dt * 2.4;
 
     // 自機ショット（ムーンクレスタ風ピシューン！ 押しっぱなし連射＋各銃口2発制限）
-    if ((input.shoot || input.isMouseDown || input.justShoot) && this.player.fireCooldown <= 0) {
+    if ((input.shoot || input.isMouseDown || input.justShoot || this.clickFireTimer > 0) && this.player.fireCooldown <= 0) {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
@@ -2312,6 +2318,27 @@ export class GameManager {
     // 10. スマホ用 仮想スティックの表示（左半分をドラッグ中のみ）
     this.drawVirtualStick(ctx);
 
+    // 10.5 アプリ内ブラウザ（タッチイベントが届かない環境）への案内
+    if (this.lastInput && this.lastInput.isClickOnlyEnvironment()) {
+      ctx.save();
+      // 背景の星や地形に負けないよう、薄い帯を敷いてから文字を置く
+      ctx.fillStyle = 'rgba(0, 6, 18, 0.82)';
+      ctx.fillRect(0, 74, CANVAS_WIDTH, 62);
+      ctx.strokeStyle = 'rgba(255, 204, 51, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0.5, 74.5, CANVAS_WIDTH - 1, 61);
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 13px "DotGothic16", monospace';
+      ctx.fillStyle = '#ffcc33';
+      ctx.shadowColor = '#000000';
+      ctx.shadowBlur = 4;
+      ctx.fillText('この環境ではタッチ操作が届いていません', CANVAS_WIDTH / 2, 92);
+      ctx.fillText('Safari で開き直すと快適に遊べます', CANVAS_WIDTH / 2, 110);
+      ctx.fillStyle = '#9fe8ff';
+      ctx.fillText('（今は 左半分タップ＝移動 ／ 右半分タップ＝ショット）', CANVAS_WIDTH / 2, 128);
+      ctx.restore();
+    }
+
     // 11. 端末側デバッグ表示（極小・全画面共通）
     //   1行目：BUILD ID。itch.io は index.html の URL が変わらないため端末に古い版が
     //          キャッシュされ続けることがある。「本当に最新版が動いているか」をここで確認する。
@@ -2344,6 +2371,50 @@ export class GameManager {
       );
     }
     ctx.restore();
+  }
+
+  /**
+   * ★ 非常用の代替操作：ネイティブ click しか届かない環境（Facebook / X / LINE などの
+   *   アプリ内ブラウザ）でも最低限遊べるようにする。
+   *   実測で touchstart も pointerdown も一切届かないため、仮想スティックが成立しない。
+   *   そこで「左半分タップ＝その位置まで自機が移動」「右半分タップ＝短く連射」に切り替える。
+   *   通常のスマホ／PCでは isClickOnlyEnvironment() が成立しないので一切影響しない。
+   */
+  private applyClickOnlyControls(dt: number, input: Input): void {
+    if (this.clickFireTimer > 0) this.clickFireTimer -= dt;
+
+    if (!input.isClickOnlyEnvironment()) {
+      input.pendingClickX = null;
+      input.pendingClickY = null;
+      return;
+    }
+
+    if (input.pendingClickX !== null && input.pendingClickY !== null) {
+      if (input.pendingClickX < CANVAS_WIDTH / 2) {
+        // 左半分：移動先を指定（弾は出さない）
+        this.clickMoveTargetX = input.pendingClickX;
+        this.clickMoveTargetY = input.pendingClickY;
+      } else {
+        // 右半分：短く連射
+        this.clickFireTimer = 0.35;
+      }
+      input.pendingClickX = null;
+      input.pendingClickY = null;
+    }
+
+    // 指定された位置へ、キー入力と同じ速度で滑らかに寄せる
+    if (this.clickMoveTargetX !== null && this.clickMoveTargetY !== null) {
+      const dx = this.clickMoveTargetX - this.player.anchorX;
+      const dy = this.clickMoveTargetY - this.player.anchorY;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 8) {
+        this.clickMoveTargetX = null;
+        this.clickMoveTargetY = null;
+      } else {
+        input.moveVecX = dx / dist;
+        input.moveVecY = dy / dist;
+      }
+    }
   }
 
   /** ★ スマホ操作：画面左半分の仮想スティック（支点リングとノブ）を描く */

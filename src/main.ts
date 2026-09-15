@@ -181,9 +181,11 @@ window.addEventListener('DOMContentLoaded', () => {
       game.update(dt, input);
       game.draw(ctx);
 
-      // タイトル中だけ透明タップ層を出す（ゲーム中は操作の邪魔をしない）
+      // 透明タップ層は原則タイトル中だけ（ゲーム中は操作の邪魔をしない）。
+      // ただし click しか届かないアプリ内ブラウザでは、これが唯一の入力手段なので
+      // ゲーム中も出しっぱなしにする（左半分＝移動先指定／右半分＝ショット）。
       if (tapLayer) {
-        const wantVisible = game.state === 'TITLE';
+        const wantVisible = game.state === 'TITLE' || input.isClickOnlyEnvironment();
         if (tapLayer.hidden === wantVisible) tapLayer.hidden = !wantVisible;
       }
     } catch (e) {

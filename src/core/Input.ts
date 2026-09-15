@@ -84,6 +84,13 @@ export class Input {
   public lastEventLabel = '-';
   public srcTag = '-'; // 直近の入力経路（T=TouchEvents / P=PointerEvents(touch) / M=マウス）
 
+  // ★ 「ネイティブ click しか届かない環境」用の受け渡し。
+  //   Facebook / X / LINE などのアプリ内ブラウザ（iOS WebView）では、
+  //   実測で touchstart も pointerdown も一切届かず、<button> の click だけが届く。
+  //   その場合でも最低限遊べるよう、クリック位置をゲーム側へ渡す。
+  public pendingClickX: number | null = null;
+  public pendingClickY: number | null = null;
+
   private lastPointerDownAt = -1e9; // DOMフォールバックの二重発火防止
   private touchEventsSeen = false; // 一度でも touchstart が来たら、タッチは Touch Events を正とする
 
@@ -421,32 +428,44 @@ export class Input {
     //   バブリング前に横取りされても（誰かが stopPropagation しても）必ず先に届くため。
     const TOUCH_ID_BASE = 100000; // Touch.identifier と pointerId の衝突を避ける
 
-    const touchDown = (e: TouchEvent) => {
+    // ★ 同じイベントを複数の登録先で二重処理しないための印。
+    //   最初に届いた登録先だけが処理し、残りは素通りする。
+    const alreadyHandled = (e: Event): boolean => {
+      const ev = e as Event & { __gxSeen?: boolean };
+      if (ev.__gxSeen) return true;
+      ev.__gxSeen = true;
+      return false;
+    };
+
+    const makeTouchDown = (tag: string) => (e: TouchEvent) => {
+      if (alreadyHandled(e)) return;
       this.evtTouch++; // 生イベント数（フィルタ前）
       if (isUiTarget(e.target)) return;
       // タイトルの透明ボタン上だけは既定動作を残す（iOS はここで止めると click が出ない）
       if (!keepsNativeClick(e.target) && e.cancelable) e.preventDefault();
       this.touchEventsSeen = true;
-      this.srcTag = 'T';
+      this.srcTag = 'T' + tag;
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         this.onPointerDown(TOUCH_ID_BASE + t.identifier, t.clientX, t.clientY, true);
       }
     };
 
-    const touchMove = (e: TouchEvent) => {
-      this.evtMove++; // 生イベント数（フィルタ前）
+    const makeTouchMove = (tag: string) => (e: TouchEvent) => {
+      if (alreadyHandled(e)) return;
+      this.evtMove++;
       if (isUiTarget(e.target)) return;
       if (e.cancelable) e.preventDefault(); // これが無いと iOS はスクロールに持っていってしまう
-      this.srcTag = 'T';
+      this.srcTag = 'T' + tag;
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         this.onPointerMove(TOUCH_ID_BASE + t.identifier, t.clientX, t.clientY, true);
       }
     };
 
-    const touchEnd = (e: TouchEvent) => {
-      if (e.type === 'touchcancel') this.evtCancel++; else this.evtUp++; // 生イベント数
+    const makeTouchEnd = () => (e: TouchEvent) => {
+      if (alreadyHandled(e)) return;
+      if (e.type === 'touchcancel') this.evtCancel++; else this.evtUp++;
       if (!isUiTarget(e.target) && !keepsNativeClick(e.target) && e.cancelable) e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
         this.onPointerUp(TOUCH_ID_BASE + e.changedTouches[i].identifier);
@@ -455,65 +474,100 @@ export class Input {
       if (e.touches.length === 0) this.releaseAllPointers();
     };
 
-    window.addEventListener('touchstart', touchDown, { passive: false, capture: true });
-    window.addEventListener('touchmove', touchMove, { passive: false, capture: true });
-    window.addEventListener('touchend', touchEnd, { passive: false, capture: true });
-    window.addEventListener('touchcancel', touchEnd, { passive: false, capture: true });
+    const makePointerDown = (tag: string) => (e: PointerEvent) => {
+      if (alreadyHandled(e)) return;
+      this.evtDown++; // 生イベント数（フィルタ前）
+      if (isUiTarget(e.target)) return;
+      const isTouch = e.pointerType !== 'mouse';
+      if (isTouch && this.touchEventsSeen) return; // タッチは Touch Events 側の担当
+      if (!isTouch) {
+        try {
+          this.canvas.setPointerCapture(e.pointerId);
+        } catch {
+          /* キャプチャできない環境は無視 */
+        }
+      }
+      this.srcTag = (isTouch ? 'P' : 'M') + tag;
+      this.onPointerDown(e.pointerId, e.clientX, e.clientY, isTouch);
+    };
+
+    const makePointerMove = (tag: string) => (e: PointerEvent) => {
+      if (alreadyHandled(e)) return;
+      const isTouch = e.pointerType !== 'mouse';
+      if (isTouch && this.touchEventsSeen) return;
+      this.evtMove++;
+      this.srcTag = (isTouch ? 'P' : 'M') + tag;
+      this.onPointerMove(e.pointerId, e.clientX, e.clientY, isTouch);
+    };
+
+    const makePointerUp = () => (e: PointerEvent) => {
+      if (alreadyHandled(e)) return;
+      if (!(e.pointerType !== 'mouse' && this.touchEventsSeen)) this.evtUp++;
+      this.onPointerUp(e.pointerId);
+    };
+
+    const makePointerCancel = () => (e: PointerEvent) => {
+      if (alreadyHandled(e)) return;
+      this.evtCancel++;
+      this.lastEventLabel = 'cancel';
+      this.onPointerUp(e.pointerId);
+    };
+
+    // ★★ 登録先を canvas / document / window の3系統に増やす ★★
+    //   実機（itch.io の埋め込み + iPhone）では window に付けたリスナーが
+    //   capture フェーズでも一切発火しなかった（計測値 D0 M0 U0 X0 T0）。
+    //   一方、同じ端末・同じ埋め込みで動いている別作品 weed は
+    //   リスナーを canvas 要素に直接付けている。
+    //   どこか1つでも届けば操作できるよう、要素・document・window の順に登録し、
+    //   最初に受け取った系統だけが処理する（alreadyHandled で二重処理を防ぐ）。
+    //   tag は「どの系統で届いたか」をデバッグ表示するためのもの（c/d/w）。
+    //   キャンバス自身だけだと、タイトル中は透明タップ層が上に乗っていて
+    //   イベントの target がそちらになるため拾えない。
+    //   そこで両方の先祖である #game-container や body / html も登録先に含める。
+    const container = this.canvas.parentElement;
+    const targets: { t: EventTarget | null; tag: string }[] = [
+      { t: this.canvas, tag: 'c' },
+      { t: container, tag: 'g' },
+      { t: document.body, tag: 'b' },
+      { t: document.documentElement, tag: 'h' },
+      { t: document, tag: 'd' },
+      { t: window, tag: 'w' },
+    ];
+
+    for (const { t, tag } of targets) {
+      if (!t) continue;
+      t.addEventListener('touchstart', makeTouchDown(tag) as EventListener, { passive: false, capture: true });
+      t.addEventListener('touchmove', makeTouchMove(tag) as EventListener, { passive: false, capture: true });
+      t.addEventListener('touchend', makeTouchEnd() as EventListener, { passive: false, capture: true });
+      t.addEventListener('touchcancel', makeTouchEnd() as EventListener, { passive: false, capture: true });
+
+      if (hasPointerEvents) {
+        t.addEventListener('pointerdown', makePointerDown(tag) as EventListener, { capture: true });
+        t.addEventListener('pointermove', makePointerMove(tag) as EventListener, { capture: true });
+        t.addEventListener('pointerup', makePointerUp() as EventListener, { capture: true });
+        t.addEventListener('pointercancel', makePointerCancel() as EventListener, { capture: true });
+      } else {
+        t.addEventListener('mousedown', ((e: MouseEvent) => {
+          if (alreadyHandled(e)) return;
+          if (isUiTarget(e.target) || e.button !== 0) return;
+          this.srcTag = 'M' + tag;
+          this.onPointerDown(-1, e.clientX, e.clientY, false);
+        }) as EventListener, { capture: true });
+        t.addEventListener('mousemove', ((e: MouseEvent) => {
+          if (alreadyHandled(e)) return;
+          this.onPointerMove(-1, e.clientX, e.clientY, false);
+        }) as EventListener, { capture: true });
+        t.addEventListener('mouseup', ((e: MouseEvent) => {
+          if (alreadyHandled(e)) return;
+          if (e.button === 0) this.onPointerUp(-1);
+        }) as EventListener, { capture: true });
+      }
+    }
 
     if (hasPointerEvents) {
-      // ★ pointerdown は window で受ける。
-      //   キャンバスの上に何かが覆いかぶさっていても（デバッグ用エラーバー等）
-      //   入力が死なないようにするための保険。
-      window.addEventListener('pointerdown', (e) => {
-        this.evtDown++; // 生イベント数（フィルタ前）
-        if (isUiTarget(e.target)) return;
-        const isTouch = e.pointerType !== 'mouse';
-        if (isTouch && this.touchEventsSeen) return; // タッチは Touch Events 側の担当
-        // マウスだけキャプチャする。ウィンドウ外までドラッグしても pointerup を確実に受け取るため。
-        if (!isTouch) {
-          try {
-            this.canvas.setPointerCapture(e.pointerId);
-          } catch {
-            /* キャプチャできない環境は無視（イベントは window でも拾える） */
-          }
-        }
-        this.srcTag = isTouch ? 'P' : 'M';
-        this.onPointerDown(e.pointerId, e.clientX, e.clientY, isTouch);
-      }, { capture: true });
-
-      window.addEventListener('pointermove', (e) => {
-        const isTouch = e.pointerType !== 'mouse';
-        if (isTouch && this.touchEventsSeen) return; // Touch 側で数えている
-        this.evtMove++;
-        this.srcTag = isTouch ? 'P' : 'M';
-        this.onPointerMove(e.pointerId, e.clientX, e.clientY, isTouch);
-      }, { capture: true });
-
-      // up / cancel は常に処理する（未追跡IDなら何もしないので害が無く、
-      // 主系統が切り替わる前に登録された指も確実に解放できる）
-      window.addEventListener('pointerup', (e) => {
-        if (!(e.pointerType !== 'mouse' && this.touchEventsSeen)) this.evtUp++;
-        this.onPointerUp(e.pointerId);
-      }, { capture: true });
-      window.addEventListener('pointercancel', (e) => {
-        this.evtCancel++;
-        this.lastEventLabel = 'cancel';
-        this.onPointerUp(e.pointerId);
-      }, { capture: true });
       // キャプチャを張った本人（キャンバス）が手放した時だけ解放扱いにする
       window.addEventListener('lostpointercapture', (e) => {
         if (e.target === this.canvas) this.onPointerUp(e.pointerId);
-      });
-    } else {
-      // Pointer Events 非対応の古い環境向け：マウスのフォールバック
-      window.addEventListener('mousedown', (e) => {
-        if (isUiTarget(e.target) || e.button !== 0) return;
-        this.srcTag = 'M';
-        this.onPointerDown(-1, e.clientX, e.clientY, false);
-      });
-      window.addEventListener('mousemove', (e) => this.onPointerMove(-1, e.clientX, e.clientY, false));
-      window.addEventListener('mouseup', (e) => {
-        if (e.button === 0) this.onPointerUp(-1);
       });
     }
 
@@ -538,7 +592,18 @@ export class Input {
     this.mouseX = p.x;
     this.mouseY = p.y;
     this.justMouseDown = true;
+    this.pendingClickX = p.x;
+    this.pendingClickY = p.y;
     this.lastEventLabel = `click ${Math.round(p.x)},${Math.round(p.y)}`;
+  }
+
+  /**
+   * ★ タッチもポインタも一切届かず、ネイティブ click だけが届く環境か。
+   *   （アプリ内ブラウザで実際に起きる。通常のスマホ／PCでは最初の操作で
+   *     evtTouch か evtDown が必ず増えるので、この判定は成立しない）
+   */
+  public isClickOnlyEnvironment(): boolean {
+    return this.evtClick > 0 && this.evtTouch === 0 && this.evtDown === 0;
   }
 
   /** デバッグ表示用：キャンバスの実表示サイズ（0 なら座標変換が壊れている＝操作不能の原因） */
