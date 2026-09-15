@@ -52,6 +52,9 @@ export class PlayerBullet {
     else ctx.rect(left, top, this.width, this.height); // 古いiOS Safari には roundRect が無い
     ctx.fill();
 
+    // ★ 性能：ここで影を切らないと、内側の白いコアにも同じガウスぼかしが二重にかかる。
+    //   コアは光る弾の内側に隠れていてグローは見えないので、切っても見た目は変わらない。
+    ctx.shadowBlur = 0;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(-this.width * 0.25, top + 2, this.width * 0.5, this.height - 4);
 

@@ -79,6 +79,34 @@ export class Sound {
     }
   }
 
+  // 爆発ノイズ波形のキャッシュ（種類ごとに数パターンを使い回す）
+  private noiseBuffers = new Map<string, AudioBuffer[]>();
+  private static readonly NOISE_VARIANTS = 3;
+
+  private getNoiseBuffer(dur: number, big: boolean): AudioBuffer {
+    const ctx = this.ctx!;
+    const bufferSize = Math.floor(ctx.sampleRate * dur);
+    const key = (big ? 'b' : 's') + bufferSize;
+    let pool = this.noiseBuffers.get(key);
+    if (!pool) {
+      pool = [];
+      this.noiseBuffers.set(key, pool);
+    }
+    if (pool.length < Sound.NOISE_VARIANTS) {
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      const decay = bufferSize * (big ? 0.35 : 0.25);
+      for (let i = 0; i < bufferSize; i++) {
+        const raw = Math.random() * 2 - 1;
+        const stepped = Math.round(raw * 4) / 4;
+        data[i] = stepped * Math.exp(-i / decay);
+      }
+      pool.push(buffer);
+      return buffer;
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
   private initContext(): void {
     if (this.audioUnavailable) return;
     if (!this.ctx) {
@@ -402,14 +430,13 @@ export class Sound {
     osc.stop(now + dur * 0.8);
 
     // --- レイヤー2: 粒立ちの荒いパンチの効いた爆発クラッシュノイズ ---
-    const bufferSize = Math.floor(this.ctx.sampleRate * dur);
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      const raw = Math.random() * 2 - 1;
-      const stepped = Math.round(raw * 4) / 4;
-      data[i] = stepped * Math.exp(-i / (bufferSize * (big ? 0.35 : 0.25)));
-    }
+    // ★ 性能：以前は爆発のたびに数万サンプルのノイズを JS ループで合成していた
+    //   （1回あたり 12,000〜23,000 回の Math.random + Math.exp と 50〜92KB の使い捨て配列）。
+    //   ボス撃破では 440ms のあいだに5連発するため、描画フレームの合間に
+    //   まとまった処理とゴミが発生して一瞬つっかえる原因になっていた。
+    //   波形は毎回作り直す必要が無いので、種類ごとに数パターンだけ作って使い回す。
+    //   （複数パターンからランダムに選ぶので、同じ音の繰り返しには聞こえない）
+    const buffer = this.getNoiseBuffer(dur, big);
 
     const noise = this.ctx.createBufferSource();
     noise.buffer = buffer;
@@ -1118,31 +1145,53 @@ export class Sound {
       return;
     }
 
-    let step = 0;
     // ドッキング時はムーンクレスタ風の静寂と推進エンジンパルス、シューティング時は緊張感あるベースライン
     const tetrisNotes = [130.81, 164.81, 196.00, 164.81];
     const shootBass = [130, 130, 195, 130, 164, 130, 174, 195];
-    const tempo = phase === 'tetris' ? 220 : 125;
+    const beat = (phase === 'tetris' ? 220 : 125) / 1000; // 1音の長さ（秒）
+
+    // ★ 重要（スマホでBGMが遅く聞こえる問題の修正）
+    //   以前は setInterval が発火した「その瞬間」に音を鳴らしていた。
+    //   setInterval はメインスレッドが混むと平気で遅延するため、
+    //   描画が重い場面＝スマホほどテンポがずるずる遅れて聞こえていた。
+    //   （＝BGMの遅さは、そのまま画面の負荷メーターになっていた）
+    //   そこで「オーディオ時計を正として先読みで予約する」方式に変更する。
+    //   タイマーはあくまで“予約しに行くきっかけ”でしかないので、
+    //   多少遅れて起きても、音そのものは正確な時刻に鳴る＝テンポが崩れない。
+    const LOOKAHEAD = 0.18; // 何秒先まで予約しておくか
+    let step = 0;
+    let nextNoteTime = this.ctx ? this.ctx.currentTime + 0.06 : 0;
 
     this.bgmIntervalId = window.setInterval(() => {
-      if (this.isMuted || !this.ctx) return;
-      const now = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+      const ctx = this.ctx;
+      if (this.isMuted || !ctx) return;
 
-      osc.type = phase === 'tetris' ? 'triangle' : 'square';
-      const freq = phase === 'tetris' ? tetrisNotes[step % tetrisNotes.length] : shootBass[step % shootBass.length];
-      osc.frequency.setValueAtTime(freq, now);
-      gain.gain.setValueAtTime(phase === 'tetris' ? 0.018 : 0.038, now);
-      gain.gain.exponentialRampToValueAtTime(0.002, now + 0.14);
+      // タブ復帰などで大きく取り残された場合は現在時刻へ貼り直す（早送りで追いつかない）
+      if (nextNoteTime < ctx.currentTime - 0.3) nextNoteTime = ctx.currentTime + 0.03;
 
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      while (nextNoteTime < ctx.currentTime + LOOKAHEAD) {
+        const at = nextNoteTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
 
-      osc.start(now);
-      osc.stop(now + 0.13);
-      step++;
-    }, tempo);
+        osc.type = phase === 'tetris' ? 'triangle' : 'square';
+        const freq = phase === 'tetris'
+          ? tetrisNotes[step % tetrisNotes.length]
+          : shootBass[step % shootBass.length];
+        osc.frequency.setValueAtTime(freq, at);
+        gain.gain.setValueAtTime(phase === 'tetris' ? 0.018 : 0.038, at);
+        gain.gain.exponentialRampToValueAtTime(0.002, at + 0.14);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(at);
+        osc.stop(at + 0.13);
+
+        step++;
+        nextNoteTime += beat;
+      }
+    }, 40); // 先読み幅より十分短い間隔で予約しに行く
   }
 
   public pauseBGM(): void {

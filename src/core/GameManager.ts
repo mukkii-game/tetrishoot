@@ -1802,6 +1802,16 @@ export class GameManager {
     }
 
     // 敵本体 vs 自機 体当たり判定（ムーンクレスタ仕様！）
+    // ★ 性能＆見た目のバグ修正（ブロードフェーズ）
+    //   Player.checkHit() は「バリア／無敵中なら、判定する前にまず火花を出す」仕様。
+    //   小型の敵には距離チェックが無く全機に対して checkHit を呼んでいたため、
+    //   バリア中(5秒)や被弾直後の無敵中(2.5秒)は、画面外に待機している敵まで含めた
+    //   全ての敵から毎フレーム火花が出ていた（9面HARDでは最大768個/フレーム）。
+    //   処理落ちの原因であると同時に、見た目にもおかしかった。
+    //   自機の外接矩形に入っていない敵は checkHit を呼ばずに飛ばす。
+    //   checkHit は「点が自機セルの中にあるか」しか見ておらず、セルは必ず外接矩形の中にあるので、
+    //   この間引きで当たり判定の結果が変わることはない。
+    const playerBox = this.player.getBoundingBox();
     for (const enemy of this.enemies) {
       if (enemy.isDead) continue;
       // ★ バグ修正：従来は敵の中心1点だけを自機セルと照合していたため、ボスなど大型の敵は
@@ -1837,6 +1847,11 @@ export class GameManager {
           if (overlap) break;
         }
         if (!overlap) continue;
+      } else if (
+        hitPx < playerBox.minX || hitPx > playerBox.maxX ||
+        hitPy < playerBox.minY || hitPy > playerBox.maxY
+      ) {
+        continue; // 自機の外接矩形の外＝絶対に当たらないので checkHit すら呼ばない
       }
       const hitRes = this.player.checkHit(hitPx, hitPy, this.particles);
       if (hitRes.hit) {
@@ -2140,8 +2155,11 @@ export class GameManager {
 
     ctx.save();
     if (this.screenShake > 0) {
-      const shakeX = (Math.random() - 0.5) * this.screenShake;
-      const shakeY = (Math.random() - 0.5) * this.screenShake;
+      // ★ 性能：小数だけずらすと、以降に描く全ての矩形が
+      //   「整数ピクセルの高速塗り」から「アンチエイリアス付きの低速経路」に落ちる。
+      //   整数に丸めれば速いうえ、ドット絵の輪郭もボケない（レトロ感としてもこちらが正しい）。
+      const shakeX = Math.round((Math.random() - 0.5) * this.screenShake);
+      const shakeY = Math.round((Math.random() - 0.5) * this.screenShake);
       ctx.translate(shakeX, shakeY);
     }
 
