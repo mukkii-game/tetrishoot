@@ -30,6 +30,18 @@ const BOSS_RUSH: { rank: BossRank; hp: number; pattern: FlightPattern }[] = [
 ];
 export type GamePhase = 'TETRIS' | 'SHOOTING';
 
+// ★ ユーザー要望（Stage 5）：
+//   「ミサイルの量を倍に。あと少しだけ、3面で出てくる “縦座標が合うと90度角度を変えて自機に向かってくる敵”
+//     （STARFORCE_CORNER）を入れて。ミサイルとその敵は重ならないように配分」
+//   → 壁際ミサイルは間隔を半分（＝倍の量）にしたうえで、
+//     下記の時間帯だけミサイルを完全に止めて「90度直角旋回機」の担当時間にする。
+//     （時間はシューティングフェーズ開始からの秒数。mp3版では別途 3 秒後ろへずらす）
+const STAGE5_CORNER_WAVES: { quietStart: number; quietEnd: number; spawnAt: number }[] = [
+  { quietStart: 18.0, quietEnd: 24.5, spawnAt: 18.4 },
+  { quietStart: 32.5, quietEnd: 39.0, spawnAt: 32.9 },
+];
+const STAGE5_CORNER_PER_WAVE = 4; // NORMAL の1波あたり機数（HARD は hc() で5割増）
+
 // 落ちてくるブロックの状態（ドッキング用：自律浮遊＋弾ヒットで回転）
 export interface FallingPieceItem {
   index: number;
@@ -97,6 +109,7 @@ export class GameManager {
   // ボス出現・撃破管理
   public bossSpawned = false;
   private lastScriptedSpawnTime = 0; // spawnAlienFleet で予定した最後のザコ出現時刻（秒）
+  private lastInput: Input | null = null; // 直近フレームの入力（仮想スティックHUD描画用）
   private stageTextDelay = 0; // mp3 イントロ待ち：0 になった時点で「STAGE n」表示＆本編開始
   public currentBoss: Enemy | null = null;
   public bossDying = false;
@@ -215,7 +228,9 @@ export class GameManager {
     this.phase = 'SHOOTING';
     this.fallingPieces = [];
     // バトル時間（★ 9面は「一種ずつ→中盤からコンボ」の構成を入れるため 80 秒に延長）
-    this.shootingTimeTotal = this.stage === 9 ? 100 : 65;
+    // ★ ユーザー要望：5面はミサイル倍増＋90度直角旋回機を加えるため、
+    //   ミサイルが飛ぶ時間を減らさずに済むよう 65 → 78 秒に延長する
+    this.shootingTimeTotal = this.stage === 9 ? 100 : this.stage === 5 ? 78 : 65;
     this.shootingTimeLimit = this.shootingTimeTotal;
     this.bossRushIndex = 0;
     this.formationOffsetAngle = 0;
@@ -262,7 +277,13 @@ export class GameManager {
     // ★ ユーザー要望：5面は開幕約10秒間、壁面発射台も起動させない
     this.terrain.siloStartDelay = (this.stage === 5 || this.stage === 9) ? 10.0 : 2.5;
     // HARD は壁際ロケットの間隔も詰める（260px → 175px ≒ 5割増）
-    this.terrain.siloSpacing = this.difficulty === 'HARD' ? 175 : 260;
+    const siloSpacingBase = this.difficulty === 'HARD' ? 175 : 260;
+    // ★ ユーザー要望：5面はミサイルの量を倍に（＝出現間隔を半分に）。HARD比率はそのまま維持
+    this.terrain.siloSpacing = this.stage === 5 ? siloSpacingBase / 2 : siloSpacingBase;
+    // ★ ユーザー要望：5面はミサイルと90度直角旋回機が重ならないよう、時間帯で棲み分ける
+    this.terrain.siloQuietWindows = this.stage === 5
+      ? STAGE5_CORNER_WAVES.map(w => ({ start: w.quietStart, end: w.quietEnd }))
+      : [];
 
     // ★ ユーザー要望：アイテムはステージ開始時の固定配置ではなく、累計撃破数に応じて出現（spawnBarrierOrb 参照）
     //   救済カプセルはいったん廃止
@@ -289,6 +310,7 @@ export class GameManager {
   }
 
   public update(dt: number, input: Input): void {
+    this.lastInput = input; // 仮想スティックHUDの描画用
     if (input.mutePressed) {
       this.sound.toggleMute();
     }
@@ -502,8 +524,9 @@ export class GameManager {
             this.sound.playHit();
           }
 
-          // マウスクリックでの選択＆決定
-          if (input.isMouseDown && input.mouseY !== null) {
+          // マウスクリック／タップでの選択＆決定
+          // （スマホは画面左半分＝移動スティック扱いで isMouseDown が立たないため justMouseDown も見る）
+          if ((input.isMouseDown || input.justMouseDown) && input.mouseY !== null) {
             if (input.mouseY >= 450 && input.mouseY <= 505) {
               this.gameOverSelection = 'CONTINUE';
               this.handleGameOverConfirm();
@@ -888,6 +911,19 @@ export class GameManager {
         // ★ ユーザー要望：Stage 5 は地形に非常にぶつかりやすく難しいので、出現敵を約半分に削減
         // ★ ユーザー要望：5面のザコは地形（壁際から発射される地表ミサイル）だけ。スクリプト出現の敵は無し
         //   （開始10秒間は壁の発射も止めているので、最初は地形のみ）
+        //
+        // ★ ユーザー要望（追加）：「5面の敵が少し少ないのでミサイルの量を倍に。
+        //   あと少しだけ、3面で出てくる “縦座標が合うと90度角度を変えて自機に向かってくる敵” を入れて。
+        //   ミサイルとその敵は重ならないように配分」
+        //   → ミサイルは siloSpacing を半分にして倍増（startShootingPhase 参照）。
+        //     直角旋回機はミサイルを完全に止めた「静粛時間帯」にだけ出す（STAGE5_CORNER_WAVES）。
+        //     倒し遅れて時間帯をまたぐ被りは許容。
+        for (const wave of STAGE5_CORNER_WAVES) {
+          for (let i = 0; i < this.hc(STAGE5_CORNER_PER_WAVE); i++) {
+            // formationCol の偶奇で左右の落下位置が決まるので、左右交互に降らせる
+            this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, wave.spawnAt + i * 0.55));
+          }
+        }
         break;
 
       case 6:
@@ -1033,6 +1069,11 @@ export class GameManager {
         e.delaySpawn(MUSIC_INTRO);
       }
       this.terrain.siloStartDelay += MUSIC_INTRO;
+      // 敵を後ろ倒しした分、ミサイルの静粛時間帯も同じだけずらす（担当時間がずれないように）
+      for (const w of this.terrain.siloQuietWindows) {
+        w.start += MUSIC_INTRO;
+        w.end += MUSIC_INTRO;
+      }
       this.shootingTimeTotal += MUSIC_INTRO;
       this.shootingTimeLimit += MUSIC_INTRO;
     }
@@ -1042,8 +1083,10 @@ export class GameManager {
     for (const e of this.enemies) {
       this.lastScriptedSpawnTime = Math.max(this.lastScriptedSpawnTime, e.getSpawnDelay());
     }
-    // スクリプト出現の敵が無い面（5面）は、残り敵数によるボス呼び出しをせず時間切れ（残り32秒）でボスへ
-    if (this.enemies.length === 0) {
+    // スクリプト出現の敵が無い面は、残り敵数によるボス呼び出しをせず時間切れ（残り32秒）でボスへ。
+    // ★ 5面は主役が「地形＋壁際ミサイル」で、スクリプト敵（90度直角旋回機）はごく少数のため、
+    //   その数機を倒した瞬間にボスが出ないよう同じく時間切れ方式に固定する
+    if (this.enemies.length === 0 || this.stage === 5) {
       this.lastScriptedSpawnTime = 999;
     }
   }
@@ -2250,6 +2293,33 @@ export class GameManager {
 
     // 9. タイトル・ゲームオーバーオーバーレイ（画面揺れの影響を一切受けない）
     this.drawOverlays(ctx);
+
+    // 10. スマホ用 仮想スティックの表示（左半分をドラッグ中のみ）
+    this.drawVirtualStick(ctx);
+  }
+
+  /** ★ スマホ操作：画面左半分の仮想スティック（支点リングとノブ）を描く */
+  private drawVirtualStick(ctx: CanvasRenderingContext2D): void {
+    const input = this.lastInput;
+    if (!input || !input.stickActive || this.state !== 'PLAYING') return;
+
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+
+    // 支点リング
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(input.stickOriginX, input.stickOriginY, 46, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // ノブ
+    ctx.fillStyle = '#00ffcc';
+    ctx.beginPath();
+    ctx.arc(input.stickKnobX, input.stickKnobY, 17, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   }
 
   /** ハイスコア保存（更新があればlocalStorageへ永続化） */

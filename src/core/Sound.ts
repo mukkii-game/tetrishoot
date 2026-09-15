@@ -16,6 +16,7 @@ import {
 // ムーンクレスタ風 往年チップチューン音源（Web Audio API）＋ OtoLogic効果音
 export class Sound {
   private ctx: AudioContext | null = null;
+  private audioUnavailable = false; // Web Audio が使えない環境（生成失敗）では以降一切触らない
   public isMuted = false;
   private bgmIntervalId: number | null = null;
   private currentBgmPhase: 'tetris' | 'shooting' | 'none' = 'none';
@@ -74,19 +75,34 @@ export class Sound {
 
   public resumeAudio(): void {
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      void this.ctx.resume().catch(() => { /* 次のユーザー操作で再挑戦するので無視 */ });
     }
   }
 
   private initContext(): void {
+    if (this.audioUnavailable) return;
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.ctx = new AudioCtx();
+      // ★ AudioContext の生成に失敗しても絶対にゲーム本体を巻き込まない。
+      //   （コンストラクタで呼ぶため、ここで例外が漏れると GameManager が生成されず
+      //     画面が真っ暗のまま何もできなくなる。各再生メソッドは ctx===null を見て無音で通す）
+      try {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (!AudioCtx) {
+          this.audioUnavailable = true;
+          return;
+        }
+        this.ctx = new AudioCtx();
+      } catch (e) {
+        console.warn('AudioContext unavailable:', e);
+        this.audioUnavailable = true;
+        this.ctx = null;
+        return;
+      }
       this.loadOtoLogicBuffers();
       this.loadStageMusic();
     }
     if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      void this.ctx.resume().catch(() => { /* ユーザー操作前の resume 失敗は無視 */ });
     }
   }
 

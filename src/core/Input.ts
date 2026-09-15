@@ -1,4 +1,40 @@
+import { CANVAS_WIDTH } from '../config';
+
 // ユーザー入力の管理（テトリス3ピース選択 [1][2][3]/Tab、移動、回転、上下左右）
+//
+// ★ 2026-09 大改修（スマホ対応 & PC操作変更）
+//   1) ポインタ操作を Touch Events から **Pointer Events** に全面移行した。
+//      旧実装は「最初に触れた指の identifier を activeTouchId に保持し、
+//       touchend が来るまで新しい指を一切受け付けない」構造だった。
+//      iOS Safari の **クロスオリジン iframe（itch.io の html-classic.itch.zone 埋め込み）** では、
+//      親ページ側にジェスチャーを奪われると touchend / touchcancel が
+//      iframe 内のドキュメントへ配送されないことがある。
+//      すると activeTouchId が永久に残り、以降 touchstart も mousedown も
+//      すべて `if (this.activeTouchId !== null) return;` で弾かれ、
+//      「タイトルは表示されるがタップしても一切反応しない」＝完全な入力デッドロックになる。
+//      （同じ端末でも GitHub Pages のトップレベル表示では親ページが無いため再現しない）
+//      → 新実装は pointerId をキーにした Map で管理し、
+//        「古い状態が新しい入力をブロックする」経路を根絶。
+//        さらに setPointerCapture / pointercancel / lostpointercapture / blur /
+//        visibilitychange の全経路で確実に解放する。
+//      （itch.io 上で正常動作している別作品 weed も Pointer Events 方式）
+//   2) スマホ操作を左右ゾーン分割に変更（bolero_ball 方式）。
+//      画面左半分＝自機移動の仮想スティック（弾は出ない）。
+//      キー移動と同じ速度で、8方向ではなく全方向（360度）へ動く。
+//      画面右半分＝タップ／押しっぱなしでショット。
+//   3) PC ではマウス移動で自機を動かさない（移動はキーボードのみ）。
+//      マウス座標はメニューのホバー／クリック判定用に引き続き保持する。
+
+type PointerRole = 'STICK' | 'FIRE';
+
+interface TrackedPointer {
+  role: PointerRole;
+  originX: number; // 仮想スティックの支点（キャンバス座標）
+  originY: number;
+  lastMoveAt: number; // 最後に動いた時刻（ms）。取りこぼし検知用
+  stale: boolean; // 解放イベントを取りこぼした疑いあり（入力として無効扱い）
+}
+
 export class Input {
   public left = false;
   public right = false;
@@ -23,20 +59,201 @@ export class Input {
 
   public mouseX: number | null = null;
   public mouseY: number | null = null;
-  public mouseDeltaX = 0;
-  public mouseDeltaY = 0;
   public isMouseDown = false;
   public justMouseDown = false;
-  public hasMouseMoved = false;
+
+  // ★ スマホ左半分の仮想スティック出力（-1..1、合成長は最大1）
+  public moveVecX = 0;
+  public moveVecY = 0;
+  // 仮想スティックの描画用状態（GameManager がHUDに描く）
+  public stickActive = false;
+  public stickOriginX = 0;
+  public stickOriginY = 0;
+  public stickKnobX = 0;
+  public stickKnobY = 0;
+
+  private static readonly STICK_DEAD_ZONE = 8; // この振れ幅までは静止
+  private static readonly STICK_MAX_RADIUS = 46; // ここで最大速度（＝キー入力と同速）
+  // ★ 最終防衛線：pointerup も touchend も届かなかった指を「無効」にするまでの時間（ms）。
+  //   指を表から消すのではなく stale フラグを立てるだけなので、
+  //   もし誤検知でも指を1pxでも動かせば（pointermove が来れば）その瞬間に操作が復帰する。
+  private static readonly POINTER_WATCHDOG_MS = 6000;
 
   private canvas: HTMLCanvasElement;
-  private activeTouchId: number | null = null;
-  private lastTouchClientX = 0;
-  private lastTouchClientY = 0;
+  private pointers = new Map<number, TrackedPointer>();
+  private keyShoot = false; // スペースキー
+  private pointerShoot = false; // 右半分タップ or PCクリック
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.setupListeners();
+  }
+
+  // ==========================================
+  // 座標変換
+  // ==========================================
+  private toCanvas(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return { x: 0, y: 0 };
+    return {
+      x: (clientX - rect.left) * (this.canvas.width / rect.width),
+      y: (clientY - rect.top) * (this.canvas.height / rect.height),
+    };
+  }
+
+  // ==========================================
+  // ショット状態の同期（キーボードとポインタの論理和）
+  // ==========================================
+  private syncShoot(): void {
+    const on = this.keyShoot || this.pointerShoot;
+    if (on && !this.shoot) this.justShoot = true;
+    this.shoot = on;
+    this.isMouseDown = this.pointerShoot;
+  }
+
+  private isFiringNow(): boolean {
+    for (const p of this.pointers.values()) {
+      if (p.role === 'FIRE' && !p.stale) return true;
+    }
+    return false;
+  }
+
+  private refreshPointerShoot(): void {
+    this.pointerShoot = this.isFiringNow();
+    this.syncShoot();
+  }
+
+  // ==========================================
+  // ポインタ共通処理
+  // ==========================================
+  private onPointerDown(id: number, clientX: number, clientY: number, isTouch: boolean): void {
+    if (this.pointers.has(id)) return; // 同一IDの二重登録を防止（window/canvas 両取り対策）
+
+    const p = this.toCanvas(clientX, clientY);
+    this.mouseX = p.x;
+    this.mouseY = p.y;
+    this.justMouseDown = true; // メニューのタップ判定は左右どちらのゾーンでも有効
+
+    if (isTouch && p.x < CANVAS_WIDTH / 2) {
+      // ★ 左半分：自機移動の仮想スティック。弾は撃たない
+      // 取りこぼしで残った古いスティック指があれば破棄して常に最新の指を優先する
+      for (const [pid, tp] of this.pointers) {
+        if (tp.role === 'STICK') this.pointers.delete(pid);
+      }
+      this.pointers.set(id, { role: 'STICK', originX: p.x, originY: p.y, lastMoveAt: performance.now(), stale: false });
+      this.moveVecX = 0;
+      this.moveVecY = 0;
+      this.stickActive = true;
+      this.stickOriginX = p.x;
+      this.stickOriginY = p.y;
+      this.stickKnobX = p.x;
+      this.stickKnobY = p.y;
+      return;
+    }
+
+    // 右半分タップ（スマホ）／PCのクリック：ショット
+    this.pointers.set(id, { role: 'FIRE', originX: p.x, originY: p.y, lastMoveAt: performance.now(), stale: false });
+    this.refreshPointerShoot();
+  }
+
+  private onPointerMove(id: number, clientX: number, clientY: number, isTouch: boolean): void {
+    const tp = this.pointers.get(id);
+
+    if (!isTouch) {
+      // PC：カーソル座標はメニューのホバー判定に使うだけ。自機は動かさない
+      const p = this.toCanvas(clientX, clientY);
+      this.mouseX = p.x;
+      this.mouseY = p.y;
+      return;
+    }
+
+    if (!tp) return;
+    tp.lastMoveAt = performance.now();
+    tp.stale = false; // 動いた＝指はまだ画面上にある
+    const p = this.toCanvas(clientX, clientY);
+
+    if (tp.role !== 'STICK') {
+      this.mouseX = p.x;
+      this.mouseY = p.y;
+      return;
+    }
+
+    let dx = p.x - tp.originX;
+    let dy = p.y - tp.originY;
+    const dist = Math.hypot(dx, dy);
+
+    // フローティングスティック：最大振れ幅を超えたら支点を追従させる
+    // （指を戻したときに即座に減速でき、端まで引っ張っても操作が破綻しない）
+    if (dist > Input.STICK_MAX_RADIUS) {
+      const k = (dist - Input.STICK_MAX_RADIUS) / dist;
+      tp.originX += dx * k;
+      tp.originY += dy * k;
+      dx = p.x - tp.originX;
+      dy = p.y - tp.originY;
+    }
+
+    const d = Math.hypot(dx, dy);
+    if (d <= Input.STICK_DEAD_ZONE) {
+      this.moveVecX = 0;
+      this.moveVecY = 0;
+    } else {
+      const mag = Math.min(1, (d - Input.STICK_DEAD_ZONE) / (Input.STICK_MAX_RADIUS - Input.STICK_DEAD_ZONE));
+      this.moveVecX = (dx / d) * mag;
+      this.moveVecY = (dy / d) * mag;
+    }
+
+    this.stickActive = true;
+    this.stickOriginX = tp.originX;
+    this.stickOriginY = tp.originY;
+    this.stickKnobX = tp.originX + dx;
+    this.stickKnobY = tp.originY + dy;
+  }
+
+  private onPointerUp(id: number): void {
+    const tp = this.pointers.get(id);
+    if (!tp) return;
+    this.pointers.delete(id);
+    if (tp.role === 'STICK') {
+      this.moveVecX = 0;
+      this.moveVecY = 0;
+      this.stickActive = false;
+    }
+    this.refreshPointerShoot();
+  }
+
+  /**
+   * ★ 最終防衛線：解放イベントを完全に取りこぼした指を毎フレーム掃除する。
+   *   （iOS Safari のクロスオリジン iframe では、親ページにジェスチャーを奪われると
+   *     touchend / pointerup が iframe 側へ届かないことがある）
+   *   ついでに stickActive をポインタ表から作り直し、表示だけ残る不整合も潰す。
+   */
+  private reapLostPointers(): void {
+    const now = performance.now();
+    let hasStick = false;
+    for (const p of this.pointers.values()) {
+      if (!p.stale && now - p.lastMoveAt > Input.POINTER_WATCHDOG_MS) p.stale = true;
+      if (p.role === 'STICK' && !p.stale) hasStick = true;
+    }
+    if (!hasStick && (this.stickActive || this.moveVecX !== 0 || this.moveVecY !== 0)) {
+      this.stickActive = false;
+      this.moveVecX = 0;
+      this.moveVecY = 0;
+    }
+    // ここでは「切る」方向にしか働かせない（押していない弾が勝手に出るのを防ぐ）
+    if (this.pointerShoot && !this.isFiringNow()) {
+      this.pointerShoot = false;
+      this.syncShoot();
+    }
+  }
+
+  /** 画面が隠れた・フォーカスを失った等、確実に全指を離す */
+  private releaseAllPointers(): void {
+    this.pointers.clear();
+    this.moveVecX = 0;
+    this.moveVecY = 0;
+    this.stickActive = false;
+    this.pointerShoot = false;
+    this.syncShoot();
   }
 
   private setupListeners(): void {
@@ -50,13 +267,11 @@ export class Input {
         case 'KeyA':
           if (!this.left) this.justLeft = true;
           this.left = true;
-          this.hasMouseMoved = false;
           break;
         case 'ArrowRight':
         case 'KeyD':
           if (!this.right) this.justRight = true;
           this.right = true;
-          this.hasMouseMoved = false;
           break;
         case 'ArrowUp':
         case 'KeyW':
@@ -69,8 +284,8 @@ export class Input {
           this.down = true;
           break;
         case 'Space':
-          if (!this.shoot) this.justShoot = true;
-          this.shoot = true;
+          this.keyShoot = true;
+          this.syncShoot();
           break;
         case 'Enter':
         case 'NumpadEnter':
@@ -125,7 +340,8 @@ export class Input {
           this.down = false;
           break;
         case 'Space':
-          this.shoot = false;
+          this.keyShoot = false;
+          this.syncShoot();
           break;
         case 'Enter':
         case 'NumpadEnter':
@@ -137,138 +353,113 @@ export class Input {
       }
     });
 
-    // ★ バグ修正：以前はキャンバス上でしかマウス移動を拾っておらず、自機を画面端に押し付けると
-    //   カーソルがキャンバス外へ出て入力が途切れ、戻すまで自機が端に「吸着」したように動かなかった。
-    //   ウィンドウ全体で相対移動量（movementX/Y）を拾うことで、カーソルがどこにあっても常に動かせる。
-    window.addEventListener('mousemove', (e) => {
-      if (this.activeTouchId !== null) return;
-
-      const rect = this.canvas.getBoundingClientRect();
-      const scaleX = this.canvas.width / rect.width;
-      const scaleY = this.canvas.height / rect.height;
-
-      const newMouseX = (e.clientX - rect.left) * scaleX;
-      const newMouseY = (e.clientY - rect.top) * scaleY;
-
-      // 動かした方向・移動量だけ自機を動かす（カーソル位置へのワープ・スナップはしない）
-      if (typeof e.movementX === 'number' && typeof e.movementY === 'number') {
-        this.mouseDeltaX += e.movementX * scaleX;
-        this.mouseDeltaY += e.movementY * scaleY;
-      } else if (this.mouseX !== null && this.mouseY !== null) {
-        this.mouseDeltaX += newMouseX - this.mouseX;
-        this.mouseDeltaY += newMouseY - this.mouseY;
-      }
-
-      this.mouseX = newMouseX;
-      this.mouseY = newMouseY;
-      this.hasMouseMoved = true;
-    });
-
-    window.addEventListener('mousedown', (e) => {
-      if (this.activeTouchId !== null) return;
-      if (e.button === 0) {
-        if (!this.isMouseDown) this.justMouseDown = true;
-        this.isMouseDown = true;
-        this.shoot = true;
-      }
-    });
-
-    window.addEventListener('mouseup', (e) => {
-      if (this.activeTouchId !== null) return;
-      if (e.button === 0) {
-        this.isMouseDown = false;
-        this.shoot = false;
-      }
-    });
-
-    // ブラウザウィンドウ自体からカーソルが出た時のみリセット（キャンバス外に出ただけでは入力を切らない）
-    document.addEventListener('mouseleave', () => {
-      if (this.activeTouchId !== null) return;
-      this.hasMouseMoved = false;
-      this.mouseX = null;
-      this.mouseY = null;
-      this.mouseDeltaX = 0;
-      this.mouseDeltaY = 0;
-    });
-
-    // ==========================================
-    // スマートフォン向けタッチ操作（押し続けてドラッグで移動＆連射）
-    // ==========================================
-    window.addEventListener('touchstart', (e) => {
-      if (this.activeTouchId === null && e.changedTouches.length > 0) {
-        const touch = e.changedTouches[0];
-        this.activeTouchId = touch.identifier;
-        this.lastTouchClientX = touch.clientX;
-        this.lastTouchClientY = touch.clientY;
-
-        const rect = this.canvas.getBoundingClientRect();
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-
-        this.mouseX = (touch.clientX - rect.left) * scaleX;
-        this.mouseY = (touch.clientY - rect.top) * scaleY;
-
-        if (!this.isMouseDown) this.justMouseDown = true;
-        this.isMouseDown = true;
-        if (!this.shoot) this.justShoot = true;
-        this.shoot = true;
-        this.hasMouseMoved = true;
-      }
-    }, { passive: false });
-
-    window.addEventListener('touchmove', (e) => {
-      if (this.activeTouchId === null) return;
-
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        const touch = e.changedTouches[i];
-        if (touch.identifier === this.activeTouchId) {
-          e.preventDefault();
-
-          const rect = this.canvas.getBoundingClientRect();
-          const scaleX = this.canvas.width / rect.width;
-          const scaleY = this.canvas.height / rect.height;
-
-          const deltaClientX = touch.clientX - this.lastTouchClientX;
-          const deltaClientY = touch.clientY - this.lastTouchClientY;
-          this.lastTouchClientX = touch.clientX;
-          this.lastTouchClientY = touch.clientY;
-
-          this.mouseDeltaX += deltaClientX * scaleX;
-          this.mouseDeltaY += deltaClientY * scaleY;
-
-          this.mouseX = (touch.clientX - rect.left) * scaleX;
-          this.mouseY = (touch.clientY - rect.top) * scaleY;
-
-          this.hasMouseMoved = true;
-          this.isMouseDown = true;
-          this.shoot = true;
-          break;
-        }
-      }
-    }, { passive: false });
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (this.activeTouchId === null) return;
-
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        const touch = e.changedTouches[i];
-        if (touch.identifier === this.activeTouchId) {
-          this.activeTouchId = null;
-          this.isMouseDown = false;
-          this.shoot = false;
-          this.mouseX = null;
-          this.mouseY = null;
-          this.hasMouseMoved = false;
-          break;
-        }
-      }
+    // フル画面ボタン（DOM要素）のタップはゲーム入力として扱わない
+    const isUiTarget = (target: EventTarget | null): boolean => {
+      const el = target as Element | null;
+      return !!(el && typeof el.closest === 'function' && el.closest('#fullscreen-btn'));
     };
 
-    window.addEventListener('touchend', onTouchEnd, { passive: false });
-    window.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    // ※ `'PointerEvent' in window` と書くと TS が else 側の window を never に絞ってしまうため
+    //    typeof で判定する
+    const hasPointerEvents = typeof (window as unknown as { PointerEvent?: unknown }).PointerEvent !== 'undefined';
+
+    if (hasPointerEvents) {
+      // ★ pointerdown は window で受ける。
+      //   キャンバスの上に何かが覆いかぶさっていても（デバッグ用エラーバー等）
+      //   入力が死なないようにするための保険。
+      window.addEventListener('pointerdown', (e) => {
+        if (isUiTarget(e.target)) return;
+        const isTouch = e.pointerType !== 'mouse';
+        // マウスだけキャプチャする。ウィンドウ外までドラッグしても pointerup を確実に受け取るため。
+        // タッチ／ペンは仕様上「暗黙のキャプチャ」が既に効いているので明示キャプチャは不要で、
+        // むしろキャプチャ先を付け替えると lostpointercapture が飛んで操作が即座に切れてしまう。
+        if (!isTouch) {
+          try {
+            this.canvas.setPointerCapture(e.pointerId);
+          } catch {
+            /* キャプチャできない環境は無視（イベントは window でも拾える） */
+          }
+        }
+        this.onPointerDown(e.pointerId, e.clientX, e.clientY, isTouch);
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        this.onPointerMove(e.pointerId, e.clientX, e.clientY, e.pointerType !== 'mouse');
+      });
+
+      const up = (e: PointerEvent) => this.onPointerUp(e.pointerId);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+      // キャプチャを張った本人（キャンバス）が手放した時だけ解放扱いにする
+      window.addEventListener('lostpointercapture', (e) => {
+        if (e.target === this.canvas) this.onPointerUp(e.pointerId);
+      });
+    } else {
+      // Pointer Events 非対応の古い環境向けフォールバック（Touch / Mouse）
+      window.addEventListener('touchstart', (e) => {
+        if (isUiTarget(e.target)) return;
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches[i];
+          this.onPointerDown(t.identifier, t.clientX, t.clientY, true);
+        }
+      }, { passive: false });
+      window.addEventListener('touchmove', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches[i];
+          this.onPointerMove(t.identifier, t.clientX, t.clientY, true);
+        }
+      }, { passive: false });
+      const touchEnd = (e: TouchEvent) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          this.onPointerUp(e.changedTouches[i].identifier);
+        }
+      };
+      window.addEventListener('touchend', touchEnd, { passive: false });
+      window.addEventListener('touchcancel', touchEnd, { passive: false });
+
+      window.addEventListener('mousedown', (e) => {
+        if (isUiTarget(e.target) || e.button !== 0) return;
+        this.onPointerDown(-1, e.clientX, e.clientY, false);
+      });
+      window.addEventListener('mousemove', (e) => this.onPointerMove(-1, e.clientX, e.clientY, false));
+      window.addEventListener('mouseup', (e) => {
+        if (e.button === 0) this.onPointerUp(-1);
+      });
+    }
+
+    // ★ iOS Safari のスクロール／ピンチ／ダブルタップ拡大／エッジスワイプを抑止する。
+    //   touchstart の既定動作を止めると合成マウスイベントも発生しなくなるため、
+    //   Pointer Events との二重入力も同時に防げる（weed と同じ手法）。
+    const guard = (e: TouchEvent) => {
+      if (isUiTarget(e.target)) return;
+      if (e.cancelable) e.preventDefault();
+    };
+    window.addEventListener('touchstart', guard, { passive: false });
+    window.addEventListener('touchmove', guard, { passive: false });
+    window.addEventListener('touchend', guard, { passive: false });
+
+    // ★ 二重の安全網：Pointer Events 側の pointerup / pointercancel を取りこぼしても、
+    //   Touch Events 側の「画面上に残っている指はゼロ」という確定情報で必ず復帰させる。
+    //   （逆に Touch 側を取りこぼしても Pointer 側で解放される＝どちらか片方が届けば復帰する）
+    if (hasPointerEvents) {
+      const reconcile = (e: TouchEvent) => {
+        if (e.touches.length === 0) this.releaseAllPointers();
+      };
+      window.addEventListener('touchend', reconcile, { passive: true });
+      window.addEventListener('touchcancel', reconcile, { passive: true });
+    }
+
+    // 取りこぼし対策：フォーカス喪失・非表示化・ページ離脱では必ず全解放する
+    window.addEventListener('blur', () => this.releaseAllPointers());
+    window.addEventListener('pagehide', () => this.releaseAllPointers());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.releaseAllPointers();
+    });
   }
 
   public clearTransientInputs(): void {
+    this.keyShoot = false;
+    this.pointerShoot = false;
     this.shoot = false;
     this.isMouseDown = false;
     this.justShoot = false;
@@ -280,11 +471,10 @@ export class Input {
     this.justLeft = false;
     this.justRight = false;
     this.justEscape = false;
-    this.mouseDeltaX = 0;
-    this.mouseDeltaY = 0;
   }
 
   public resetPerFrame(): void {
+    this.reapLostPointers();
     this.mutePressed = false;
     this.justEscape = false;
     this.justLeft = false;
@@ -297,7 +487,5 @@ export class Input {
     this.justEnter = false;
     this.justInvincible = false;
     this.selectedPieceIndex = null;
-    this.mouseDeltaX = 0;
-    this.mouseDeltaY = 0;
   }
 }
