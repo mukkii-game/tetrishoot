@@ -114,6 +114,7 @@ export class GameManager {
   private clickMoveTargetX: number | null = null;
   private clickMoveTargetY: number | null = null;
   private clickFireTimer = 0;
+  private debugQueryForced: boolean | null = null; // ?debug=1 の判定キャッシュ
   private stageTextDelay = 0; // mp3 イントロ待ち：0 になった時点で「STAGE n」表示＆本編開始
   public currentBoss: Enemy | null = null;
   public bossDying = false;
@@ -2339,12 +2340,30 @@ export class GameManager {
       ctx.restore();
     }
 
-    // 11. 端末側デバッグ表示（極小・全画面共通）
-    //   1行目：BUILD ID。itch.io は index.html の URL が変わらないため端末に古い版が
-    //          キャッシュされ続けることがある。「本当に最新版が動いているか」をここで確認する。
-    //   2行目：実際に届いた入力イベントの数と直近の座標。ゲーム中も見えるので
-    //          「タップが届いていないのか／届いているのに動かないのか」を現場で切り分けられる。
-    this.drawDeviceDebugLine(ctx);
+    // 11. 入力診断表示。
+    //   itch.io + iPhone の「タップが効かない」調査で使ったもの。
+    //   普段は邪魔なので出さないが、
+    //   ・URL に ?debug=1 が付いているとき
+    //   ・入力経路が1つも見つからない異常時（タッチもポインタも届いていないとき）
+    //   だけ自動で表示して、その場で原因が分かるようにしておく。
+    if (this.shouldShowInputDiagnostics()) this.drawDeviceDebugLine(ctx);
+  }
+
+  /** 入力診断表示を出すべきか（普段は出さない） */
+  private shouldShowInputDiagnostics(): boolean {
+    if (this.debugQueryForced === null) {
+      let forced = false;
+      try {
+        forced = /[?&#]debug(=1)?\b/.test(window.location.search + window.location.hash);
+      } catch {
+        forced = false;
+      }
+      this.debugQueryForced = forced;
+    }
+    if (this.debugQueryForced) return true;
+    // 異常時のみ：操作が始まっているのに、タッチもポインタも1件も届いていない
+    const input = this.lastInput;
+    return !!input && input.evtClick > 0 && input.evtTouch === 0 && input.evtDown === 0;
   }
 
   /**
@@ -3059,6 +3078,11 @@ export class GameManager {
     ctx.font = '8px monospace';
     ctx.fillStyle = '#484f58';
     ctx.fillText('VER 3.0 (TERRAIN & RETRO SHOOTER MECHANICS)', cx, cy + 40);
+    // ★ 端末に古い版がキャッシュされていないかを一目で確認できるようにビルド日時を添える
+    //   （itch.io は更新しても index.html の URL が変わらないため）
+    if (typeof __BUILD_ID__ === 'string') {
+      ctx.fillText(`BUILD ${__BUILD_ID__}`, cx, cy + 54);
+    }
 
     ctx.restore();
   }
