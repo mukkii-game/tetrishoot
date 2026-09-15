@@ -666,7 +666,9 @@ export class GameManager {
     if (this.fireLockout > 0) this.fireLockout -= dt;
 
     // 2. 自機ショット発射（弾を撃って落下中ミノに当てる！）
-    if ((input.shoot || input.isMouseDown) && this.player.fireCooldown <= 0 && this.fireLockout <= 0) {
+    // ★ justShoot も見る：iOS の一部環境では押した直後に pointercancel が来て
+    //   同じフレーム内で shoot が降ろされてしまう。単発のタップでも必ず1発は出るようにする
+    if ((input.shoot || input.isMouseDown || input.justShoot) && this.player.fireCooldown <= 0 && this.fireLockout <= 0) {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
@@ -1214,7 +1216,7 @@ export class GameManager {
     this.formationOffsetAngle += dt * 2.4;
 
     // 自機ショット（ムーンクレスタ風ピシューン！ 押しっぱなし連射＋各銃口2発制限）
-    if ((input.shoot || input.isMouseDown) && this.player.fireCooldown <= 0) {
+    if ((input.shoot || input.isMouseDown || input.justShoot) && this.player.fireCooldown <= 0) {
       const newBullets = this.player.shootBullets(this.playerBullets);
       if (newBullets.length > 0) {
         this.playerBullets.push(...newBullets);
@@ -2296,6 +2298,13 @@ export class GameManager {
 
     // 10. スマホ用 仮想スティックの表示（左半分をドラッグ中のみ）
     this.drawVirtualStick(ctx);
+
+    // 11. 端末側デバッグ表示（極小・全画面共通）
+    //   1行目：BUILD ID。itch.io は index.html の URL が変わらないため端末に古い版が
+    //          キャッシュされ続けることがある。「本当に最新版が動いているか」をここで確認する。
+    //   2行目：実際に届いた入力イベントの数と直近の座標。ゲーム中も見えるので
+    //          「タップが届いていないのか／届いているのに動かないのか」を現場で切り分けられる。
+    this.drawDeviceDebugLine(ctx);
   }
 
   /**
@@ -2314,8 +2323,9 @@ export class GameManager {
     ctx.fillText(`BUILD ${typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : '?'}`, CANVAS_WIDTH / 2, 700);
     if (input) {
       ctx.fillText(
-        `IN D${input.evtDown} M${input.evtMove} U${input.evtUp} X${input.evtCancel} ` +
-        `T${input.evtTouch} C${input.evtClick} | ${input.lastEventLabel}`,
+        `D${input.evtDown} M${input.evtMove} U${input.evtUp} X${input.evtCancel} ` +
+        `T${input.evtTouch} C${input.evtClick} ${input.srcTag} ` +
+        `${input.lastEventLabel} R${input.canvasRectLabel()}`,
         CANVAS_WIDTH / 2,
         713
       );
@@ -2643,12 +2653,6 @@ export class GameManager {
 
       // 5. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
       this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 608);
-
-      // ★ 端末側デバッグ表示（タイトル画面のみ・極小）
-      //   1行目：BUILD ID。itch.io は index.html の URL が変わらないため端末に古い版が
-      //          キャッシュされ続けることがある。「本当に最新版が動いているか」をここで確認する。
-      //   2行目：実際に届いた入力イベントの数。0 のままならタップがゲームに届いていない。
-      this.drawDeviceDebugLine(ctx);
 
       ctx.restore();
     } else if (this.state === 'PAUSED') {

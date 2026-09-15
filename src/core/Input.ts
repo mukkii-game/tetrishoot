@@ -82,8 +82,10 @@ export class Input {
   public evtTouch = 0;
   public evtClick = 0;
   public lastEventLabel = '-';
+  public srcTag = '-'; // 直近の入力経路（T=TouchEvents / P=PointerEvents(touch) / M=マウス）
 
   private lastPointerDownAt = -1e9; // DOMフォールバックの二重発火防止
+  private touchEventsSeen = false; // 一度でも touchstart が来たら、タッチは Touch Events を正とする
 
   private static readonly STICK_DEAD_ZONE = 8; // この振れ幅までは静止
   private static readonly STICK_MAX_RADIUS = 46; // ここで最大速度（＝キー入力と同速）
@@ -145,7 +147,7 @@ export class Input {
     this.evtDown++;
     this.lastPointerDownAt = performance.now();
     const p = this.toCanvas(clientX, clientY);
-    this.lastEventLabel = `down ${Math.round(p.x)},${Math.round(p.y)}`;
+    this.lastEventLabel = `${this.srcTag}dn ${Math.round(p.x)},${Math.round(p.y)}`;
     this.mouseX = p.x;
     this.mouseY = p.y;
     this.justMouseDown = true; // メニューのタップ判定は左右どちらのゾーンでも有効
@@ -390,6 +392,61 @@ export class Input {
     //    typeof で判定する
     const hasPointerEvents = typeof (window as unknown as { PointerEvent?: unknown }).PointerEvent !== 'undefined';
 
+    // ==========================================================
+    // ★ タッチ入力は Touch Events を「主系統」にする（2026-09 再修正）
+    //
+    //   Pointer Events 一本にしたところ、iOS + itch.io（クロスオリジン iframe）で
+    //   「タイトルのタップは効くのに、ゲーム中の移動もショットも効かない」という報告。
+    //   これは WebKit がスクロールし得る親ページを持つ iframe で
+    //   pointerdown の直後に pointercancel を投げてくる挙動と完全に一致する：
+    //     ・タイトル＝ justMouseDown が1回立てば始まるので「効く」
+    //     ・移動＝ pointermove が来ないのでスティックが倒れず「効かない」
+    //     ・ショット＝ pointerdown で立てた shoot が同じフレーム内の
+    //       pointercancel で降ろされるので「効かない」
+    //   Touch Events は preventDefault さえしていれば touchmove / touchend が
+    //   確実に届くので、タッチはこちらを正とする。
+    //   Pointer Events はマウス用に残し、タッチについては
+    //   「まだ一度も touchstart を受けていない環境」でだけ働かせる。
+    // ==========================================================
+    const TOUCH_ID_BASE = 100000; // Touch.identifier と pointerId の衝突を避ける
+
+    const touchDown = (e: TouchEvent) => {
+      this.evtTouch++;
+      if (isUiTarget(e.target)) return;
+      // タイトルの透明ボタン上だけは既定動作を残す（iOS はここで止めると click が出ない）
+      if (!keepsNativeClick(e.target) && e.cancelable) e.preventDefault();
+      this.touchEventsSeen = true;
+      this.srcTag = 'T';
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        this.onPointerDown(TOUCH_ID_BASE + t.identifier, t.clientX, t.clientY, true);
+      }
+    };
+
+    const touchMove = (e: TouchEvent) => {
+      if (isUiTarget(e.target)) return;
+      if (e.cancelable) e.preventDefault(); // これが無いと iOS はスクロールに持っていってしまう
+      this.srcTag = 'T';
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        this.onPointerMove(TOUCH_ID_BASE + t.identifier, t.clientX, t.clientY, true);
+      }
+    };
+
+    const touchEnd = (e: TouchEvent) => {
+      if (!isUiTarget(e.target) && !keepsNativeClick(e.target) && e.cancelable) e.preventDefault();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        this.onPointerUp(TOUCH_ID_BASE + e.changedTouches[i].identifier);
+      }
+      // 画面上に指が1本も残っていない＝取りこぼした指があっても、ここで確実に全解放できる
+      if (e.touches.length === 0) this.releaseAllPointers();
+    };
+
+    window.addEventListener('touchstart', touchDown, { passive: false });
+    window.addEventListener('touchmove', touchMove, { passive: false });
+    window.addEventListener('touchend', touchEnd, { passive: false });
+    window.addEventListener('touchcancel', touchEnd, { passive: false });
+
     if (hasPointerEvents) {
       // ★ pointerdown は window で受ける。
       //   キャンバスの上に何かが覆いかぶさっていても（デバッグ用エラーバー等）
@@ -397,9 +454,8 @@ export class Input {
       window.addEventListener('pointerdown', (e) => {
         if (isUiTarget(e.target)) return;
         const isTouch = e.pointerType !== 'mouse';
+        if (isTouch && this.touchEventsSeen) return; // タッチは Touch Events 側の担当
         // マウスだけキャプチャする。ウィンドウ外までドラッグしても pointerup を確実に受け取るため。
-        // タッチ／ペンは仕様上「暗黙のキャプチャ」が既に効いているので明示キャプチャは不要で、
-        // むしろキャプチャ先を付け替えると lostpointercapture が飛んで操作が即座に切れてしまう。
         if (!isTouch) {
           try {
             this.canvas.setPointerCapture(e.pointerId);
@@ -407,15 +463,20 @@ export class Input {
             /* キャプチャできない環境は無視（イベントは window でも拾える） */
           }
         }
+        this.srcTag = isTouch ? 'P' : 'M';
         this.onPointerDown(e.pointerId, e.clientX, e.clientY, isTouch);
       });
 
       window.addEventListener('pointermove', (e) => {
-        this.onPointerMove(e.pointerId, e.clientX, e.clientY, e.pointerType !== 'mouse');
+        const isTouch = e.pointerType !== 'mouse';
+        if (isTouch && this.touchEventsSeen) return;
+        this.srcTag = isTouch ? 'P' : 'M';
+        this.onPointerMove(e.pointerId, e.clientX, e.clientY, isTouch);
       });
 
-      const up = (e: PointerEvent) => this.onPointerUp(e.pointerId);
-      window.addEventListener('pointerup', up);
+      // up / cancel は常に処理する（未追跡IDなら何もしないので害が無く、
+      // 主系統が切り替わる前に登録された指も確実に解放できる）
+      window.addEventListener('pointerup', (e) => this.onPointerUp(e.pointerId));
       window.addEventListener('pointercancel', (e) => {
         this.evtCancel++;
         this.lastEventLabel = 'cancel';
@@ -426,59 +487,16 @@ export class Input {
         if (e.target === this.canvas) this.onPointerUp(e.pointerId);
       });
     } else {
-      // Pointer Events 非対応の古い環境向けフォールバック（Touch / Mouse）
-      window.addEventListener('touchstart', (e) => {
-        if (isUiTarget(e.target)) return;
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          const t = e.changedTouches[i];
-          this.onPointerDown(t.identifier, t.clientX, t.clientY, true);
-        }
-      }, { passive: false });
-      window.addEventListener('touchmove', (e) => {
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          const t = e.changedTouches[i];
-          this.onPointerMove(t.identifier, t.clientX, t.clientY, true);
-        }
-      }, { passive: false });
-      const touchEnd = (e: TouchEvent) => {
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          this.onPointerUp(e.changedTouches[i].identifier);
-        }
-      };
-      window.addEventListener('touchend', touchEnd, { passive: false });
-      window.addEventListener('touchcancel', touchEnd, { passive: false });
-
+      // Pointer Events 非対応の古い環境向け：マウスのフォールバック
       window.addEventListener('mousedown', (e) => {
         if (isUiTarget(e.target) || e.button !== 0) return;
+        this.srcTag = 'M';
         this.onPointerDown(-1, e.clientX, e.clientY, false);
       });
       window.addEventListener('mousemove', (e) => this.onPointerMove(-1, e.clientX, e.clientY, false));
       window.addEventListener('mouseup', (e) => {
         if (e.button === 0) this.onPointerUp(-1);
       });
-    }
-
-    // ★ iOS Safari のスクロール／ピンチ／ダブルタップ拡大／エッジスワイプを抑止する。
-    //   touchstart の既定動作を止めると合成マウスイベントも発生しなくなるため、
-    //   Pointer Events との二重入力も同時に防げる（weed と同じ手法）。
-    const guard = (e: TouchEvent) => {
-      if (e.type === 'touchstart') this.evtTouch++;
-      if (isUiTarget(e.target) || keepsNativeClick(e.target)) return;
-      if (e.cancelable) e.preventDefault();
-    };
-    window.addEventListener('touchstart', guard, { passive: false });
-    window.addEventListener('touchmove', guard, { passive: false });
-    window.addEventListener('touchend', guard, { passive: false });
-
-    // ★ 二重の安全網：Pointer Events 側の pointerup / pointercancel を取りこぼしても、
-    //   Touch Events 側の「画面上に残っている指はゼロ」という確定情報で必ず復帰させる。
-    //   （逆に Touch 側を取りこぼしても Pointer 側で解放される＝どちらか片方が届けば復帰する）
-    if (hasPointerEvents) {
-      const reconcile = (e: TouchEvent) => {
-        if (e.touches.length === 0) this.releaseAllPointers();
-      };
-      window.addEventListener('touchend', reconcile, { passive: true });
-      window.addEventListener('touchcancel', reconcile, { passive: true });
     }
 
     // 取りこぼし対策：フォーカス喪失・非表示化・ページ離脱では必ず全解放する
@@ -503,6 +521,12 @@ export class Input {
     this.mouseY = p.y;
     this.justMouseDown = true;
     this.lastEventLabel = `click ${Math.round(p.x)},${Math.round(p.y)}`;
+  }
+
+  /** デバッグ表示用：キャンバスの実表示サイズ（0 なら座標変換が壊れている＝操作不能の原因） */
+  public canvasRectLabel(): string {
+    const r = this.canvas.getBoundingClientRect();
+    return `${Math.round(r.width)}x${Math.round(r.height)}`;
   }
 
   public clearTransientInputs(): void {
