@@ -2,7 +2,9 @@
 
 本ドキュメントは、次回セッションや他のAIモデル（Claude 3.7 / Opus 等）が作業を継続・発展させるための引き継ぎリファレンスです。
 
-> ⚠️ **スマホ／itch.io まわりを触る前に必ず読むこと** → [docs/ITCH-MOBILE.md](./docs/ITCH-MOBILE.md)
+> ⚠️ **スマホ／itch.io まわりを触る前に必ず読むこと**
+> - 汎用ルールとチェックリストだけの短縮版（約16KB） → [docs/WEB-GAME-RULES.md](./docs/WEB-GAME-RULES.md)
+> - 理由・実測値・経緯まで含む詳細版（約61KB） → [docs/ITCH-MOBILE.md](./docs/ITCH-MOBILE.md)
 > 「itch.io の iPhone でだけ動かない」を数日かけて潰した実践ノート。
 > 入力リスナーの多重登録、butler のキャッシュ問題、端末上での診断方法、
 > BGM を `setInterval` で鳴らしてはいけない理由などを、実測値つきでまとめてある。
