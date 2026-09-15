@@ -48,7 +48,8 @@ export class PlayerBullet {
     const top = -this.height / 2;
 
     ctx.beginPath();
-    ctx.roundRect(left, top, this.width, this.height, 4);
+    if (ctx.roundRect) ctx.roundRect(left, top, this.width, this.height, 4);
+    else ctx.rect(left, top, this.width, this.height); // 古いiOS Safari には roundRect が無い
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';

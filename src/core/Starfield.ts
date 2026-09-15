@@ -132,17 +132,24 @@ export class Starfield {
     }
   }
 
+  // ★ 性能対策：グラデーションは毎フレーム同じものを作り直していたので使い回す
+  private nebulaGrad: CanvasGradient | null = null;
+  private coreGrad: CanvasGradient | null = null;
+
   public draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
 
     // 1. 深宇宙のネビュラ（星雲の局所描画で大幅高速化）
     ctx.save();
     ctx.translate(this.galaxyX, this.galaxyY);
-    const nebulaGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 180);
-    nebulaGrad.addColorStop(0, 'rgba(160, 40, 220, 0.22)');
-    nebulaGrad.addColorStop(0.4, 'rgba(0, 180, 255, 0.12)');
-    nebulaGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = nebulaGrad;
+    if (!this.nebulaGrad) {
+      const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 180);
+      g.addColorStop(0, 'rgba(160, 40, 220, 0.22)');
+      g.addColorStop(0.4, 'rgba(0, 180, 255, 0.12)');
+      g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      this.nebulaGrad = g;
+    }
+    ctx.fillStyle = this.nebulaGrad;
     ctx.fillRect(-180, -180, 360, 360);
     ctx.restore();
 
@@ -152,11 +159,14 @@ export class Starfield {
     ctx.rotate(this.galaxyRotation);
 
     // 銀河の中心コア発光
-    const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 40);
-    coreGrad.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-    coreGrad.addColorStop(0.3, 'rgba(255, 200, 255, 0.4)');
-    coreGrad.addColorStop(1, 'rgba(255, 100, 200, 0)');
-    ctx.fillStyle = coreGrad;
+    if (!this.coreGrad) {
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 40);
+      g.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+      g.addColorStop(0.3, 'rgba(255, 200, 255, 0.4)');
+      g.addColorStop(1, 'rgba(255, 100, 200, 0)');
+      this.coreGrad = g;
+    }
+    ctx.fillStyle = this.coreGrad;
     ctx.beginPath();
     ctx.arc(0, 0, 40, 0, Math.PI * 2);
     ctx.fill();

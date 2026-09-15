@@ -165,8 +165,9 @@
     <!-- ★ 保険：タイトル画面の間だけ表示する透明ボタン。
          iOS Safari では <button> のネイティブ click がもっとも確実に届くため、
          万一 Pointer / Touch イベントが届かない環境でもゲームを開始できるようにする。
-         ゲームが始まったら main.ts が hidden にして操作の邪魔をしない。 -->
-    <button id="title-tap-layer" type="button" aria-label="タップしてスタート" hidden></button>
+         ゲームが始まったら main.ts が hidden にして操作の邪魔をしない。
+         ★ 既定は「表示」。万一 rAF ループが動かなくても最後の操作手段が必ず画面上に残るようにする。 -->
+    <button id="title-tap-layer" type="button" aria-label="タップしてスタート"></button>
   </div>
   <div id="instructions">
     Galaxtris ｜ <span style="color:#00ffcc">スマホ: 画面左半分をドラッグで全方向移動／右半分タップでショット</span><br/>

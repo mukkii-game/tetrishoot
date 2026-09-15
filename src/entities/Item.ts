@@ -84,7 +84,8 @@ export class FieldItem {
 
       ctx.fillStyle = '#00ffff';
       ctx.beginPath();
-      ctx.roundRect(-14, -14, 28, 28, 6);
+      if (ctx.roundRect) ctx.roundRect(-14, -14, 28, 28, 6);
+      else ctx.rect(-14, -14, 28, 28); // 古いiOS Safari には roundRect が無い
       ctx.fill();
 
       ctx.fillStyle = '#ffffff';
