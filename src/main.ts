@@ -126,6 +126,17 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   window.addEventListener('resize', updateFullscreenSize);
 
+  // ★ タイトル画面専用の透明タップ層。
+  //   iOS Safari では <button> のネイティブ click が最も確実に届くので、
+  //   Pointer / Touch が一切届かない環境でも必ずゲームを開始できるようにする保険。
+  //   タップ位置はそのままゲームへ渡すので、難易度行・ステージ行の選択もこの経路で動く。
+  const tapLayer = document.getElementById('title-tap-layer') as HTMLButtonElement | null;
+  if (tapLayer) {
+    tapLayer.addEventListener('click', (e) => {
+      input.injectTap(e.clientX, e.clientY);
+    });
+  }
+
   let lastTime = performance.now();
 
   // ★ 重要：requestAnimationFrame の再登録は必ず finally で行う。
@@ -142,6 +153,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
       game.update(dt, input);
       game.draw(ctx);
+
+      // タイトル中だけ透明タップ層を出す（ゲーム中は操作の邪魔をしない）
+      if (tapLayer) {
+        const wantVisible = game.state === 'TITLE';
+        if (tapLayer.hidden === wantVisible) tapLayer.hidden = !wantVisible;
+      }
     } catch (e) {
       // 毎フレーム同じ例外で画面を埋めないよう、表示は最初の1回だけ
       if (!loopErrorReported) {

@@ -132,6 +132,20 @@
       touch-action: manipulation;
     }
     #fullscreen-btn:hover { opacity: 1; }
+    /* ★ タイトル画面専用の透明タップ層（ネイティブ click 用の保険） */
+    #title-tap-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 9;           /* CRT演出(10,11)より下・キャンバスより上 */
+      appearance: none;
+      -webkit-appearance: none;
+      border: 0;
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      cursor: pointer;
+      touch-action: none;
+    }
     kbd {
       background: #161b22;
       border: 1px solid #30363d;
@@ -148,6 +162,11 @@
     <div class="crt-overlay"></div>
     <div class="crt-vignette"></div>
     <div id="fullscreen-btn" title="フル画面 (F)">⛶</div>
+    <!-- ★ 保険：タイトル画面の間だけ表示する透明ボタン。
+         iOS Safari では <button> のネイティブ click がもっとも確実に届くため、
+         万一 Pointer / Touch イベントが届かない環境でもゲームを開始できるようにする。
+         ゲームが始まったら main.ts が hidden にして操作の邪魔をしない。 -->
+    <button id="title-tap-layer" type="button" aria-label="タップしてスタート" hidden></button>
   </div>
   <div id="instructions">
     Galaxtris ｜ <span style="color:#00ffcc">スマホ: 画面左半分をドラッグで全方向移動／右半分タップでショット</span><br/>
