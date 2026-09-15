@@ -1,3 +1,5 @@
+import { CANVAS_HEIGHT, CANVAS_WIDTH } from '../config';
+
 // 視覚エフェクト・パーティクルシステム
 export interface Particle {
   x: number;
@@ -26,6 +28,18 @@ export interface RetroExplosion {
 export class ParticleManager {
   private particles: Particle[] = [];
   private retroExplosions: RetroExplosion[] = [];
+
+  // ★ 性能対策：粒子数の上限。
+  //   9面HARDの実測では上限が無いと 11,000 個まで膨れ上がり、
+  //   update だけで 1フレーム 150ms を食って（スマホ想定のCPU 1/4 速度で）
+  //   完全に処理落ちしていた。見た目はこの程度で十分に派手なので上限を設ける。
+  private static readonly MAX_PARTICLES = 1100;
+
+  /** 上限を超えないよう、今から出せる個数を返す */
+  private roomFor(count: number): number {
+    const room = ParticleManager.MAX_PARTICLES - this.particles.length;
+    return room <= 0 ? 0 : (count < room ? count : room);
+  }
 
   // 80年代名作STG（ギャラガ／ムーンクレスタ）の自機爆発パラパラアニメーションを発火
   public emitRetroExplosion(x: number, y: number, scale = 2.4, frameDuration = 0.14): void {
@@ -82,6 +96,8 @@ export class ParticleManager {
   ];
 
   public emitExplosion(x: number, y: number, color: string, count = 20, big = false): void {
+    count = this.roomFor(count);
+    if (count === 0) return;
     const speedBase = big ? 280 : 180;
     // ザコの死にパーティクルもドットを大きめ（bigなら8〜14px、通常敵でも5〜9px）にして
     // スーパーカセットビジョンのような粗い原色四角ドットの飛び散りを強調！
@@ -113,6 +129,7 @@ export class ParticleManager {
   }
 
   public emitSparks(x: number, y: number, color = '#ffffff', count = 8): void {
+    count = this.roomFor(count);
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = Math.random() * 180 + 50;
@@ -130,7 +147,8 @@ export class ParticleManager {
   }
 
   public emitDockRing(x: number, y: number, color: string): void {
-    for (let i = 0; i < 16; i++) {
+    const n = this.roomFor(16);
+    for (let i = 0; i < n; i++) {
       const angle = (i / 16) * Math.PI * 2;
       const speed = 90;
       this.particles.push({
@@ -148,6 +166,7 @@ export class ParticleManager {
 
   // ★ ユーザー要望：ドッキング時間切れでミノがシュワーと光の粒子になって消滅するエフェクト
   public emitDissolve(x: number, y: number, width: number, height: number, color: string, count = 35): void {
+    count = this.roomFor(count);
     for (let i = 0; i < count; i++) {
       const px = x + Math.random() * width;
       const py = y + Math.random() * height;
@@ -167,18 +186,27 @@ export class ParticleManager {
   }
 
   public update(dt: number): void {
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
+    // ★ 性能対策：以前は寿命切れのたびに splice(i, 1) していたため、
+    //   粒子が数千個あって同時に大量消滅する場面（＝敵が大量に死ぬ場面）で
+    //   配列の詰め直しが O(n^2) になり、1フレーム 150ms 級のスパイクを起こしていた。
+    //   生き残りを前から詰め直す1パス方式（O(n)・追加確保なし）に変更。
+    //   ついでに画面外へ大きく飛び去った粒子もここで捨てる（描画されないため）。
+    const arr = this.particles;
+    let w = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const p = arr[i];
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       if (p.gravity) {
         p.vy += p.gravity * dt;
       }
       p.alpha -= p.decay * dt;
-      if (p.alpha <= 0) {
-        this.particles.splice(i, 1);
+      if (p.alpha > 0 && p.x > -60 && p.x < CANVAS_WIDTH + 60 && p.y > -60 && p.y < CANVAS_HEIGHT + 60) {
+        if (w !== i) arr[w] = p;
+        w++;
       }
     }
+    arr.length = w;
 
     // 80年代風パラパラ爆発アニメーション更新
     for (let i = this.retroExplosions.length - 1; i >= 0; i--) {
@@ -197,9 +225,20 @@ export class ParticleManager {
 
   public draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
+    // 同じ色・同じ不透明度が続く場合は状態変更を省く（粒子1個ごとの set が地味に重いため）
+    let lastColor = '';
+    let lastAlpha = -1;
     for (const p of this.particles) {
-      ctx.globalAlpha = Math.max(0, p.alpha);
-      ctx.fillStyle = p.color;
+      const a = p.alpha > 1 ? 1 : (p.alpha < 0 ? 0 : Math.round(p.alpha * 8) / 8);
+      if (a <= 0) continue;
+      if (a !== lastAlpha) {
+        ctx.globalAlpha = a;
+        lastAlpha = a;
+      }
+      if (p.color !== lastColor) {
+        ctx.fillStyle = p.color;
+        lastColor = p.color;
+      }
       ctx.fillRect(Math.floor(p.x - p.size / 2), Math.floor(p.y - p.size / 2), p.size, p.size);
     }
     ctx.restore();

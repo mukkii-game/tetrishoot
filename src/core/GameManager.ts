@@ -311,12 +311,27 @@ export class GameManager {
 
   public update(dt: number, input: Input): void {
     this.lastInput = input; // 仮想スティックHUDの描画用
+    // ★ 早期 return や例外があっても「単発押し」フラグの後始末を必ず行う。
+    //   ここを取りこぼすと justMouseDown 等が立ちっぱなしになり、
+    //   毎フレーム押し続けたのと同じ状態になって操作不能に見える。
+    try {
+      this.updateInner(dt, input);
+    } finally {
+      input.resetPerFrame();
+    }
+  }
+
+  private updateInner(dt: number, input: Input): void {
     if (input.mutePressed) {
       this.sound.toggleMute();
     }
 
     // 画面右上の MUTE / PAUSE ボタンのクリック・タップ判定
-    if (input.justMouseDown && input.mouseX !== null && input.mouseY !== null && input.mouseY >= 6 && input.mouseY <= 46) {
+    // ★ このボタンはプレイ中HUDのものなので TITLE では判定しない。
+    //   （TITLE には専用のMUTEボタンがあり、ここを残すと画面上部に
+    //     「押すと無音になるだけで何も起きない見えない当たり判定」が生まれてしまう）
+    if (this.state !== 'TITLE' &&
+        input.justMouseDown && input.mouseX !== null && input.mouseY !== null && input.mouseY >= 6 && input.mouseY <= 46) {
       if (input.mouseX >= 436 && input.mouseX <= 478) {
         this.sound.toggleMute();
         input.clearTransientInputs();
@@ -555,8 +570,6 @@ export class GameManager {
         }
         break;
     }
-
-    input.resetPerFrame();
   }
 
   private updatePlaying(dt: number, input: Input): void {
@@ -2318,16 +2331,16 @@ export class GameManager {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.shadowBlur = 0;
-    ctx.font = '10px monospace';
-    ctx.fillStyle = 'rgba(120, 150, 180, 0.75)';
-    ctx.fillText(`BUILD ${typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : '?'}`, CANVAS_WIDTH / 2, 700);
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = 'rgba(140, 175, 205, 0.9)';
+    ctx.fillText(`BUILD ${typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : '?'}`, CANVAS_WIDTH / 2, 694);
     if (input) {
       ctx.fillText(
         `D${input.evtDown} M${input.evtMove} U${input.evtUp} X${input.evtCancel} ` +
         `T${input.evtTouch} C${input.evtClick} ${input.srcTag} ` +
         `${input.lastEventLabel} R${input.canvasRectLabel()}`,
         CANVAS_WIDTH / 2,
-        713
+        710
       );
     }
     ctx.restore();

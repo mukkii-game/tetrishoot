@@ -109,10 +109,22 @@ export class Input {
   // ==========================================
   private toCanvas(clientX: number, clientY: number): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return { x: 0, y: 0 };
+    let left = rect.left;
+    let top = rect.top;
+    let width = rect.width;
+    let height = rect.height;
+    if (width <= 0 || height <= 0) {
+      // ★ 何らかの理由でレイアウトが壊れてキャンバスの実寸が取れない場合でも、
+      //   左右ゾーン判定だけは成立するようビューポート基準にフォールバックする。
+      //   （0 を返すと全タッチが左半分＝移動扱いになり「弾が出ない」状態になるため）
+      left = 0;
+      top = 0;
+      width = window.innerWidth || this.canvas.width;
+      height = window.innerHeight || this.canvas.height;
+    }
     return {
-      x: (clientX - rect.left) * (this.canvas.width / rect.width),
-      y: (clientY - rect.top) * (this.canvas.height / rect.height),
+      x: (clientX - left) * (this.canvas.width / width),
+      y: (clientY - top) * (this.canvas.height / height),
     };
   }
 
@@ -144,7 +156,6 @@ export class Input {
   private onPointerDown(id: number, clientX: number, clientY: number, isTouch: boolean): void {
     if (this.pointers.has(id)) return; // 同一IDの二重登録を防止（window/canvas 両取り対策）
 
-    this.evtDown++;
     this.lastPointerDownAt = performance.now();
     const p = this.toCanvas(clientX, clientY);
     this.lastEventLabel = `${this.srcTag}dn ${Math.round(p.x)},${Math.round(p.y)}`;
@@ -186,7 +197,6 @@ export class Input {
     }
 
     if (!tp) return;
-    this.evtMove++;
     tp.lastMoveAt = performance.now();
     tp.stale = false; // 動いた＝指はまだ画面上にある
     const p = this.toCanvas(clientX, clientY);
@@ -231,7 +241,6 @@ export class Input {
   private onPointerUp(id: number): void {
     const tp = this.pointers.get(id);
     if (!tp) return;
-    this.evtUp++;
     this.lastEventLabel = 'up';
     this.pointers.delete(id);
     if (tp.role === 'STICK') {
@@ -408,10 +417,12 @@ export class Input {
     //   Pointer Events はマウス用に残し、タッチについては
     //   「まだ一度も touchstart を受けていない環境」でだけ働かせる。
     // ==========================================================
+    //   なお全ての入力リスナーは capture フェーズで登録する。
+    //   バブリング前に横取りされても（誰かが stopPropagation しても）必ず先に届くため。
     const TOUCH_ID_BASE = 100000; // Touch.identifier と pointerId の衝突を避ける
 
     const touchDown = (e: TouchEvent) => {
-      this.evtTouch++;
+      this.evtTouch++; // 生イベント数（フィルタ前）
       if (isUiTarget(e.target)) return;
       // タイトルの透明ボタン上だけは既定動作を残す（iOS はここで止めると click が出ない）
       if (!keepsNativeClick(e.target) && e.cancelable) e.preventDefault();
@@ -424,6 +435,7 @@ export class Input {
     };
 
     const touchMove = (e: TouchEvent) => {
+      this.evtMove++; // 生イベント数（フィルタ前）
       if (isUiTarget(e.target)) return;
       if (e.cancelable) e.preventDefault(); // これが無いと iOS はスクロールに持っていってしまう
       this.srcTag = 'T';
@@ -434,6 +446,7 @@ export class Input {
     };
 
     const touchEnd = (e: TouchEvent) => {
+      if (e.type === 'touchcancel') this.evtCancel++; else this.evtUp++; // 生イベント数
       if (!isUiTarget(e.target) && !keepsNativeClick(e.target) && e.cancelable) e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
         this.onPointerUp(TOUCH_ID_BASE + e.changedTouches[i].identifier);
@@ -442,16 +455,17 @@ export class Input {
       if (e.touches.length === 0) this.releaseAllPointers();
     };
 
-    window.addEventListener('touchstart', touchDown, { passive: false });
-    window.addEventListener('touchmove', touchMove, { passive: false });
-    window.addEventListener('touchend', touchEnd, { passive: false });
-    window.addEventListener('touchcancel', touchEnd, { passive: false });
+    window.addEventListener('touchstart', touchDown, { passive: false, capture: true });
+    window.addEventListener('touchmove', touchMove, { passive: false, capture: true });
+    window.addEventListener('touchend', touchEnd, { passive: false, capture: true });
+    window.addEventListener('touchcancel', touchEnd, { passive: false, capture: true });
 
     if (hasPointerEvents) {
       // ★ pointerdown は window で受ける。
       //   キャンバスの上に何かが覆いかぶさっていても（デバッグ用エラーバー等）
       //   入力が死なないようにするための保険。
       window.addEventListener('pointerdown', (e) => {
+        this.evtDown++; // 生イベント数（フィルタ前）
         if (isUiTarget(e.target)) return;
         const isTouch = e.pointerType !== 'mouse';
         if (isTouch && this.touchEventsSeen) return; // タッチは Touch Events 側の担当
@@ -465,23 +479,27 @@ export class Input {
         }
         this.srcTag = isTouch ? 'P' : 'M';
         this.onPointerDown(e.pointerId, e.clientX, e.clientY, isTouch);
-      });
+      }, { capture: true });
 
       window.addEventListener('pointermove', (e) => {
         const isTouch = e.pointerType !== 'mouse';
-        if (isTouch && this.touchEventsSeen) return;
+        if (isTouch && this.touchEventsSeen) return; // Touch 側で数えている
+        this.evtMove++;
         this.srcTag = isTouch ? 'P' : 'M';
         this.onPointerMove(e.pointerId, e.clientX, e.clientY, isTouch);
-      });
+      }, { capture: true });
 
       // up / cancel は常に処理する（未追跡IDなら何もしないので害が無く、
       // 主系統が切り替わる前に登録された指も確実に解放できる）
-      window.addEventListener('pointerup', (e) => this.onPointerUp(e.pointerId));
+      window.addEventListener('pointerup', (e) => {
+        if (!(e.pointerType !== 'mouse' && this.touchEventsSeen)) this.evtUp++;
+        this.onPointerUp(e.pointerId);
+      }, { capture: true });
       window.addEventListener('pointercancel', (e) => {
         this.evtCancel++;
         this.lastEventLabel = 'cancel';
         this.onPointerUp(e.pointerId);
-      });
+      }, { capture: true });
       // キャプチャを張った本人（キャンバス）が手放した時だけ解放扱いにする
       window.addEventListener('lostpointercapture', (e) => {
         if (e.target === this.canvas) this.onPointerUp(e.pointerId);
