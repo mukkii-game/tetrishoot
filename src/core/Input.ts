@@ -72,6 +72,19 @@ export class Input {
   public stickKnobX = 0;
   public stickKnobY = 0;
 
+  // ★ 端末側デバッグ用：実際に届いたイベントの回数と直近の種類。
+  //   スマホには開発者コンソールが無いので、タイトル画面に小さく出して
+  //   「タップがそもそも届いていないのか／届いているのに動かないのか」を切り分ける。
+  public evtDown = 0;
+  public evtMove = 0;
+  public evtUp = 0;
+  public evtCancel = 0;
+  public evtTouch = 0;
+  public evtClick = 0;
+  public lastEventLabel = '-';
+
+  private lastPointerDownAt = -1e9; // DOMフォールバックの二重発火防止
+
   private static readonly STICK_DEAD_ZONE = 8; // この振れ幅までは静止
   private static readonly STICK_MAX_RADIUS = 46; // ここで最大速度（＝キー入力と同速）
   // ★ 最終防衛線：pointerup も touchend も届かなかった指を「無効」にするまでの時間（ms）。
@@ -129,7 +142,10 @@ export class Input {
   private onPointerDown(id: number, clientX: number, clientY: number, isTouch: boolean): void {
     if (this.pointers.has(id)) return; // 同一IDの二重登録を防止（window/canvas 両取り対策）
 
+    this.evtDown++;
+    this.lastPointerDownAt = performance.now();
     const p = this.toCanvas(clientX, clientY);
+    this.lastEventLabel = `down ${Math.round(p.x)},${Math.round(p.y)}`;
     this.mouseX = p.x;
     this.mouseY = p.y;
     this.justMouseDown = true; // メニューのタップ判定は左右どちらのゾーンでも有効
@@ -168,6 +184,7 @@ export class Input {
     }
 
     if (!tp) return;
+    this.evtMove++;
     tp.lastMoveAt = performance.now();
     tp.stale = false; // 動いた＝指はまだ画面上にある
     const p = this.toCanvas(clientX, clientY);
@@ -212,6 +229,8 @@ export class Input {
   private onPointerUp(id: number): void {
     const tp = this.pointers.get(id);
     if (!tp) return;
+    this.evtUp++;
+    this.lastEventLabel = 'up';
     this.pointers.delete(id);
     if (tp.role === 'STICK') {
       this.moveVecX = 0;
@@ -358,6 +377,14 @@ export class Input {
       const el = target as Element | null;
       return !!(el && typeof el.closest === 'function' && el.closest('#fullscreen-btn'));
     };
+    // ★ ここだけは touchstart の既定動作を止めない。
+    //   iOS は touchstart を preventDefault するとネイティブ click を発火しなくなるため、
+    //   止めてしまうと「タイトル画面の透明ボタン」という最後の保険が効かなくなる。
+    //   （スクロール抑止は CSS の touch-action:none 側で担保する）
+    const keepsNativeClick = (target: EventTarget | null): boolean => {
+      const el = target as Element | null;
+      return !!(el && typeof el.closest === 'function' && el.closest('#title-tap-layer'));
+    };
 
     // ※ `'PointerEvent' in window` と書くと TS が else 側の window を never に絞ってしまうため
     //    typeof で判定する
@@ -389,7 +416,11 @@ export class Input {
 
       const up = (e: PointerEvent) => this.onPointerUp(e.pointerId);
       window.addEventListener('pointerup', up);
-      window.addEventListener('pointercancel', up);
+      window.addEventListener('pointercancel', (e) => {
+        this.evtCancel++;
+        this.lastEventLabel = 'cancel';
+        this.onPointerUp(e.pointerId);
+      });
       // キャプチャを張った本人（キャンバス）が手放した時だけ解放扱いにする
       window.addEventListener('lostpointercapture', (e) => {
         if (e.target === this.canvas) this.onPointerUp(e.pointerId);
@@ -431,7 +462,8 @@ export class Input {
     //   touchstart の既定動作を止めると合成マウスイベントも発生しなくなるため、
     //   Pointer Events との二重入力も同時に防げる（weed と同じ手法）。
     const guard = (e: TouchEvent) => {
-      if (isUiTarget(e.target)) return;
+      if (e.type === 'touchstart') this.evtTouch++;
+      if (isUiTarget(e.target) || keepsNativeClick(e.target)) return;
       if (e.cancelable) e.preventDefault();
     };
     window.addEventListener('touchstart', guard, { passive: false });
@@ -455,6 +487,22 @@ export class Input {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.releaseAllPointers();
     });
+  }
+
+  /**
+   * ★ 最後の砦：DOM の透明ボタンから届いた「本物の click」をゲームのタップとして流し込む。
+   *   iOS Safari では <button> のネイティブ click がもっとも確実に届く経路なので、
+   *   万一 Pointer / Touch が一切届かない環境でも、タイトル画面だけは必ず操作できるようにする。
+   *   直前に pointerdown を受けている時は二重入力になるので無視する。
+   */
+  public injectTap(clientX: number, clientY: number): void {
+    this.evtClick++;
+    if (performance.now() - this.lastPointerDownAt < 700) return; // 通常経路が生きているので不要
+    const p = this.toCanvas(clientX, clientY);
+    this.mouseX = p.x;
+    this.mouseY = p.y;
+    this.justMouseDown = true;
+    this.lastEventLabel = `click ${Math.round(p.x)},${Math.round(p.y)}`;
   }
 
   public clearTransientInputs(): void {

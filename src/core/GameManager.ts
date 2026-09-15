@@ -2298,6 +2298,31 @@ export class GameManager {
     this.drawVirtualStick(ctx);
   }
 
+  /**
+   * ★ スマホ単体で原因を切り分けるための極小デバッグ表示（タイトル画面だけ）。
+   *   BUILD が古ければキャッシュ問題、D(=pointerdown) などが 0 のままなら
+   *   そもそもタップがゲームに届いていない、と一目で判断できる。
+   */
+  private drawDeviceDebugLine(ctx: CanvasRenderingContext2D): void {
+    const input = this.lastInput;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.shadowBlur = 0;
+    ctx.font = '10px monospace';
+    ctx.fillStyle = 'rgba(120, 150, 180, 0.75)';
+    ctx.fillText(`BUILD ${typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : '?'}`, CANVAS_WIDTH / 2, 700);
+    if (input) {
+      ctx.fillText(
+        `IN D${input.evtDown} M${input.evtMove} U${input.evtUp} X${input.evtCancel} ` +
+        `T${input.evtTouch} C${input.evtClick} | ${input.lastEventLabel}`,
+        CANVAS_WIDTH / 2,
+        713
+      );
+    }
+    ctx.restore();
+  }
+
   /** ★ スマホ操作：画面左半分の仮想スティック（支点リングとノブ）を描く */
   private drawVirtualStick(ctx: CanvasRenderingContext2D): void {
     const input = this.lastInput;
@@ -2618,6 +2643,12 @@ export class GameManager {
 
       // 5. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
       this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 608);
+
+      // ★ 端末側デバッグ表示（タイトル画面のみ・極小）
+      //   1行目：BUILD ID。itch.io は index.html の URL が変わらないため端末に古い版が
+      //          キャッシュされ続けることがある。「本当に最新版が動いているか」をここで確認する。
+      //   2行目：実際に届いた入力イベントの数。0 のままならタップがゲームに届いていない。
+      this.drawDeviceDebugLine(ctx);
 
       ctx.restore();
     } else if (this.state === 'PAUSED') {
