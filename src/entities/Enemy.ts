@@ -122,6 +122,10 @@ export class Enemy {
   public bossPhase: 'HOVER_BARRAGE' | 'WIDE_SWEEP' | 'DEEP_DIVE_RETREAT' | 'DIVE_THROUGH' = 'HOVER_BARRAGE';
   public bossPhaseTimer = 0;
   public bossDiveVariant = 0;
+  // ★ ユーザー要望：落下は画面中央固定ではなく「そのとき自機がいた横位置」へ。
+  //   突進フェーズに入った瞬間の自機Xを記録し、まず横移動してから真下に落ちる
+  public bossDiveTargetX = CANVAS_WIDTH / 2;
+  public bossDiveFromX = 0; // 突進開始時のX（横移動の始点）
 
   private animFrame = 0;
   private animTimer = 0;
@@ -708,30 +712,38 @@ export class Enemy {
                 // 周期（2.6s + 4.8s + 3.4s ≒ 10.8秒）で、画面中央下部への急降下突進と、画面下突き抜けループを交互に発動！
                 this.bossPhase = (this.bossDiveVariant % 2 === 0) ? 'DEEP_DIVE_RETREAT' : 'DIVE_THROUGH';
                 this.bossDiveVariant++;
+                // 突進開始時点の自機Xをロック（左上原点なので自機中心に合わせて幅の半分ずらす）
+                this.bossDiveTargetX = Math.max(10, Math.min(CANVAS_WIDTH - this.width - 10, playerX - this.width / 2));
+                this.bossDiveFromX = this.x;
                 this.bossPhaseTimer = 0;
               }
               break;
             }
 
             case 'DEEP_DIVE_RETREAT': {
-              // ★ 突進パターン1：画面中央下部（自機目前 y=560）まで猛突進して威嚇後、上空へ急上昇して戻る！
+              // ★ 突進パターン1：自機の真上まで横移動 → そこから真下へ猛突進して威嚇 → 急上昇して戻る
               const t = this.bossPhaseTimer;
-              const forwardY = 560; // 画面中央下部、下で待機する自機（y=600〜650）の目前まで迫る！
-              const targetX = CANVAS_WIDTH / 2 - this.width / 2;
+              const forwardY = 560; // 下で待機する自機（y=600〜650）の目前まで迫る！
+              const targetX = this.bossDiveTargetX;
 
-              if (t < 1.4) {
-                // 0.0〜1.4s: 画面中央下部へ急加速で猛突進！
-                const ratio = t / 1.4;
+              if (t < 0.45) {
+                // 0.00〜0.45s: まず自機の横位置まで高速スライド（高さは定位置のまま）
+                const ease = Math.sin((t / 0.45) * Math.PI / 2);
+                this.x = this.bossDiveFromX + (targetX - this.bossDiveFromX) * ease;
+                this.y = this.formationY;
+              } else if (t < 1.85) {
+                // 0.45〜1.85s: そこから真下へ急加速で落下！
+                const ratio = (t - 0.45) / 1.4;
                 const ease = Math.sin((ratio * Math.PI) / 2);
+                this.x = targetX;
                 this.y = this.formationY + (forwardY - this.formationY) * ease;
-                this.x = this.formationX + (targetX - this.formationX) * ease;
-              } else if (t < 2.0) {
-                // 1.4〜2.0s: 画面中央下部で威嚇ホバリング（激しく震動しながら滞空し、居座りを強制排除！）
-                this.y = forwardY + Math.sin((t - 1.4) * 16) * 10;
-                this.x = targetX + Math.sin((t - 1.4) * 14) * 25;
-              } else if (t < 3.4) {
-                // 2.0〜3.4s: 上空の定位置（formationY）へ急上昇して帰還！
-                const ratio = (t - 2.0) / 1.4;
+              } else if (t < 2.45) {
+                // 1.85〜2.45s: 目前で威嚇ホバリング（激しく震動して居座りを強制排除！）
+                this.y = forwardY + Math.sin((t - 1.85) * 16) * 10;
+                this.x = targetX + Math.sin((t - 1.85) * 14) * 25;
+              } else if (t < 3.85) {
+                // 2.45〜3.85s: 上空の定位置（formationY）へ急上昇して帰還！
+                const ratio = (t - 2.45) / 1.4;
                 const ease = Math.sin((ratio * Math.PI) / 2);
                 this.y = forwardY - (forwardY - this.formationY) * ease;
                 this.x = targetX + Math.sin(t * 4) * 30 * (1 - ratio);
@@ -745,28 +757,37 @@ export class Enemy {
             }
 
             case 'DIVE_THROUGH': {
-              // ★ 突進パターン2：画面下にまっすぐ降りてそのまま下に消えて上から戻る！
+              // ★ 突進パターン2：自機の真上へ横移動 → 真下へ突き抜け → 画面外をぐるりと高速で回り込んで上から再突入。
+              //   ★ ユーザー要望：画面下へ消えた後に上端へ「ワープ」していたのをやめ、
+              //     画面外を高速移動して戻るようにした（瞬間移動が無いので挙動が読める）。
               const t = this.bossPhaseTimer;
-              const targetX = CANVAS_WIDTH / 2 - this.width / 2;
+              const targetX = this.bossDiveTargetX;
+              const topY = -this.height - 40;
+              const belowY = CANVAS_HEIGHT + this.height + 20;
+              // 回り込みに使う画面外の横位置（自機から遠い側へ抜ける）
+              const sideX = targetX < CANVAS_WIDTH / 2 ? -this.width - 90 : CANVAS_WIDTH + 90;
 
-              if (t < 1.6) {
-                // 0.0〜1.6s: 画面中央下へ一直線に高速急降下し、画面外下端まで突き抜ける！
-                const diveSpeed = 520;
-                this.y += diveSpeed * dt;
-                this.x += (targetX - this.x) * 4.0 * dt;
-
-                // 画面最下部を完全に突き抜けて消えたら、画面最上部（y = -this.height - 40）へワープ！
-                if (this.y > CANVAS_HEIGHT + this.height + 20) {
-                  this.y = -this.height - 40;
-                  this.x = targetX;
-                }
-              } else if (t < 3.0) {
-                // 1.6〜3.0s: 画面上から定位置（formationY）へとスムーズに着陸降下！
-                const returnRatio = Math.min(1, (t - 1.6) / 1.4);
-                const ease = Math.sin((returnRatio * Math.PI) / 2);
-                const startTopY = -this.height - 40;
-                this.y = startTopY + (this.formationY - startTopY) * ease;
-                this.x = targetX + Math.sin(t * 3) * 15 * (1 - returnRatio);
+              if (t < 0.5) {
+                // 0.00〜0.50s: まず自機の横位置まで高速スライド
+                const ease = Math.sin((t / 0.5) * Math.PI / 2);
+                this.x = this.bossDiveFromX + (targetX - this.bossDiveFromX) * ease;
+                this.y = this.formationY;
+              } else if (t < 1.9) {
+                // 0.50〜1.90s: そこから真下へ一直線に高速急降下し、画面外下端まで突き抜ける！
+                this.x = targetX;
+                this.y += 560 * dt;
+                if (this.y > belowY) this.y = belowY;
+              } else if (t < 2.7) {
+                // 1.90〜2.70s: 画面外（下 → 横 → 上）を高速で回り込む。ワープはしない
+                const r = (t - 1.9) / 0.8;
+                this.x = targetX + (sideX - targetX) * Math.min(1, r * 2);
+                this.y = belowY + (topY - belowY) * r;
+              } else if (t < 4.0) {
+                // 2.70〜4.00s: 画面上端から定位置へ高速で着地
+                const r = (t - 2.7) / 1.3;
+                const ease = Math.sin((r * Math.PI) / 2);
+                this.x = sideX + (this.formationX - sideX) * ease;
+                this.y = topY + (this.formationY - topY) * ease;
               } else {
                 this.y = this.formationY;
                 this.x = this.formationX;

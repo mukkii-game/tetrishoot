@@ -40,7 +40,11 @@ const STAGE5_CORNER_WAVES: { quietStart: number; quietEnd: number; spawnAt: numb
   { quietStart: 18.0, quietEnd: 24.5, spawnAt: 18.4 },
   { quietStart: 32.5, quietEnd: 39.0, spawnAt: 32.9 },
 ];
-const STAGE5_CORNER_PER_WAVE = 4; // NORMAL の1波あたり機数（HARD は hc() で5割増）
+// ★ ユーザー要望：「1編隊中の敵の数を倍に、その分一度に出てくる編隊の個数は減らす」。
+//   1波あたり 4 → 8 機に倍増し、出現間隔も詰めて「バラバラに来る」から
+//   「まとまった1編隊として来る」へ変えた（まとめて倒しやすく、同時に相手取る編隊は減る）
+const STAGE5_CORNER_PER_WAVE = 8; // NORMAL の1波あたり機数（HARD は hc() で5割増）
+const STAGE5_CORNER_SPAWN_STEP = 0.28; // 1機ごとの出現間隔（秒）。短いほど1編隊としてまとまる
 
 // 落ちてくるブロックの状態（ドッキング用：自律浮遊＋弾ヒットで回転）
 export interface FallingPieceItem {
@@ -75,9 +79,13 @@ export class GameManager {
   public score = 0;
   public highScore = 0;
   private runStartHighScore = 0; // 今回のプレイ開始時点のハイスコア（新記録判定用）
-  // ★ バリアオーブ出現ルール：ザコ撃破の累計（プレイ全体で通算）が閾値の倍数に達するたびに1個出現
+  // ★ バリアオーブ出現ルール：ザコ撃破数が閾値の倍数に達するたびに1個出現。
+  //   ★ ユーザー要望：プレイ全体の通算だと出現タイミングが毎回同じ場所になってしまうので、
+  //     「ステージ開始からの撃破数」に変更した（startShootingPhase でリセット）。
   //   閾値は「敵の多い面の全敵の約2/3」＝ 40 機
   private static readonly BARRIER_KILL_INTERVAL = 40;
+  // ★ バリアの円に触れたボスへ与える毎秒ダメージ（ザコは即破壊、ボスだけは削り）
+  private static readonly BARRIER_BOSS_DPS = 6;
   private totalKills = 0;
   private nextBarrierKills = GameManager.BARRIER_KILL_INTERVAL;
   public difficulty: 'NORMAL' | 'HARD' = 'NORMAL';
@@ -109,7 +117,8 @@ export class GameManager {
   // ボス出現・撃破管理
   public bossSpawned = false;
   private lastScriptedSpawnTime = 0; // spawnAlienFleet で予定した最後のザコ出現時刻（秒）
-  private lastInput: Input | null = null; // 直近フレームの入力（仮想スティックHUD描画用）
+  private lastInput: Input | null = null; // 直近フレームの入力（指位置レティクルHUD描画用）
+  private touchTapFilterFn = (x: number, y: number): boolean => this.tryTouchRotatePiece(x, y);
   // ★ click しか届かないアプリ内ブラウザ用の代替操作
   private clickMoveTargetX: number | null = null;
   private clickMoveTargetY: number | null = null;
@@ -235,6 +244,10 @@ export class GameManager {
     // バトル時間（★ 9面は「一種ずつ→中盤からコンボ」の構成を入れるため 80 秒に延長）
     // ★ ユーザー要望：5面はミサイル倍増＋90度直角旋回機を加えるため、
     //   ミサイルが飛ぶ時間を減らさずに済むよう 65 → 78 秒に延長する
+    // ★ ユーザー要望：バリアオーブは「ステージ開始からの撃破数」で出す。
+    //   通算だと毎回まったく同じ場所で出てしまい、驚きが無くなるため
+    this.totalKills = 0;
+    this.nextBarrierKills = GameManager.BARRIER_KILL_INTERVAL;
     this.shootingTimeTotal = this.stage === 9 ? 100 : this.stage === 5 ? 78 : 65;
     this.shootingTimeLimit = this.shootingTimeTotal;
     this.bossRushIndex = 0;
@@ -284,7 +297,12 @@ export class GameManager {
     // HARD は壁際ロケットの間隔も詰める（260px → 175px ≒ 5割増）
     const siloSpacingBase = this.difficulty === 'HARD' ? 175 : 260;
     // ★ ユーザー要望：5面はミサイルの量を倍に（＝出現間隔を半分に）。HARD比率はそのまま維持
-    this.terrain.siloSpacing = this.stage === 5 ? siloSpacingBase / 2 : siloSpacingBase;
+    // ★ ユーザー要望（追加）：「1編隊の数を倍に、一度に出てくる編隊の個数は減らす」。
+    //   ミサイルにとっての「編隊」は1つの発射台からの斉射なので、
+    //   発射台の数を減らし（間隔 1/2 → 3/4）、1台あたり3連射にした。
+    //   総数は 1発/130px → 3発/195px ＝ 従来比2倍。相手取る発射台の数は 1/1.5 に減る
+    this.terrain.siloSpacing = this.stage === 5 ? siloSpacingBase * 0.75 : siloSpacingBase;
+    this.terrain.siloBurst = this.stage === 5 ? 3 : 1;
     // ★ ユーザー要望：5面はミサイルと90度直角旋回機が重ならないよう、時間帯で棲み分ける
     this.terrain.siloQuietWindows = this.stage === 5
       ? STAGE5_CORNER_WAVES.map(w => ({ start: w.quietStart, end: w.quietEnd }))
@@ -315,7 +333,11 @@ export class GameManager {
   }
 
   public update(dt: number, input: Input): void {
-    this.lastInput = input; // 仮想スティックHUDの描画用
+    this.lastInput = input; // 指位置レティクルHUDの描画用
+    // ★ ユーザー要望（スマホ）：落下テトリミノへの直接タッチで回転＋ノックバック。
+    //   Input 側はタップ開始位置をこのフィルタに問い合わせ、true なら
+    //   そのタップを「回転操作」として消費する（自機は動かず、弾も出ない）
+    input.touchTapFilter = this.touchTapFilterFn;
     // ★ 早期 return や例外があっても「単発押し」フラグの後始末を必ず行う。
     //   ここを取りこぼすと justMouseDown 等が立ちっぱなしになり、
     //   毎フレーム押し続けたのと同じ状態になって操作不能に見える。
@@ -545,7 +567,7 @@ export class GameManager {
           }
 
           // マウスクリック／タップでの選択＆決定
-          // （スマホは画面左半分＝移動スティック扱いで isMouseDown が立たないため justMouseDown も見る）
+          // （タップ直後に pointercancel が来る環境があるため justMouseDown も見る）
           if ((input.isMouseDown || input.justMouseDown) && input.mouseY !== null) {
             if (input.mouseY >= 450 && input.mouseY <= 505) {
               this.gameOverSelection = 'CONTINUE';
@@ -592,7 +614,7 @@ export class GameManager {
       }
 
       this.applyClickOnlyControls(dt, input);
-    this.player.updateMovement(dt, input);
+    this.player.updateMovement(dt, this.movementInput(input));
       this.updateShootingPhase(dt, input);
     }
 
@@ -680,7 +702,7 @@ export class GameManager {
 
     // 1. 自機の操作（エクセリオン風慣性移動）
     this.applyClickOnlyControls(dt, input);
-    this.player.updateMovement(dt, input);
+    this.player.updateMovement(dt, this.movementInput(input));
 
     // 発射ロックアウト減算（ゲーム開始直後の誤射防止）
     if (this.fireLockout > 0) this.fireLockout -= dt;
@@ -905,6 +927,16 @@ export class GameManager {
         for (let i = 0; i < this.hc(8); i++) {
           this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, START_DELAY + 22.5 + i * 0.38));
         }
+        // ★ ユーザー要望：3面に「画面下から出てくる敵」を追加。
+        //   フェーズの切れ目（比較的敵の出ていない時間帯）に挟み、
+        //   上ばかり見ていると足元から刺される緊張感を作る。
+        //   SURPRISE_FROM_BOTTOM は画面下端から急上昇して編隊に加わるパターン
+        for (let i = 0; i < this.hc(4); i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'SURPRISE_FROM_BOTTOM', 1 + i * 2, 0, START_DELAY + 8.0 + i * 0.5));
+        }
+        for (let i = 0; i < this.hc(4); i++) {
+          this.enemies.push(new Enemy('TOROID_SCOUT', 'SURPRISE_FROM_BOTTOM', 2 + i * 2, 0, START_DELAY + 18.5 + i * 0.5));
+        }
         break;
 
       case 4:
@@ -943,7 +975,7 @@ export class GameManager {
         for (const wave of STAGE5_CORNER_WAVES) {
           for (let i = 0; i < this.hc(STAGE5_CORNER_PER_WAVE); i++) {
             // formationCol の偶奇で左右の落下位置が決まるので、左右交互に降らせる
-            this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, wave.spawnAt + i * 0.55));
+            this.enemies.push(new Enemy('STARFORCE_CORNER', 'STARFORCE_CORNER_DIVE', i, 0, wave.spawnAt + i * STAGE5_CORNER_SPAWN_STEP));
           }
         }
         break;
@@ -1305,10 +1337,14 @@ export class GameManager {
       this.battlePiece.gy = Math.round(this.battlePiece.y / BLOCK_SIZE);
 
       // 弾ヒットによる回転＆上反動！
+      // ★ ユーザー要望（スマホ）：タッチ操作では弾でミノを回転・ノックバックさせない。
+      //   （代わりにミノを直接タッチして回す。tryTouchRotatePiece 参照）
+      //   弾は当たり判定ごと素通りさせ、自機の弾がミノに吸われないようにする。
       const pieceBounds = this.battlePiece.piece.getBoundingBox(this.battlePiece.x, this.battlePiece.y);
       const pieceCenterX = (pieceBounds.minX + pieceBounds.maxX) / 2;
+      const bulletsAffectPiece = !(this.lastInput && this.lastInput.touchMode);
 
-      for (let bi = this.playerBullets.length - 1; bi >= 0; bi--) {
+      for (let bi = bulletsAffectPiece ? this.playerBullets.length - 1 : -1; bi >= 0; bi--) {
         const pb = this.playerBullets[bi];
         if (pb.isDead) continue;
 
@@ -1586,8 +1622,9 @@ export class GameManager {
     // ★ ユーザー要望：5面のボスはザコを引き連れない
     if (this.currentBoss && !this.currentBoss.isDead && !this.bossDying && this.stage !== 5) {
       this.bossMinionTimer += dt;
-      // ★ ユーザー要望：ボスが出すザコを今の2倍に（間隔を半分に短縮）
-      const spawnInterval = this.difficulty === 'HARD' ? 1.4 : 2.0;
+      // ★ ユーザー要望：ボスが出すザコを2倍に（間隔を半分に短縮）。さらに「まだ少ない」との指摘で再度2倍
+      //   （2.8/4.0 → 1.4/2.0 → 0.7/1.0 秒間隔）
+      const spawnInterval = this.difficulty === 'HARD' ? 0.7 : 1.0;
       if (this.bossMinionTimer >= spawnInterval) {
         this.bossMinionTimer = 0;
         const b = this.currentBoss;
@@ -1798,6 +1835,63 @@ export class GameManager {
           }
           break;
         }
+      }
+    }
+
+    // ★ ユーザー要望：バリアは「盾」ではなく「武器」でもある。
+    //   円（見た目の外周より少し内側＝getBarrierHitRadius）に敵がめり込んだら破壊する。
+    //   矩形ではなく円で判定するので、リングの見た目どおりの当たり方になる。
+    //   ボスだけは即死させず、接触している間だけ継続ダメージ（BARRIER_BOSS_DPS）にする。
+    if (this.player.barrierTimer > 0 && !this.player.isDead) {
+      const bc = this.player.getBarrierCenter();
+      const br = this.player.getBarrierHitRadius();
+      const br2 = br * br;
+      for (const enemy of this.enemies) {
+        if (enemy.isDead) continue;
+        // 円 vs 矩形：円の中心を敵の矩形にクランプした点との距離で判定
+        const nx = Math.min(Math.max(bc.x, enemy.x), enemy.x + enemy.width);
+        const ny = Math.min(Math.max(bc.y, enemy.y), enemy.y + enemy.height);
+        const dx = bc.x - nx;
+        const dy = bc.y - ny;
+        if (dx * dx + dy * dy > br2) continue;
+
+        if (enemy.isBoss || enemy === this.currentBoss) {
+          // ボスはバリアでも即死しない（体当たりし続けて削る）
+          const bossKilled = enemy.hit(GameManager.BARRIER_BOSS_DPS * dt);
+          this.particles.emitSparks(nx, ny, '#00ffff', 3);
+          if (bossKilled) {
+            this.sound.playBossExplosion();
+            this.sound.stopBossLfo();
+            this.particles.emitBossExplosion(
+              enemy.x + enemy.width / 2,
+              enemy.y + enemy.height / 2,
+              enemy.width,
+              enemy.height
+            );
+            this.score += enemy.scoreValue;
+            this.onBossDefeatedMusic();
+            this.currentBoss = null;
+            this.bossDying = true;
+            this.bossDeathTimer = 0;
+            this.hitStopTimer = 0.08;
+            this.screenShake = 16;
+            return;
+          }
+          continue;
+        }
+
+        enemy.isDead = true;
+        this.sound.playEnemyPop(enemy.rank);
+        this.registerZakoKill();
+        this.particles.emitExplosion(
+          enemy.x + enemy.width / 2,
+          enemy.y + enemy.height / 2,
+          '#00ffff',
+          18,
+          false
+        );
+        this.score += enemy.scoreValue;
+        this.screenShake = Math.max(this.screenShake, 2.5);
       }
     }
 
@@ -2334,7 +2428,7 @@ export class GameManager {
     // 9. タイトル・ゲームオーバーオーバーレイ（画面揺れの影響を一切受けない）
     this.drawOverlays(ctx);
 
-    // 10. スマホ用 仮想スティックの表示（左半分をドラッグ中のみ）
+    // 10. スマホ用 指位置レティクルの表示（触れている間のみ）
     this.drawVirtualStick(ctx);
 
     // 10.5 アプリ内ブラウザ（タッチイベントが届かない環境）への案内
@@ -2439,41 +2533,103 @@ export class GameManager {
       input.pendingClickY = null;
     }
 
-    // 指定された位置へ、キー入力と同じ速度で滑らかに寄せる
+    // 指定位置への移動は Player 側のポインティング移動（movementInput）に任せる。
+    // 到達したら目標を解除して、その場に止まるようにする
     if (this.clickMoveTargetX !== null && this.clickMoveTargetY !== null) {
-      const dx = this.clickMoveTargetX - this.player.anchorX;
-      const dy = this.clickMoveTargetY - this.player.anchorY;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 8) {
+      const c = this.player.getBarrierCenter();
+      if (Math.hypot(this.clickMoveTargetX - c.x, this.clickMoveTargetY - c.y) < 8) {
         this.clickMoveTargetX = null;
         this.clickMoveTargetY = null;
-      } else {
-        input.moveVecX = dx / dist;
-        input.moveVecY = dy / dist;
       }
     }
   }
 
-  /** ★ スマホ操作：画面左半分の仮想スティック（支点リングとノブ）を描く */
+  /**
+   * ★ ユーザー要望（スマホ）：落下中のテトリミノを直接タッチすると、回転＋ノックバック。
+   *   PC のように「どこに当たったかで回転方向が変わる」テクニカル要素は入れず、
+   *   触れたら必ず時計回りに1回転・真上へ反動、という分かりやすい操作にする。
+   *   指は細かく狙えないので、外接矩形に少し余裕（TOUCH_PAD）を持たせる。
+   *   @returns このタップをミノ操作として消費したか（true なら自機は動かず弾も出ない）
+   */
+  private tryTouchRotatePiece(x: number, y: number): boolean {
+    if (this.state !== 'PLAYING' || this.phase !== 'SHOOTING') return false;
+    const bp = this.battlePiece;
+    if (!bp || bp.settled) return false;
+
+    const TOUCH_PAD = 20;
+    const b = bp.piece.getBoundingBox(bp.x, bp.y);
+    if (x < b.minX - TOUCH_PAD || x > b.maxX + TOUCH_PAD) return false;
+    if (y < b.minY - TOUCH_PAD || y > b.maxY + TOUCH_PAD) return false;
+
+    bp.piece.rotate();
+    bp.vy = -150; // 真上へノックバック
+    bp.dockCooldown = 0.4;
+    this.particles.emitSparks(x, y, bp.piece.color, 14);
+    this.sound.playHit();
+    return true;
+  }
+
+  /**
+   * ★ Player.updateMovement に渡す入力。
+   *   スマホ（タッチ）は指の座標へのポインティング移動、
+   *   click しか届かない環境はタップ位置へのポインティング移動、
+   *   PC はキーボードのみ（ポインティングなし）。
+   */
+  private movementInput(input: Input): {
+    left: boolean; right: boolean; up: boolean; down: boolean;
+    mouseX?: number | null; mouseY?: number | null;
+    pointX?: number | null; pointY?: number | null;
+  } {
+    let pointX: number | null = null;
+    let pointY: number | null = null;
+    if (input.touchPointActive) {
+      pointX = input.touchPointX;
+      pointY = input.touchPointY;
+    } else if (this.clickMoveTargetX !== null && this.clickMoveTargetY !== null) {
+      pointX = this.clickMoveTargetX;
+      pointY = this.clickMoveTargetY;
+    }
+    return {
+      left: input.left,
+      right: input.right,
+      up: input.up,
+      down: input.down,
+      mouseX: input.mouseX,
+      mouseY: input.mouseY,
+      pointX,
+      pointY,
+    };
+  }
+
+  /** ★ スマホ操作：指の位置に照準レティクルを描く（ポインティング移動の目印） */
   private drawVirtualStick(ctx: CanvasRenderingContext2D): void {
     const input = this.lastInput;
     if (!input || !input.stickActive || this.state !== 'PLAYING') return;
 
     ctx.save();
-    ctx.globalAlpha = 0.5;
-
-    // 支点リング
+    ctx.globalAlpha = 0.45;
     ctx.strokeStyle = '#00ffcc';
     ctx.lineWidth = 2;
+
+    // 指の位置の二重リング
     ctx.beginPath();
-    ctx.arc(input.stickOriginX, input.stickOriginY, 46, 0, Math.PI * 2);
+    ctx.arc(input.stickKnobX, input.stickKnobY, 30, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(input.stickKnobX, input.stickKnobY, 13, 0, Math.PI * 2);
     ctx.stroke();
 
-    // ノブ
-    ctx.fillStyle = '#00ffcc';
+    // 十字線
     ctx.beginPath();
-    ctx.arc(input.stickKnobX, input.stickKnobY, 17, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(input.stickKnobX - 38, input.stickKnobY);
+    ctx.lineTo(input.stickKnobX - 18, input.stickKnobY);
+    ctx.moveTo(input.stickKnobX + 18, input.stickKnobY);
+    ctx.lineTo(input.stickKnobX + 38, input.stickKnobY);
+    ctx.moveTo(input.stickKnobX, input.stickKnobY - 38);
+    ctx.lineTo(input.stickKnobX, input.stickKnobY - 18);
+    ctx.moveTo(input.stickKnobX, input.stickKnobY + 18);
+    ctx.lineTo(input.stickKnobX, input.stickKnobY + 38);
+    ctx.stroke();
 
     ctx.restore();
   }

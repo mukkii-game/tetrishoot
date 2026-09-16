@@ -10,24 +10,55 @@ export class FieldItem {
   public isDead = false;
   public animTimer = 0;
 
+  // ★ ユーザー要望：まっすぐ落ちるのではなく、左右に大きくサインカーブを描いて落ちてくる。
+  //   swayBase は蛇行の中心線（進行方向に直交する軸の基準座標）
+  private swayBase: number;
+  private swayAmp = 110; // 振れ幅（px）
+  private swayFreq = 1.5; // 角速度（rad/秒）
+  private swayPhase = Math.random() * Math.PI * 2;
+  private swayAxis: 'X' | 'Y' | null = null;
+
   constructor(x: number, y: number, type: ItemType) {
     this.x = x;
     this.y = y;
     this.type = type;
+    this.swayBase = x;
   }
 
   public update(dt: number, scrollSpeed: number, scrollDir: 'UP' | 'RIGHT' | 'LEFT' | 'DIAGONAL_UP_RIGHT'): void {
     this.animTimer += dt;
 
+    // このフレームのスクロール移動量
+    let dx = 0;
+    let dy = 0;
     if (scrollDir === 'UP') {
-      this.y += scrollSpeed * dt;
+      dy = scrollSpeed * dt;
     } else if (scrollDir === 'RIGHT') {
-      this.x -= scrollSpeed * dt;
+      dx = -scrollSpeed * dt;
     } else if (scrollDir === 'LEFT') {
-      this.x += scrollSpeed * dt;
+      dx = scrollSpeed * dt;
     } else if (scrollDir === 'DIAGONAL_UP_RIGHT') {
-      this.x -= scrollSpeed * 0.7 * dt;
-      this.y += scrollSpeed * 0.7 * dt;
+      dx = -scrollSpeed * 0.7 * dt;
+      dy = scrollSpeed * 0.7 * dt;
+    }
+
+    // ★ ユーザー要望：まっすぐ流れるのではなく、進行方向に直交する軸へ
+    //   大きくサインカーブを描いて蛇行させる。
+    //   横スクロール面では上下に、それ以外（落ちてくる面）では左右に揺れる。
+    //   蛇行の中心線（swayBase）だけをスクロールで動かし、表示座標は中心線＋sin で作る。
+    if (this.swayAxis === null) {
+      this.swayAxis = (scrollDir === 'RIGHT' || scrollDir === 'LEFT') ? 'Y' : 'X';
+      this.swayBase = this.swayAxis === 'X' ? this.x : this.y;
+    }
+    const offset = Math.sin(this.animTimer * this.swayFreq + this.swayPhase) * this.swayAmp;
+    if (this.swayAxis === 'X') {
+      this.swayBase += dx;
+      this.x = Math.min(CANVAS_WIDTH - 20, Math.max(20, this.swayBase + offset));
+      this.y += dy;
+    } else {
+      this.swayBase += dy;
+      this.y = Math.min(CANVAS_HEIGHT - 20, Math.max(20, this.swayBase + offset));
+      this.x += dx;
     }
 
     // 画面外へ流れ出たら消滅（スクロール方向の進入側はまだ画面外でも生かしておく）
