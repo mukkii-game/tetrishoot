@@ -1,4 +1,3 @@
-import { CANVAS_WIDTH } from '../config';
 
 // ユーザー入力の管理（テトリス3ピース選択 [1][2][3]/Tab、移動、回転、上下左右）
 //
@@ -18,18 +17,23 @@ import { CANVAS_WIDTH } from '../config';
 //        さらに setPointerCapture / pointercancel / lostpointercapture / blur /
 //        visibilitychange の全経路で確実に解放する。
 //      （itch.io 上で正常動作している別作品 weed も Pointer Events 方式）
-//   2) スマホ操作を左右ゾーン分割に変更（bolero_ball 方式）。
-//      画面左半分＝自機移動の仮想スティック（弾は出ない）。
-//      キー移動と同じ速度で、8方向ではなく全方向（360度）へ動く。
-//      画面右半分＝タップ／押しっぱなしでショット。
+//   2) スマホ操作を左右ゾーン分割の仮想スティックに変更（bolero_ball 方式）。
+//      → これは後述の「指一本」改修で置き換え済み（履歴として残す）。
 //   3) PC ではマウス移動で自機を動かさない（移動はキーボードのみ）。
 //      マウス座標はメニューのホバー／クリック判定用に引き続き保持する。
 
-type PointerRole = 'STICK' | 'FIRE';
+// ★ 2026-09 追加改修（スマホ操作を「指一本」へ）
+//   ユーザー要望：「指一本で移動もショットも行う／ポインティング移動に変える／
+//   テトリミノはショットでは回転もノックバックもしない／テトリミノ直接タッチで回転とノックバック」
+//   → 左右ゾーン分割と仮想スティックは廃止。タッチは1系統（POINT）に統一し、
+//     触れている間は「自機がその座標へ追従」＋「撃ちっぱなし」になる。
+//     ただし落下中のテトリミノに触れたタップだけは touchTapFilter で横取りし、
+//     自機を動かさず回転／ノックバックにだけ使う（role: 'CONSUMED'）。
+type PointerRole = 'POINT' | 'FIRE' | 'CONSUMED';
 
 interface TrackedPointer {
   role: PointerRole;
-  originX: number; // 仮想スティックの支点（キャンバス座標）
+  originX: number; // タッチ開始位置（キャンバス座標）
   originY: number;
   lastMoveAt: number; // 最後に動いた時刻（ms）。取りこぼし検知用
   stale: boolean; // 解放イベントを取りこぼした疑いあり（入力として無効扱い）
@@ -62,10 +66,20 @@ export class Input {
   public isMouseDown = false;
   public justMouseDown = false;
 
-  // ★ スマホ左半分の仮想スティック出力（-1..1、合成長は最大1）
-  public moveVecX = 0;
-  public moveVecY = 0;
-  // 仮想スティックの描画用状態（GameManager がHUDに描く）
+  // ★ スマホ：ポインティング移動の目標座標（キャンバス座標）。触れている間だけ有効。
+  public touchPointActive = false;
+  public touchPointX = 0;
+  public touchPointY = 0;
+  /** 一度でもタッチ入力が来たか（＝スマホ操作系に切り替える判定） */
+  public touchMode = false;
+  /**
+   * ★ タッチ開始位置を先に GameManager へ渡し、true が返ったらそのタップは
+   *   「落下テトリミノへの直接タッチ（回転＋ノックバック）」として消費する。
+   *   消費されたタップは自機を動かさず、弾も撃たない。
+   */
+  public touchTapFilter: ((x: number, y: number) => boolean) | null = null;
+
+  // 指位置レティクルの描画用状態（GameManager がHUDに描く）
   public stickActive = false;
   public stickOriginX = 0;
   public stickOriginY = 0;
@@ -94,8 +108,6 @@ export class Input {
   private lastPointerDownAt = -1e9; // DOMフォールバックの二重発火防止
   private touchEventsSeen = false; // 一度でも touchstart が来たら、タッチは Touch Events を正とする
 
-  private static readonly STICK_DEAD_ZONE = 8; // この振れ幅までは静止
-  private static readonly STICK_MAX_RADIUS = 46; // ここで最大速度（＝キー入力と同速）
   // ★ 最終防衛線：pointerup も touchend も届かなかった指を「無効」にするまでの時間（ms）。
   //   指を表から消すのではなく stale フラグを立てるだけなので、
   //   もし誤検知でも指を1pxでも動かせば（pointermove が来れば）その瞬間に操作が復帰する。
@@ -147,9 +159,30 @@ export class Input {
 
   private isFiringNow(): boolean {
     for (const p of this.pointers.values()) {
-      if (p.role === 'FIRE' && !p.stale) return true;
+      if ((p.role === 'FIRE' || p.role === 'POINT') && !p.stale) return true;
     }
     return false;
+  }
+
+  /** ポインタ表から、ポインティング移動の目標座標を作り直す（表示だけ残る不整合を潰す） */
+  private refreshTouchPoint(): void {
+    for (const p of this.pointers.values()) {
+      if (p.role === 'POINT' && !p.stale) return; // 有効な指があるので現状維持
+    }
+    this.touchPointActive = false;
+    this.stickActive = false;
+  }
+
+  private setTouchPoint(x: number, y: number): void {
+    this.touchPointActive = true;
+    this.touchPointX = x;
+    this.touchPointY = y;
+    // レティクル表示（指の位置に照準リングを出すだけ。操作量には使わない）
+    this.stickActive = true;
+    this.stickOriginX = x;
+    this.stickOriginY = y;
+    this.stickKnobX = x;
+    this.stickKnobY = y;
   }
 
   private refreshPointerShoot(): void {
@@ -170,24 +203,26 @@ export class Input {
     this.mouseY = p.y;
     this.justMouseDown = true; // メニューのタップ判定は左右どちらのゾーンでも有効
 
-    if (isTouch && p.x < CANVAS_WIDTH / 2) {
-      // ★ 左半分：自機移動の仮想スティック。弾は撃たない
-      // 取りこぼしで残った古いスティック指があれば破棄して常に最新の指を優先する
-      for (const [pid, tp] of this.pointers) {
-        if (tp.role === 'STICK') this.pointers.delete(pid);
+    if (isTouch) {
+      this.touchMode = true;
+
+      // ★ 落下テトリミノへの直接タッチは回転／ノックバック専用。自機は動かさず弾も撃たない
+      if (this.touchTapFilter && this.touchTapFilter(p.x, p.y)) {
+        this.pointers.set(id, { role: 'CONSUMED', originX: p.x, originY: p.y, lastMoveAt: performance.now(), stale: false });
+        return;
       }
-      this.pointers.set(id, { role: 'STICK', originX: p.x, originY: p.y, lastMoveAt: performance.now(), stale: false });
-      this.moveVecX = 0;
-      this.moveVecY = 0;
-      this.stickActive = true;
-      this.stickOriginX = p.x;
-      this.stickOriginY = p.y;
-      this.stickKnobX = p.x;
-      this.stickKnobY = p.y;
+
+      // ★ 指一本で移動＋ショット。取りこぼしで残った古い指は破棄して常に最新を優先する
+      for (const [pid, tp] of this.pointers) {
+        if (tp.role === 'POINT') this.pointers.delete(pid);
+      }
+      this.pointers.set(id, { role: 'POINT', originX: p.x, originY: p.y, lastMoveAt: performance.now(), stale: false });
+      this.setTouchPoint(p.x, p.y);
+      this.refreshPointerShoot();
       return;
     }
 
-    // 右半分タップ（スマホ）／PCのクリック：ショット
+    // PCのクリック：ショット
     this.pointers.set(id, { role: 'FIRE', originX: p.x, originY: p.y, lastMoveAt: performance.now(), stale: false });
     this.refreshPointerShoot();
   }
@@ -208,41 +243,13 @@ export class Input {
     tp.stale = false; // 動いた＝指はまだ画面上にある
     const p = this.toCanvas(clientX, clientY);
 
-    if (tp.role !== 'STICK') {
-      this.mouseX = p.x;
-      this.mouseY = p.y;
-      return;
+    this.mouseX = p.x;
+    this.mouseY = p.y;
+
+    // ポインティング移動：指の位置がそのまま自機の目標座標
+    if (tp.role === 'POINT') {
+      this.setTouchPoint(p.x, p.y);
     }
-
-    let dx = p.x - tp.originX;
-    let dy = p.y - tp.originY;
-    const dist = Math.hypot(dx, dy);
-
-    // フローティングスティック：最大振れ幅を超えたら支点を追従させる
-    // （指を戻したときに即座に減速でき、端まで引っ張っても操作が破綻しない）
-    if (dist > Input.STICK_MAX_RADIUS) {
-      const k = (dist - Input.STICK_MAX_RADIUS) / dist;
-      tp.originX += dx * k;
-      tp.originY += dy * k;
-      dx = p.x - tp.originX;
-      dy = p.y - tp.originY;
-    }
-
-    const d = Math.hypot(dx, dy);
-    if (d <= Input.STICK_DEAD_ZONE) {
-      this.moveVecX = 0;
-      this.moveVecY = 0;
-    } else {
-      const mag = Math.min(1, (d - Input.STICK_DEAD_ZONE) / (Input.STICK_MAX_RADIUS - Input.STICK_DEAD_ZONE));
-      this.moveVecX = (dx / d) * mag;
-      this.moveVecY = (dy / d) * mag;
-    }
-
-    this.stickActive = true;
-    this.stickOriginX = tp.originX;
-    this.stickOriginY = tp.originY;
-    this.stickKnobX = tp.originX + dx;
-    this.stickKnobY = tp.originY + dy;
   }
 
   private onPointerUp(id: number): void {
@@ -250,11 +257,7 @@ export class Input {
     if (!tp) return;
     this.lastEventLabel = 'up';
     this.pointers.delete(id);
-    if (tp.role === 'STICK') {
-      this.moveVecX = 0;
-      this.moveVecY = 0;
-      this.stickActive = false;
-    }
+    this.refreshTouchPoint();
     this.refreshPointerShoot();
   }
 
@@ -266,16 +269,10 @@ export class Input {
    */
   private reapLostPointers(): void {
     const now = performance.now();
-    let hasStick = false;
     for (const p of this.pointers.values()) {
       if (!p.stale && now - p.lastMoveAt > Input.POINTER_WATCHDOG_MS) p.stale = true;
-      if (p.role === 'STICK' && !p.stale) hasStick = true;
     }
-    if (!hasStick && (this.stickActive || this.moveVecX !== 0 || this.moveVecY !== 0)) {
-      this.stickActive = false;
-      this.moveVecX = 0;
-      this.moveVecY = 0;
-    }
+    this.refreshTouchPoint();
     // ここでは「切る」方向にしか働かせない（押していない弾が勝手に出るのを防ぐ）
     if (this.pointerShoot && !this.isFiringNow()) {
       this.pointerShoot = false;
@@ -286,8 +283,7 @@ export class Input {
   /** 画面が隠れた・フォーカスを失った等、確実に全指を離す */
   private releaseAllPointers(): void {
     this.pointers.clear();
-    this.moveVecX = 0;
-    this.moveVecY = 0;
+    this.touchPointActive = false;
     this.stickActive = false;
     this.pointerShoot = false;
     this.syncShoot();

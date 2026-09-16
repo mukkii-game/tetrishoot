@@ -20,6 +20,10 @@ export class TerrainManager {
   public silosEnabled = true; // 壁面ミサイル発射台の生成可否（ステージごとに切替）
   public siloStartDelay = 2.5; // ステージ開幕後、発射台が起動し始めるまでの秒数
   public siloSpacing = 260; // 壁際ロケットの出現間隔（スクロールpx。小さいほどミサイルが増える）
+  // ★ ユーザー要望（5面）：「1編隊の数を倍に、一度に出てくる編隊の個数は減らす」。
+  //   1つの発射台から何発まとめて撃つか。発射台の数を減らして1台あたりの斉射数を増やすと、
+  //   総数は増えつつ「同時に相手取る発射地点」は減る
+  public siloBurst = 1;
   // ★ ユーザー要望：ミサイルと「90度直角旋回機」が重ならないよう時間帯で棲み分ける。
   //   ここに入れた時間帯（ステージ開始からの秒数）はミサイルを一切発射しない
   public siloQuietWindows: Array<{ start: number; end: number }> = [];
@@ -103,7 +107,12 @@ export class TerrainManager {
           vx = -(110 + Math.random() * 25);
         }
         if (onLaunchMissile) {
-          onLaunchMissile(launchX, screenY, vx, vy);
+          // 斉射：同じ発射台から少しずつ縦にずらして siloBurst 発
+          const burst = Math.max(1, this.siloBurst);
+          for (let k = 0; k < burst; k++) {
+            const offsetY = (k - (burst - 1) / 2) * 46;
+            onLaunchMissile(launchX, screenY + offsetY, vx, vy + (Math.random() - 0.5) * 20);
+          }
         }
         this.silos.splice(i, 1);
       }

@@ -67,6 +67,27 @@ export class Player {
     return cells;
   }
 
+  // ★ バリアの円（描画用の外周半径）。付けているテトリミノの大きさで変わる
+  public getBarrierRadius(): number {
+    const b = this.getBoundingBox();
+    return Math.max(b.maxX - b.minX, b.maxY - b.minY) * 0.75 + 14;
+  }
+
+  /**
+   * ★ ユーザー要望：バリアの当たり判定は「見た目の円より少し内側」。
+   *   円にかすっただけで敵が消えると手応えが薄いので、少しめり込むまで当たらない。
+   *   （描画半径の 0.80 倍。以前は円は描画専用で、判定はテトリミノのセルだけだった）
+   */
+  public getBarrierHitRadius(): number {
+    return this.getBarrierRadius() * 0.8;
+  }
+
+  /** バリア円の中心（＝自機の外接矩形の中心） */
+  public getBarrierCenter(): { x: number; y: number } {
+    const b = this.getBoundingBox();
+    return { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 };
+  }
+
   // 自機のバウンディングボックス（ピクセル単位）
   public getBoundingBox(): { minX: number; maxX: number; minY: number; maxY: number } {
     let minRelGx = 999;
@@ -291,9 +312,9 @@ export class Player {
       down: boolean;
       mouseX?: number | null;
       mouseY?: number | null;
-      // ★ スマホ画面左半分の仮想スティック（-1..1、合成長は最大1）
-      moveVecX?: number;
-      moveVecY?: number;
+      // ★ スマホ：ポインティング移動の目標座標（自機の中心をここへ寄せる）
+      pointX?: number | null;
+      pointY?: number | null;
     }
   ): void {
     const bounds = this.getBoundingBox();
@@ -319,19 +340,25 @@ export class Player {
       this.vy *= 0.7071;
     }
 
-    // ★ ユーザー要望：スマホは画面左半分の仮想スティックで移動する。
-    //   「キー移動と同じ動き、ただし8方向ではなく全方向」なので、
-    //   最大振れ幅でちょうど PLAYER_SPEED になるよう合成速度をクランプする。
+    // ★ ユーザー要望：スマホは「指一本でポインティング移動」。
+    //   指の座標へ自機の中心が最短距離で向かう。速度は PLAYER_SPEED で頭打ち、
+    //   残り距離が1フレーム分より短ければちょうど到達させる（行き過ぎて振動しない）。
     //   （PCのマウス移動では自機を動かさない ＝ 旧 mouseDelta 加算は廃止）
-    const stickX = inputs.moveVecX ?? 0;
-    const stickY = inputs.moveVecY ?? 0;
-    if (stickX !== 0 || stickY !== 0) {
-      this.vx += stickX * PLAYER_SPEED;
-      this.vy += stickY * PLAYER_SPEED;
-      const speed = Math.hypot(this.vx, this.vy);
-      if (speed > PLAYER_SPEED) {
-        this.vx = (this.vx / speed) * PLAYER_SPEED;
-        this.vy = (this.vy / speed) * PLAYER_SPEED;
+    const pointX = inputs.pointX ?? null;
+    const pointY = inputs.pointY ?? null;
+    if (pointX !== null && pointY !== null) {
+      const centerX = (bounds.minX + bounds.maxX) / 2;
+      const centerY = (bounds.minY + bounds.maxY) / 2;
+      const dx = pointX - centerX;
+      const dy = pointY - centerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1) {
+        const step = Math.min(PLAYER_SPEED, dist / Math.max(dt, 1e-4));
+        this.vx = (dx / dist) * step;
+        this.vy = (dy / dist) * step;
+      } else {
+        this.vx = 0;
+        this.vy = 0;
       }
     }
 
@@ -753,7 +780,7 @@ export class Player {
       ctx.save();
       const centerX = (bounds.minX + bounds.maxX) / 2;
       const centerY = (bounds.minY + bounds.maxY) / 2;
-      const radius = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) * 0.75 + 14;
+      const radius = this.getBarrierRadius();
 
       const t = Date.now() / 150;
       const hue = Math.floor((t * 60) % 360);
@@ -770,13 +797,13 @@ export class Player {
       ctx.arc(0, 0, radius, 0, Math.PI * 2);
       ctx.stroke();
 
-      // 内側の逆回転点線リング
+      // 内側の逆回転点線リング＝実際の当たり判定の円（外周にかすっただけでは当たらない）
       ctx.rotate(-t * 1.6);
       ctx.strokeStyle = '#ffffff';
       ctx.setLineDash([8, 8]);
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, radius - 6, 0, Math.PI * 2);
+      ctx.arc(0, 0, this.getBarrierHitRadius(), 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.restore();
