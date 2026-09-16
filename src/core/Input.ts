@@ -115,7 +115,25 @@ export class Input {
 
   private canvas: HTMLCanvasElement;
   private pointers = new Map<number, TrackedPointer>();
-  private keyShoot = false; // スペースキー
+  private keyShoot = false; // スペース／Enterキー
+
+  // ★ ユーザー要望：テンキーでも移動できるように。
+  //   4/8/2/6 で上下左右、7/9/1/3 で斜め、さらに 4+8 のような同時押しでも斜めになる。
+  //   矢印／WASD とテンキーは独立に持ち、public な left/right/up/down はその論理和にする
+  //   （片方を離してももう片方が押されていれば動き続ける）。
+  private arrowDirs = { left: false, right: false, up: false, down: false };
+  private padKeys = new Set<string>();
+  // テンキーの各キーが表す方向（5 は「停止」なので何も割り当てない）
+  private static readonly NUMPAD_DIRS: Record<string, { left?: boolean; right?: boolean; up?: boolean; down?: boolean }> = {
+    Numpad8: { up: true },
+    Numpad2: { down: true },
+    Numpad4: { left: true },
+    Numpad6: { right: true },
+    Numpad7: { up: true, left: true },
+    Numpad9: { up: true, right: true },
+    Numpad1: { down: true, left: true },
+    Numpad3: { down: true, right: true },
+  };
   private pointerShoot = false; // 右半分タップ or PCクリック
 
   constructor(canvas: HTMLCanvasElement) {
@@ -150,6 +168,31 @@ export class Input {
   // ==========================================
   // ショット状態の同期（キーボードとポインタの論理和）
   // ==========================================
+  /**
+   * ★ 矢印／WASD とテンキーの押下状態から、公開する left/right/up/down を作り直す。
+   *   同時押しはそのまま論理和になるので、4+8 のような組み合わせ斜めも成立する。
+   *   単発押し判定（justLeft など）は、合成後の値が false→true になった瞬間に立てる。
+   */
+  private syncDirections(): void {
+    const next = { ...this.arrowDirs };
+    for (const code of this.padKeys) {
+      const d = Input.NUMPAD_DIRS[code];
+      if (!d) continue;
+      if (d.left) next.left = true;
+      if (d.right) next.right = true;
+      if (d.up) next.up = true;
+      if (d.down) next.down = true;
+    }
+    if (next.left && !this.left) this.justLeft = true;
+    if (next.right && !this.right) this.justRight = true;
+    if (next.up && !this.up) this.justRotate = true;
+    if (next.down && !this.down) this.justDrop = true;
+    this.left = next.left;
+    this.right = next.right;
+    this.up = next.up;
+    this.down = next.down;
+  }
+
   private syncShoot(): void {
     const on = this.keyShoot || this.pointerShoot;
     if (on && !this.shoot) this.justShoot = true;
@@ -282,6 +325,11 @@ export class Input {
 
   /** 画面が隠れた・フォーカスを失った等、確実に全指を離す */
   private releaseAllPointers(): void {
+    // キーボードも一緒に解放する（フォーカスを失うと keyup が届かず押しっぱなしになるため）
+    this.padKeys.clear();
+    this.arrowDirs = { left: false, right: false, up: false, down: false };
+    this.syncDirections();
+    this.keyShoot = false;
     this.pointers.clear();
     this.touchPointActive = false;
     this.stickActive = false;
@@ -295,49 +343,65 @@ export class Input {
         e.preventDefault();
       }
 
+      // テンキーの方向キー（4826 / 7913）。同時押しでの斜めも成立させる
+      if (Input.NUMPAD_DIRS[e.code]) {
+        e.preventDefault();
+        this.padKeys.add(e.code);
+        this.syncDirections();
+        return;
+      }
+      if (e.code === 'Numpad5') {
+        // 5 は「停止」。押した瞬間にテンキー分の入力を全部落とす
+        e.preventDefault();
+        this.padKeys.clear();
+        this.syncDirections();
+        return;
+      }
+
       switch (e.code) {
         case 'ArrowLeft':
         case 'KeyA':
-          if (!this.left) this.justLeft = true;
-          this.left = true;
+          this.arrowDirs.left = true;
+          this.syncDirections();
           break;
         case 'ArrowRight':
         case 'KeyD':
-          if (!this.right) this.justRight = true;
-          this.right = true;
+          this.arrowDirs.right = true;
+          this.syncDirections();
           break;
         case 'ArrowUp':
         case 'KeyW':
-          if (!this.up) this.justRotate = true;
-          this.up = true;
+          this.arrowDirs.up = true;
+          this.syncDirections();
           break;
         case 'ArrowDown':
         case 'KeyS':
-          if (!this.down) this.justDrop = true;
-          this.down = true;
+          this.arrowDirs.down = true;
+          this.syncDirections();
           break;
         case 'Space':
           this.keyShoot = true;
           this.syncShoot();
           break;
+        // ★ ユーザー要望：スペースだけでなく Enter でも弾が出る（メニュー確定も従来どおり）
         case 'Enter':
         case 'NumpadEnter':
           if (!this.enter) this.justEnter = true;
           this.enter = true;
+          this.keyShoot = true;
+          this.syncShoot();
           break;
         case 'Tab':
           this.justTab = true;
           break;
+        // ★ テンキーの 1/2/3 は移動に使うようになったので、ブロック選択は数字列のみ
         case 'Digit1':
-        case 'Numpad1':
           this.selectedPieceIndex = 0;
           break;
         case 'Digit2':
-        case 'Numpad2':
           this.selectedPieceIndex = 1;
           break;
         case 'Digit3':
-        case 'Numpad3':
           this.selectedPieceIndex = 2;
           break;
         case 'KeyM':
@@ -355,22 +419,32 @@ export class Input {
     });
 
     window.addEventListener('keyup', (e) => {
+      if (Input.NUMPAD_DIRS[e.code]) {
+        this.padKeys.delete(e.code);
+        this.syncDirections();
+        return;
+      }
+
       switch (e.code) {
         case 'ArrowLeft':
         case 'KeyA':
-          this.left = false;
+          this.arrowDirs.left = false;
+          this.syncDirections();
           break;
         case 'ArrowRight':
         case 'KeyD':
-          this.right = false;
+          this.arrowDirs.right = false;
+          this.syncDirections();
           break;
         case 'ArrowUp':
         case 'KeyW':
-          this.up = false;
+          this.arrowDirs.up = false;
+          this.syncDirections();
           break;
         case 'ArrowDown':
         case 'KeyS':
-          this.down = false;
+          this.arrowDirs.down = false;
+          this.syncDirections();
           break;
         case 'Space':
           this.keyShoot = false;
@@ -379,6 +453,8 @@ export class Input {
         case 'Enter':
         case 'NumpadEnter':
           this.enter = false;
+          this.keyShoot = false;
+          this.syncShoot();
           break;
         case 'Escape':
           this.escape = false;
@@ -609,6 +685,8 @@ export class Input {
   }
 
   public clearTransientInputs(): void {
+    this.padKeys.clear();
+    this.arrowDirs = { left: false, right: false, up: false, down: false };
     this.keyShoot = false;
     this.pointerShoot = false;
     this.shoot = false;

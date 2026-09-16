@@ -84,8 +84,20 @@ export class GameManager {
   //     「ステージ開始からの撃破数」に変更した（startShootingPhase でリセット）。
   //   閾値は「敵の多い面の全敵の約2/3」＝ 40 機
   private static readonly BARRIER_KILL_INTERVAL = 40;
-  // ★ バリアの円に触れたボスへ与える毎秒ダメージ（ザコは即破壊、ボスだけは削り）
+  // ★ バリアの円に触れたボスへ与える毎秒ダメージ（ボスは焼き切りではなく削り）
   private static readonly BARRIER_BOSS_DPS = 6;
+  // ★ ザコがバリアで焼き切れるまでの焼け量。
+  //   ここで言う焼け量は「深さ×時間」。円の中心の深さで触れ続けた場合の秒数に相当する。
+  //   ★ 重要：かすりと突撃は「円内にいた時間」では区別できない。
+  //     円の横を縦に通り抜ける敵は、浅くても長く円内に留まるため
+  //     （実測：6pxのかすりで0.083秒 ＞ 中心への突撃で0.067秒）。
+  //     区別できるのは深さだけなので、焼け進行を深さで重み付けし、
+  //     さらに外周側 BARRIER_BURN_DEAD_ZONE の帯は「かすり」として一切焼けないようにした。
+  private static readonly BARRIER_BURN_TIME = 0.012;
+  // 円の外周側の何割を「かすり（焼けない）」扱いにするか
+  private static readonly BARRIER_BURN_DEAD_ZONE = 0.25;
+  // 円の外へ出たとき、焼けが冷めていく速さ（秒あたり）
+  private static readonly BARRIER_BURN_COOL = 1.5;
   private totalKills = 0;
   private nextBarrierKills = GameManager.BARRIER_KILL_INTERVAL;
   public difficulty: 'NORMAL' | 'HARD' = 'NORMAL';
@@ -905,9 +917,12 @@ export class GameManager {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 3, START_DELAY + 10.5, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 4), 3, START_DELAY + 10.5, 'INFINITY_DIVE_RIGHT', k));
         }
-        // ウェーブ4（t=18.5〜）：巨大8の字大旋回ループで画面を舞うイエロー司令機＆護衛隊！
-        for (let k = 0; k < this.hc(6); k++) {
-          this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 3 + (k % 3), 0, START_DELAY + 17.0, 'FIGURE_EIGHT', k));
+        // ウェーブ4（t=18.5 / 23.0 / 27.5〜）：巨大8の字大旋回ループで画面を舞うイエロー司令機＆護衛隊！
+        // ★ ユーザー要望：ボス前の超高速8の字は1回だけだと物足りないので3回出す
+        for (const waveAt of [17.0, 21.5, 26.0]) {
+          for (let k = 0; k < this.hc(6); k++) {
+            this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 3 + (k % 3), 0, START_DELAY + waveAt, 'FIGURE_EIGHT', k));
+          }
         }
         break;
 
@@ -1839,9 +1854,13 @@ export class GameManager {
     }
 
     // ★ ユーザー要望：バリアは「盾」ではなく「武器」でもある。
-    //   円（見た目の外周より少し内側＝getBarrierHitRadius）に敵がめり込んだら破壊する。
+    //   円（見た目の外周より少し内側＝getBarrierHitRadius）に敵が入ると焼かれる。
     //   矩形ではなく円で判定するので、リングの見た目どおりの当たり方になる。
-    //   ボスだけは即死させず、接触している間だけ継続ダメージ（BARRIER_BOSS_DPS）にする。
+    //   ★ ユーザー要望（追加）：ザコも即死ではなく「一定時間触れていると死ぬ」。
+    //     一瞬かすっただけでは死なず、突っ込んでくると途中で焼き切れる。
+    //     深く入るほど速く焼ける（BARRIER_BURN_DEEP_BOOST）ので、
+    //     浅いかすりは生き残り、まっすぐ突っ込むと自機に届く前に燃え尽きる。
+    //   ボスだけは焼き切りではなく、接触している間だけ継続ダメージ（BARRIER_BOSS_DPS）。
     if (this.player.barrierTimer > 0 && !this.player.isDead) {
       const bc = this.player.getBarrierCenter();
       const br = this.player.getBarrierHitRadius();
@@ -1853,7 +1872,14 @@ export class GameManager {
         const ny = Math.min(Math.max(bc.y, enemy.y), enemy.y + enemy.height);
         const dx = bc.x - nx;
         const dy = bc.y - ny;
-        if (dx * dx + dy * dy > br2) continue;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > br2) {
+          // 円の外：焼けはゆっくり冷める（出入りを繰り返しても永久に貯まらない）
+          if (enemy.barrierBurn > 0) {
+            enemy.barrierBurn = Math.max(0, enemy.barrierBurn - dt * GameManager.BARRIER_BURN_COOL);
+          }
+          continue;
+        }
 
         if (enemy.isBoss || enemy === this.currentBoss) {
           // ボスはバリアでも即死しない（体当たりし続けて削る）
@@ -1879,6 +1905,22 @@ export class GameManager {
           }
           continue;
         }
+
+        // 焼け進行：めり込みの深さに比例。外周寄りの不感帯では一切焼けない
+        const depth = br > 0 ? 1 - Math.sqrt(d2) / br : 1;
+        const dz = GameManager.BARRIER_BURN_DEAD_ZONE;
+        const effDepth = depth <= dz ? 0 : (depth - dz) / (1 - dz);
+        if (effDepth <= 0) {
+          // かすっているだけ：火花だけ出して、焼けは進めない
+          if (Math.random() < 0.25) this.particles.emitSparks(nx, ny, '#00ffff', 2);
+          continue;
+        }
+        enemy.barrierBurn += dt * effDepth;
+        // 焼かれている間は光らせて「効いている」ことを見せる
+        enemy.flashTime = 0.1;
+        if (Math.random() < 0.6) this.particles.emitSparks(nx, ny, '#00ffff', 3);
+
+        if (enemy.barrierBurn < GameManager.BARRIER_BURN_TIME) continue;
 
         enemy.isDead = true;
         this.sound.playEnemyPop(enemy.rank);
