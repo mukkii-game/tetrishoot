@@ -121,6 +121,9 @@ export class Enemy {
   // ボス専用ダイナミックAIパラメータ（左右大旋回・深部急降下後退・画面突き抜けループ・ホバリング）
   public bossPhase: 'HOVER_BARRAGE' | 'WIDE_SWEEP' | 'DEEP_DIVE_RETREAT' | 'DIVE_THROUGH' = 'HOVER_BARRAGE';
   public bossPhaseTimer = 0;
+  // ★ ユーザー要望：バリアは即死ではなく「焼かれた時間」で倒す。
+  //   かすった程度では死なず、突っ込むと途中で焼き切れる。深いほど速く溜まる
+  public barrierBurn = 0;
   public bossDiveVariant = 0;
   // ★ ユーザー要望：落下は画面中央固定ではなく「そのとき自機がいた横位置」へ。
   //   突進フェーズに入った瞬間の自機Xを記録し、まず横移動してから真下に落ちる
@@ -131,7 +134,7 @@ export class Enemy {
   private animTimer = 0;
   private timeAlive = 0;
   private patternTimer = 0;
-  private flashTime = 0;
+  public flashTime = 0; // 被弾フラッシュ（バリアで焼かれている間も光らせるため public）
   public spawnAnimationTimer = 0; // 点から拡大して出現するアニメーションタイマー
 
   private circleCenterX = CANVAS_WIDTH / 2;
@@ -1473,35 +1476,53 @@ export class Enemy {
         return { x: x - this.width / 2, y: y - this.height / 2 };
       }
 
-      // 2. 左から優雅なS字蛇行で画面を渡る（自機がいる下部 y ≈ 620 まで深く急降下スウィング！）
-      case 'S_CURVE_LEFT_TO_RIGHT': {
-        const progressX = (t / 4.0) * (CANVAS_WIDTH + 140) - 70;
-        const dip = Math.sin((t / 4.0) * Math.PI) * 520;
-        const y = 80 + dip + Math.sin(t * 3.0) * 50; // 最大 y ≈ 650
-        return { x: progressX - this.width / 2, y: y - this.height / 2 };
-      }
-
-      // 3. 右から優雅なS字蛇行で画面を渡る（自機がいる下部 y ≈ 620 まで深く急降下スウィング！）
+      // 2. 左から大回りのS字で画面を渡り、一度右へ抜けてから戻ってくる
+      //    ★ ユーザー要望：「もう少し挙動を大回りに。部分的に画面をいったん出て戻ってくる
+      //      ところがあってもいい。ムーンクレスタ1面のボスみたいな」
+      //      前半で下部(y≈620)まで深く急降下しながら横断 → 画面右外へ抜ける →
+      //      高い位置を戻ってきて再進入 → 隊列へ、という3段構えにした。
+      case 'S_CURVE_LEFT_TO_RIGHT':
       case 'S_CURVE_RIGHT_TO_LEFT': {
-        const progressX = CANVAS_WIDTH + 70 - (t / 4.0) * (CANVAS_WIDTH + 140);
-        const dip = Math.sin((t / 4.0) * Math.PI) * 520;
-        const y = 80 + dip + Math.cos(t * 3.0) * 50; // 最大 y ≈ 650
-        return { x: progressX - this.width / 2, y: y - this.height / 2 };
+        const mirror = path === 'S_CURVE_RIGHT_TO_LEFT';
+        const OUT = CANVAS_WIDTH + 150; // 画面外（右）の折り返し地点
+        const IN = -90;                 // 画面外（左）の進入地点
+        let x: number;
+        let y: number;
+        if (t < 2.4) {
+          // 進入〜横断：深いディップを描いて画面外へ突き抜ける
+          const p = t / 2.4;
+          x = IN + (OUT - IN) * p;
+          y = 80 + Math.sin(p * Math.PI) * 520 + Math.sin(t * 3.0) * 50;
+        } else if (t < 3.1) {
+          // 画面外で旋回して高度を上げる（見えないが、戻り位置を作る区間）
+          const p = (t - 2.4) / 0.7;
+          x = OUT + Math.sin(p * Math.PI) * 70;
+          y = 80 - 40 * p;
+        } else {
+          // 再進入：高い位置から大きく弧を描いて隊列位置へ
+          const p = Math.min(1, (t - 3.1) / 1.1);
+          const ease = Math.sin((p * Math.PI) / 2);
+          x = OUT + (cx - OUT) * ease;
+          y = 40 + 130 * ease + Math.sin(t * 2.2) * 26;
+        }
+        if (mirror) x = CANVAS_WIDTH - x;
+        return { x: x - this.width / 2, y: y - this.height / 2 };
       }
 
       // 4. 左からのダイナミック宙返りループ（画面下部まで落ちてから上昇）
+      //    ★ ユーザー要望：もっと大回りに。旋回半径を広げ、弧の一部が画面外へはみ出す
       case 'INFINITY_DIVE_LEFT': {
-        const angle = t * 2.8;
-        const x = cx - 110 + Math.cos(angle) * 150;
-        const y = 180 + Math.sin(angle) * 160 + t * 90;
+        const angle = t * 2.35;
+        const x = cx - 130 + Math.cos(angle) * 225;
+        const y = 175 + Math.sin(angle) * 215 + t * 88;
         return { x: x - this.width / 2, y: y - this.height / 2 };
       }
 
       // 5. 右からのダイナミック宙返りループ（画面下部まで落ちてから上昇）
       case 'INFINITY_DIVE_RIGHT': {
-        const angle = -t * 2.8;
-        const x = cx + 110 + Math.cos(angle) * 150;
-        const y = 180 + Math.sin(angle) * 160 + t * 90;
+        const angle = -t * 2.35;
+        const x = cx + 130 + Math.cos(angle) * 225;
+        const y = 175 + Math.sin(angle) * 215 + t * 88;
         return { x: x - this.width / 2, y: y - this.height / 2 };
       }
     }

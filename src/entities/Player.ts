@@ -797,13 +797,13 @@ export class Player {
       ctx.arc(0, 0, radius, 0, Math.PI * 2);
       ctx.stroke();
 
-      // 内側の逆回転点線リング＝実際の当たり判定の円（外周にかすっただけでは当たらない）
+      // 内側の逆回転点線リング（装飾。当たり判定の円ではない）
       ctx.rotate(-t * 1.6);
       ctx.strokeStyle = '#ffffff';
       ctx.setLineDash([8, 8]);
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, this.getBarrierHitRadius(), 0, Math.PI * 2);
+      ctx.arc(0, 0, radius - 6, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.restore();
