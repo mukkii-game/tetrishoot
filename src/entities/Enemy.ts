@@ -87,6 +87,10 @@ export class Enemy {
   //   毎回同じにしない。位相をランダムにすると、発射の瞬間の高さが揺れ幅全体に散らばる
   public prelaunchPhase = Math.random() * Math.PI * 2;
   public static readonly PRELAUNCH_TIME = 1.3;
+  // ★ ユーザー要望：降りてきて自機のY座標に合わせて突っ込んでくる敵（スターフォースの直角旋回機）は
+  //   速すぎるので 2/3 に減速。5面だけでなく全ステージ共通（3面・5面で使用）
+  private static readonly CORNER_FALL_SPEED = 280 * (2 / 3); // 落下 280 → 約187px/s
+  private static readonly CORNER_DASH_SPEED = 440 * (2 / 3); // 突進 440 → 約293px/s
   // ★ 個体ごとの時間倍率（ラスボスの倍速化などに使用。移動・フェーズ切替・アニメ全てに効く）
   public speedScale = 1.0;
   // ★ 7面用ステート
@@ -492,7 +496,7 @@ export class Enemy {
       this.x = startLeft ? 28 : CANVAS_WIDTH - 28 - this.width;
       this.y = -40;
       this.vx = 0;
-      this.vy = 280;
+      this.vy = Enemy.CORNER_FALL_SPEED;
       this.turned90 = false;
     } else if (pattern === 'TERRAIN_LAUNCH') {
       this.x = Math.random() > 0.5 ? -40 : CANVAS_WIDTH + 40;
@@ -1338,7 +1342,7 @@ export class Enemy {
             this.turned90 = true;
             this.vy = 0;
             const toRight = this.x < CANVAS_WIDTH / 2;
-            this.vx = (toRight ? 1 : -1) * 440; // 自機へ向かって水平フル加速！
+            this.vx = (toRight ? 1 : -1) * Enemy.CORNER_DASH_SPEED; // 自機へ向かって水平加速！
           }
         } else {
           // フェーズ2: 横方向へ電光石火の突進！
@@ -1352,7 +1356,7 @@ export class Enemy {
           this.x = startLeft ? 28 : CANVAS_WIDTH - 28 - this.width;
           this.y = -40;
           this.vx = 0;
-          this.vy = 280;
+          this.vy = Enemy.CORNER_FALL_SPEED;
         }
         break;
       }
