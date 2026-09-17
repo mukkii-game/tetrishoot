@@ -72,6 +72,14 @@ export interface DetachedFloatingPiece {
   lifeTime: number;
 }
 
+// 切り離されたパーツを再回収できるようになるまでの猶予。
+// 0 にすると「外れた瞬間に同じ場所で再結合」して切断が無かったことになるので、
+// 気付けないくらい短い時間（1〜2フレーム相当）だけ待つ。
+const DETACHED_ARM_TIME = 0.1;
+// 再回収の判定は「見えている形どうしが重なったら」。緩めのパディングを足して
+// 「近づけているのにくっつかない」を無くす。
+const DETACHED_CATCH_PAD = BLOCK_SIZE * 1.5;
+
 export class GameManager {
   public state: GameState = 'TITLE';
   public phase: GamePhase = 'TETRIS';
@@ -1632,15 +1640,18 @@ export class GameManager {
       if (dp.x > CANVAS_WIDTH - 50) { dp.x = CANVAS_WIDTH - 50; dp.vx = -Math.abs(dp.vx); }
 
       // プレイヤーが自機を寄せてキャッチ（再ドッキング！）
+      // 点ではなくミノの矩形どうしで判定する。dp.x/dp.y は左上なので、
+      // 横長のミノだと点判定では「見た目は重なっているのに入らない」ことが起きていた。
       const playerBounds = this.player.getBoundingBox();
+      const pb = dp.piece.getBoundingBox(dp.x, dp.y);
       const isClose =
-        dp.x >= playerBounds.minX - 20 &&
-        dp.x <= playerBounds.maxX + 20 &&
-        dp.y >= playerBounds.minY - 20 &&
-        dp.y <= playerBounds.maxY + 20;
+        pb.maxX >= playerBounds.minX - DETACHED_CATCH_PAD &&
+        pb.minX <= playerBounds.maxX + DETACHED_CATCH_PAD &&
+        pb.maxY >= playerBounds.minY - DETACHED_CATCH_PAD &&
+        pb.minY <= playerBounds.maxY + DETACHED_CATCH_PAD;
 
-      if (isClose) {
-        const dockRes = this.player.tryDockFromPixel(dp.piece, dp.x, dp.y);
+      if (isClose && dp.lifeTime >= DETACHED_ARM_TIME) {
+        const dockRes = this.player.tryDockFromPixel(dp.piece, dp.x, dp.y, BLOCK_SIZE * 2);
         if (dockRes.docked) {
           this.sound.playDock();
           this.particles.emitDockRing(dp.x, dp.y, dp.piece.color);
