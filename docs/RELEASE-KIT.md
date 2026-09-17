@@ -82,6 +82,20 @@ cd dist && zip -r ../galaxtris-html5.zip . -x '.*'
 （タイトル / シューティング / ドッキング / ボス戦、各 540×720）。
 サムネイルには**シューティング中かボス戦**が一番強い。タイトル画面は情報量が少ない。
 
+### 動画（自動収録）
+
+```bash
+npm i --no-save playwright
+# 撮影用ビルド: src/main.ts の GameManager 生成直後に
+#   (window as any).__gm = game; (window as any).__input = input;
+# を一時的に足して npm run build
+node test/record.mjs <出力先> 40      # -> <出力先>/play.webm
+git checkout src/main.ts && npm run build   # 撮影用の行を戻す
+```
+
+実キーボード入力（矢印キー移動・Space ショット）を送って遊ばせるので、
+内部 API の変更に強い。3 面のシューティングから始まり、途中でボス戦に寄せる。
+
 ### 動画（画面収録）
 
 **itch.io 用に用意済みの画面収録を、そのまま全ての配布先・SNS投稿に流用する。**
