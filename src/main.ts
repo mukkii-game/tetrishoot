@@ -6,7 +6,36 @@ import { Sound } from './core/Sound';
 // ★ デバッグ用：捕捉されなかったエラーを画面上に直接表示する（Macが無くてもiPhone単体で原因が分かるように）。
 //   スクリプトの一番最初（DOMContentLoaded より前）で登録するので、初期化中の同期エラーも拾える。
 //   通常時は何も表示されず、実害はない。
+//
+// ★ 重要（2026-09 修正）：以前は window の error を無条件に表示していたため、
+//   ゲームとは無関係な「ブラウザ拡張／アプリ内ブラウザが注入したスクリプト」のエラーまで
+//   真っ赤なバーで画面の半分を覆ってしまっていた。実際に報告された例：
+//     ReferenceError: Can't find variable: __firefox__      ← Brave for iOS は Firefox iOS 派生で、
+//                                                              ページに __firefox__ ヘルパを注入する
+//     TypeError: undefined is not an object ('window.__firefox__.reader')
+//     ReferenceError: Can't find variable: DarkReader       ← Dark Reader 拡張
+//     Script error. @ :0:0                                  ← クロスオリジンのため詳細が取れないエラー
+//   これらは filename が「HTMLドキュメント自身」か空になる（注入されたインラインスクリプトのため）。
+//   ゲーム本体は assets/index-*.js という同一オリジンの .js ファイルなので、
+//   「同一オリジンの .js から出たエラーだけ」を表示対象にすれば自前のバグだけが残る。
+const MAX_ERROR_LINES = 4;
+let errorLineCount = 0;
+
+/** そのエラーがゲーム本体（同一オリジンの .js）から出たものか */
+function isOwnScriptError(filename: string | undefined): boolean {
+  if (!filename) return false; // 「Script error.」＝クロスオリジン。ゲームのものではない
+  try {
+    const u = new URL(filename, document.baseURI);
+    if (u.origin !== window.location.origin) return false; // 拡張や外部スクリプト
+    return u.pathname.endsWith('.js'); // HTMLドキュメント自身＝注入インラインスクリプト
+  } catch {
+    return false;
+  }
+}
+
 function showErrorOverlay(message: string): void {
+  if (errorLineCount >= MAX_ERROR_LINES) return;
+  errorLineCount++;
   let box = document.getElementById('__err_overlay');
   if (!box) {
     box = document.createElement('div');
@@ -14,7 +43,7 @@ function showErrorOverlay(message: string): void {
     // ★ pointer-events:none は必須。これが無いとエラーバーが画面上部のタップを吸い込み、
     //   「表示はされるがタップに反応しない」状態をデバッグ表示自身が作ってしまう。
     box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#a00;color:#fff;' +
-      'font:12px/1.4 monospace;padding:8px;white-space:pre-wrap;word-break:break-all;max-height:50vh;' +
+      'font:12px/1.4 monospace;padding:8px;white-space:pre-wrap;word-break:break-all;max-height:40vh;' +
       'overflow:hidden;pointer-events:none;';
     document.body.appendChild(box);
   }
@@ -23,11 +52,16 @@ function showErrorOverlay(message: string): void {
   line.style.cssText = 'border-top:1px solid rgba(255,255,255,0.3);padding-top:4px;margin-top:4px;';
   box.appendChild(line);
 }
+
 window.addEventListener('error', (e) => {
+  if (!isOwnScriptError(e.filename)) return; // 拡張・アプリ内ブラウザ由来のノイズは無視
   showErrorOverlay(`[error] ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`);
 });
 window.addEventListener('unhandledrejection', (e) => {
-  showErrorOverlay(`[promise] ${e.reason}`);
+  // Promise のエラーには発生元ファイルが無いので、既知の外部スクリプト名で弾く
+  const text = String(e.reason ?? '');
+  if (/__firefox__|DarkReader|chrome-extension|moz-extension|safari-(web-)?extension/i.test(text)) return;
+  showErrorOverlay(`[promise] ${text}`);
 });
 
 // ★ 自動キャッシュ復旧：itch.io は butler で更新しても index.html の URL が変わらないため、
