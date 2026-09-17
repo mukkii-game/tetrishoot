@@ -84,6 +84,8 @@ export class GameManager {
   //     「ステージ開始からの撃破数」に変更した（startShootingPhase でリセット）。
   //   閾値は「敵の多い面の全敵の約2/3」＝ 40 機
   private static readonly BARRIER_KILL_INTERVAL = 40;
+  // ★ EASY は敵の総数が 2/3 になるので、バリアが出る条件もそれに合わせて下げる
+  private static readonly BARRIER_KILL_INTERVAL_EASY = 27;
   // ★ バリアの円に触れたボスへ与える毎秒ダメージ（ボスは焼き切りではなく削り）
   private static readonly BARRIER_BOSS_DPS = 6;
   // ★ ザコがバリアで焼き切れるまでの焼け量。
@@ -100,7 +102,19 @@ export class GameManager {
   private static readonly BARRIER_BURN_COOL = 1.5;
   private totalKills = 0;
   private nextBarrierKills = GameManager.BARRIER_KILL_INTERVAL;
-  public difficulty: 'NORMAL' | 'HARD' = 'NORMAL';
+
+  /** 難易度に応じたバリアオーブ出現の撃破数間隔 */
+  private barrierKillInterval(): number {
+    return this.difficulty === 'EASY'
+      ? GameManager.BARRIER_KILL_INTERVAL_EASY
+      : GameManager.BARRIER_KILL_INTERVAL;
+  }
+  // ★ ユーザー要望：イージーモードを追加（タイトルでは NORMAL の左）
+  //   EASY は敵の数 2/3・ボスHP 2/3・バリア出現の必要撃破数も少なめ。
+  //   バランスが大きく崩れそうなところ（地形ミサイルの密度、ボスの動きの速さ、
+  //   ボスが出すザコの間隔など）は NORMAL のまま据え置いている。
+  public difficulty: 'EASY' | 'NORMAL' | 'HARD' = 'NORMAL';
+  private static readonly DIFFICULTIES: ('EASY' | 'NORMAL' | 'HARD')[] = ['EASY', 'NORMAL', 'HARD'];
 
   public player: Player;
   public starfield: Starfield;
@@ -199,7 +213,10 @@ export class GameManager {
     this.score = 0;
     this.runStartHighScore = this.highScore;
     this.totalKills = 0;
-    this.nextBarrierKills = GameManager.BARRIER_KILL_INTERVAL;
+    this.nextBarrierKills = this.barrierKillInterval();
+    this.fieldItems = [];
+    this.player.barrierTimer = 0;
+    this.player.barrierFrozen = false;
     this.deathDelay = 0;
     this.playerDeathSoundPlayed = false;
     this.bossWarningActive = false;
@@ -261,7 +278,7 @@ export class GameManager {
     // ★ ユーザー要望：バリアオーブは「ステージ開始からの撃破数」で出す。
     //   通算だと毎回まったく同じ場所で出てしまい、驚きが無くなるため
     this.totalKills = 0;
-    this.nextBarrierKills = GameManager.BARRIER_KILL_INTERVAL;
+    this.nextBarrierKills = this.barrierKillInterval();
     // ★ ユーザー要望：開始直後に地形へぶつかって即死することがあるので、
     //   ステージ開始から2秒は無敵にする。こちらは演出なし（見た目は通常どおり）
     this.player.spawnGraceTimer = Player.SPAWN_GRACE;
@@ -327,9 +344,11 @@ export class GameManager {
       ? STAGE5_CORNER_WAVES.map(w => ({ start: w.quietStart, end: w.quietEnd }))
       : [];
 
-    // ★ ユーザー要望：アイテムはステージ開始時の固定配置ではなく、累計撃破数に応じて出現（spawnBarrierOrb 参照）
-    //   救済カプセルはいったん廃止
-    this.fieldItems = [];
+    // ★ ユーザー要望：アイテムはステージ開始時の固定配置ではなく、撃破数に応じて出現（spawnBarrierOrb 参照）
+    //   救済カプセルはいったん廃止。
+    //   ★ ドッキング中に流れているオーブはここで消さない（取り逃した分はそのまま流れて画面外で消える）
+    // ★ ここでバリアの凍結を解除＝残り時間のカウントはステージ開始から始まる
+    this.player.barrierFrozen = false;
 
     // ギャラガ＆ムーンクレスタ風 多彩な大編隊をスポーン！
     this.spawnAlienFleet();
@@ -448,7 +467,11 @@ export class GameManager {
         // 左右キー：選択中の行の値を変更（難易度 or ステージ）
         if (input.justLeft || input.justRight) {
           if (this.titleMenuSelection === 'DIFFICULTY') {
-            this.difficulty = this.difficulty === 'NORMAL' ? 'HARD' : 'NORMAL';
+            const list = GameManager.DIFFICULTIES;
+            const i = list.indexOf(this.difficulty);
+            this.difficulty = input.justLeft
+              ? list[(i - 1 + list.length) % list.length]
+              : list[(i + 1) % list.length];
           } else if (input.justLeft) {
             this.selectedStage = this.selectedStage > 1 ? this.selectedStage - 1 : 10;
           } else {
@@ -461,9 +484,13 @@ export class GameManager {
         if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 420 && input.mouseY <= 468) {
           this.titleMenuSelection = 'DIFFICULTY';
           if (input.mouseX !== null) {
-            this.difficulty = input.mouseX < CANVAS_WIDTH / 2 ? 'NORMAL' : 'HARD';
+            // 画面を3分割：左=EASY／中=NORMAL／右=HARD
+            this.difficulty = input.mouseX < CANVAS_WIDTH / 3
+              ? 'EASY'
+              : (input.mouseX < (CANVAS_WIDTH * 2) / 3 ? 'NORMAL' : 'HARD');
           } else {
-            this.difficulty = this.difficulty === 'NORMAL' ? 'HARD' : 'NORMAL';
+            const list = GameManager.DIFFICULTIES;
+            this.difficulty = list[(list.indexOf(this.difficulty) + 1) % list.length];
           }
           this.sound.playHit();
           break;
@@ -719,9 +746,15 @@ export class GameManager {
       return;
     }
 
+    // ★ ユーザー要望：クリアの瞬間から次ステージ開始までバリアの残り時間を止める
+    this.player.barrierFrozen = true;
+
     // 1. 自機の操作（エクセリオン風慣性移動）
     this.applyClickOnlyControls(dt, input);
     this.player.updateMovement(dt, this.movementInput(input));
+
+    // ★ ドッキング中もオーブは流れ続け、取ればバリアが張れる（カウントは次ステージ開始から）
+    this.updateFieldItems(dt);
 
     // 発射ロックアウト減算（ゲーム開始直後の誤射防止）
     if (this.fireLockout > 0) this.fireLockout -= dt;
@@ -878,8 +911,11 @@ export class GameManager {
   // 面が進むごとに敵の数・方向・攻撃頻度が怒涛のように進化！
   // ==========================================
   // ★ ユーザー要望：HARD はザコの数を全ステージ一律で5割増（NORMAL の数 × 1.5、切り上げ）
+  //   EASY は全ステージ一律で 2/3（四捨五入。1機以上は必ず残す）
   private hc(normalCount: number): number {
-    return this.difficulty === 'HARD' ? Math.ceil(normalCount * 1.5) : normalCount;
+    if (this.difficulty === 'HARD') return Math.ceil(normalCount * 1.5);
+    if (this.difficulty === 'EASY') return Math.max(1, Math.round((normalCount * 2) / 3));
+    return normalCount;
   }
 
   private spawnAlienFleet(): void {
@@ -924,12 +960,23 @@ export class GameManager {
           this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 2 + (k % 4), 3, START_DELAY + 10.5, 'INFINITY_DIVE_LEFT', k));
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 4), 3, START_DELAY + 10.5, 'INFINITY_DIVE_RIGHT', k));
         }
-        // ウェーブ4（t=18.5 / 23.0 / 27.5〜）：巨大8の字大旋回ループで画面を舞うイエロー司令機＆護衛隊！
+        // ウェーブ4：巨大8の字大旋回ループで画面を舞うイエロー司令機＆護衛隊！
         // ★ ユーザー要望：ボス前の超高速8の字は1回だけだと物足りないので3回出す
-        for (const waveAt of [17.0, 21.5, 26.0]) {
-          for (let k = 0; k < this.hc(6); k++) {
-            this.enemies.push(new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 3 + (k % 3), 0, START_DELAY + waveAt, 'FIGURE_EIGHT', k));
-          }
+        // ★ ユーザー要望（追加）：速すぎるので減速（streamSpeedScale 0.7）。
+        //   動きはもっと大回りに（Enemy の FIGURE_EIGHT 参照。左右とも画面外へ少しはみ出す）。
+        //   出る間隔が空きすぎなので半分に（4.5秒 → 2.25秒間隔）。
+        //   間隔を詰めると複数編隊が同時に舞うので、編隊ごとに curveRouteIndex を変えて
+        //   ルート（高さ帯）が重ならないようにしてある。
+        {
+          const F8_WAVES = [17.0, 19.25, 21.5];
+          F8_WAVES.forEach((waveAt, wi) => {
+            for (let k = 0; k < this.hc(6); k++) {
+              const e = new Enemy('YELLOW_COMMANDER', 'STREAM_CURVE', 3 + (k % 3), 0, START_DELAY + waveAt, 'FIGURE_EIGHT', k);
+              e.curveRouteIndex = wi;
+              e.streamSpeedScale = 0.7;
+              this.enemies.push(e);
+            }
+          });
         }
         break;
 
@@ -978,14 +1025,16 @@ export class GameManager {
         //   「上→下」「左→右」「右→左」「下→上」の4方向の出方を用意し、
         //   ボスの前に4種類すべてを出す（動き方＝ジグザグ自体は共通）
         {
-          const flyWaves: { dir: 'DOWN' | 'RIGHT' | 'LEFT' | 'UP'; at: number }[] = [
-            { dir: 'DOWN', at: 12.5 },
-            { dir: 'RIGHT', at: 16.5 },
-            { dir: 'LEFT', at: 20.5 },
-            { dir: 'UP', at: 24.5 },
+          // ★ ユーザー要望：左から・右から・下からの波は数が少なく感じるので増やす
+          //   （上からの波は元の数のまま）
+          const flyWaves: { dir: 'DOWN' | 'RIGHT' | 'LEFT' | 'UP'; at: number; n: number }[] = [
+            { dir: 'DOWN', at: 12.5, n: 6 },
+            { dir: 'RIGHT', at: 16.5, n: 10 },
+            { dir: 'LEFT', at: 20.5, n: 10 },
+            { dir: 'UP', at: 24.5, n: 10 },
           ];
           for (const w of flyWaves) {
-            for (let i = 0; i < this.hc(6); i++) {
+            for (let i = 0; i < this.hc(w.n); i++) {
               const e = new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 1 + (i % 6), START_DELAY + w.at + i * 0.3);
               e.zigzagDir = w.dir;
               this.enemies.push(e);
@@ -1229,8 +1278,11 @@ export class GameManager {
     }
 
     // ★ ユーザー要望：HARD のボスは耐久 1.5倍・速度 2倍（速度は下の speedScale で適用）
+    //   EASY のボスは耐久 2/3（速度は NORMAL のまま＝動きのパターンを変えない）
     if (this.difficulty === 'HARD') {
       bossHp = Math.ceil(bossHp * 1.5);
+    } else if (this.difficulty === 'EASY') {
+      bossHp = Math.max(1, Math.round((bossHp * 2) / 3));
     }
 
     // ★ ユーザー要望：3面ってボスは下から来てもいいよね（SURPRISE_FROM_BOTTOMで画面下部から急上昇！）
@@ -1576,40 +1628,7 @@ export class GameManager {
       }
     }
 
-    // ★ フィールドアイテムの更新＆プレイヤー取得判定
-    const scrollSpeed = 140 * (this.stage === 5 ? 4 / 9 : 1); // 5面は地形と同じく4/9速
-    for (let i = this.fieldItems.length - 1; i >= 0; i--) {
-      const item = this.fieldItems[i];
-      item.update(dt, scrollSpeed, this.terrain.direction);
-
-      // 自機との当たり判定
-      const playerBounds = this.player.getBoundingBox();
-      const pCenterX = (playerBounds.minX + playerBounds.maxX) / 2;
-      const pCenterY = (playerBounds.minY + playerBounds.maxY) / 2;
-      const dist = Math.hypot(item.x - pCenterX, item.y - pCenterY);
-
-      if (dist < item.radius + 28) {
-        item.isDead = true;
-        // ★ ユーザー要望：Arcade-Shooter01-6(Score) アイテム取得音
-        this.sound.playItemScore();
-        this.particles.emitDockRing(item.x, item.y, '#00ffff');
-
-        if (item.type === 'BARRIER_ORB') {
-          // ★ ユーザー要望：5秒間の完全無敵レインボーバリア展開！
-          this.player.barrierTimer = 5.0;
-          this.showTransitionText('BARRIER (5 SEC)!', 1.2);
-          this.score += 1000;
-        } else if (item.type === 'RESCUE_CAPSULE') {
-          // 緊急救済テトリミノを即時投下
-          this.spawnRescuePiece();
-          this.score += 800;
-        }
-      }
-
-      if (item.isDead) {
-        this.fieldItems.splice(i, 1);
-      }
-    }
+    this.updateFieldItems(dt);
 
     // 敵の更新（弾なし・体当たりのみ！ 面が進むごとに同時急降下数が増加して激化）
     // ★ ユーザー要望：ギャラガ風味の体当たり急降下をより頻繁に発生させる
@@ -1830,25 +1849,7 @@ export class GameManager {
               this.hitStopTimer = 0.08;
               this.screenShake = 14;
 
-              // ★ ユーザー要望：ボスを倒したら残っているザコはつられて連鎖爆破する！
-              let chainDelay = 0;
-              for (const z of this.enemies) {
-                if (!z.isDead && z !== enemy) {
-                  z.isDead = true;
-                  chainDelay += 0.04;
-                  window.setTimeout(() => {
-                    this.sound.playEnemyPop(z.rank);
-                    this.particles.emitExplosion(
-                      z.x + z.width / 2,
-                      z.y + z.height / 2,
-                      '#ffaa00',
-                      18,
-                      false
-                    );
-                  }, chainDelay * 1000);
-                  this.score += z.scoreValue;
-                }
-              }
+              this.chainExplodeRemainingZako(enemy);
               return;
             } else {
               if (isGiant) {
@@ -1935,6 +1936,7 @@ export class GameManager {
             this.bossDeathTimer = 0;
             this.hitStopTimer = 0.08;
             this.screenShake = 16;
+            this.chainExplodeRemainingZako(enemy);
             return;
           }
           continue;
@@ -2053,6 +2055,7 @@ export class GameManager {
           this.bossDeathTimer = 0;
           this.hitStopTimer = 0.08;
           this.screenShake = 16;
+          this.chainExplodeRemainingZako(enemy);
           return;
         }
       }
@@ -2253,6 +2256,9 @@ export class GameManager {
     this.detachedPieces = [];
     this.playerBullets = [];
     this.enemies = [];
+    this.fieldItems = [];
+    this.player.barrierTimer = 0;
+    this.player.barrierFrozen = false;
     this.bossSpawned = false;
     this.bossDying = false;
     this.currentBoss = null;
@@ -2652,6 +2658,71 @@ export class GameManager {
   }
 
   /**
+   * ★ ユーザー要望：どの面でも、ボスを倒したら残っているザコはつられて連鎖爆破する。
+   *   以前は弾で倒したときだけの処理だったので、バリアで焼き切った場合と
+   *   体当たりで倒した場合はザコが残ったままになっていた。
+   */
+  private chainExplodeRemainingZako(boss: Enemy): void {
+    let chainDelay = 0;
+    for (const z of this.enemies) {
+      if (z.isDead || z === boss) continue;
+      z.isDead = true;
+      chainDelay += 0.04;
+      window.setTimeout(() => {
+        this.sound.playEnemyPop(z.rank);
+        this.particles.emitExplosion(z.x + z.width / 2, z.y + z.height / 2, '#ffaa00', 18, false);
+      }, chainDelay * 1000);
+      this.score += z.scoreValue;
+    }
+  }
+
+  /**
+   * ★ フィールドアイテム（バリアオーブ）の移動と取得判定。
+   *   ★ ユーザー要望：クリア後のドッキング中もオーブは流れ続け、取ればバリアが張れる。
+   *     以前はシューティング中しか更新していなかったため、ドッキング画面でその場に静止し、
+   *     取ることもできず、次ステージ開始時に消えてしまっていた。
+   *   バリアの残り時間は Player.barrierFrozen で止めてあるので、
+   *   ドッキング中に取ってもステージが始まるまでカウントは進まない。
+   */
+  private updateFieldItems(dt: number): void {
+    const scrollSpeed = 140 * (this.stage === 5 ? 4 / 9 : 1); // 5面は地形と同じく4/9速
+    for (let i = this.fieldItems.length - 1; i >= 0; i--) {
+      const item = this.fieldItems[i];
+      item.update(dt, scrollSpeed, this.terrain.direction);
+
+      // 自機との当たり判定
+      const playerBounds = this.player.getBoundingBox();
+      const pCenterX = (playerBounds.minX + playerBounds.maxX) / 2;
+      const pCenterY = (playerBounds.minY + playerBounds.maxY) / 2;
+      const dist = Math.hypot(item.x - pCenterX, item.y - pCenterY);
+
+      if (dist < item.radius + 28) {
+        item.isDead = true;
+        // ★ ユーザー要望：Arcade-Shooter01-6(Score) アイテム取得音
+        this.sound.playItemScore();
+        this.particles.emitDockRing(item.x, item.y, '#00ffff');
+
+        if (item.type === 'BARRIER_ORB') {
+          // ★ ユーザー要望：5秒間の完全無敵レインボーバリア展開！
+          //   バリアが出ているのは見れば分かるのでインフォ表示はしない。
+          //   transitionText は1枠しかなく、ここで出すと
+          //   「WARNING: BOSS APPROACHING」を上書きして消してしまっていた
+          this.player.barrierTimer = 5.0;
+          this.score += 1000;
+        } else if (item.type === 'RESCUE_CAPSULE') {
+          // 緊急救済テトリミノを即時投下
+          this.spawnRescuePiece();
+          this.score += 800;
+        }
+      }
+
+      if (item.isDead) {
+        this.fieldItems.splice(i, 1);
+      }
+    }
+  }
+
+  /**
    * ★ Player.updateMovement に渡す入力。
    *   スマホ（タッチ）は指の座標へのポインティング移動、
    *   click しか届かない環境はタップ位置へのポインティング移動、
@@ -2721,7 +2792,7 @@ export class GameManager {
   private registerZakoKill(): void {
     this.totalKills++;
     if (this.totalKills >= this.nextBarrierKills) {
-      this.nextBarrierKills += GameManager.BARRIER_KILL_INTERVAL;
+      this.nextBarrierKills += this.barrierKillInterval();
       this.spawnBarrierOrb();
     }
   }
@@ -2737,13 +2808,14 @@ export class GameManager {
       x = -60;
       y = CANVAS_HEIGHT * (0.3 + Math.random() * 0.4);
     } else if (dir === 'DIAGONAL_UP_RIGHT') {
-      x = CANVAS_WIDTH * 0.65;
+      // 5面も「上から降ってくる」扱い（Item.update 側と揃える）
+      x = CANVAS_WIDTH * (0.3 + Math.random() * 0.4);
       y = -60;
     } else {
       x = CANVAS_WIDTH * (0.3 + Math.random() * 0.4);
     }
     this.fieldItems.push(new FieldItem(x, y, 'BARRIER_ORB'));
-    this.showTransitionText('BARRIER ORB!', 1.1);
+    // ★ 同上：ボスのWARNING表示を潰さないよう、オーブ出現のインフォ表示もしない（音だけ鳴らす）
     this.sound.playItemScore();
   }
 
@@ -2937,52 +3009,47 @@ export class GameManager {
       ctx.shadowBlur = 8;
       ctx.fillText('ブロックを合体して全方位ビームでエイリアンを撃破せよ！', CANVAS_WIDTH / 2, 390);
 
-      // 2. 難易度セレクター（NORMAL / HARD）
-      const isNormal = this.difficulty === 'NORMAL';
-      const isHard = this.difficulty === 'HARD';
+      // 2. 難易度セレクター（EASY / NORMAL / HARD）
+      // ★ ユーザー要望：イージーを NORMAL の左に追加
       const selDiff = this.titleMenuSelection === 'DIFFICULTY';
 
       // ★ 選択中の行（難易度 or ステージ）にだけ四角枠を表示
-      const drawSelectFrame = (y: number, h: number) => {
+      const drawSelectFrame = (y: number, h: number, w = 380) => {
         ctx.fillStyle = 'rgba(0, 40, 80, 0.45)';
         ctx.strokeStyle = '#00ffff';
         ctx.lineWidth = 1.2;
         ctx.shadowBlur = 0;
         ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(CANVAS_WIDTH / 2 - 190, y, 380, h, 8);
-        else ctx.rect(CANVAS_WIDTH / 2 - 190, y, 380, h);
+        if (ctx.roundRect) ctx.roundRect(CANVAS_WIDTH / 2 - w / 2, y, w, h, 8);
+        else ctx.rect(CANVAS_WIDTH / 2 - w / 2, y, w, h);
         ctx.fill();
         ctx.stroke();
       };
-      if (selDiff) drawSelectFrame(414, 48);
+      // 3つ並ぶので枠は横いっぱいに広げる
+      if (selDiff) drawSelectFrame(414, 48, 516);
 
-      // ★ ユーザー要望：NORMAL / HARD はSTAGE選択と同じ大きさの文字に
-      ctx.font = '900 19px monospace';
+      // 3つ入るよう少しだけ小さめの字に
+      ctx.font = '900 16px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      // NORMAL
-      if (isNormal) {
-        ctx.fillStyle = '#00f0ff';
-        ctx.shadowColor = '#00f0ff';
-        ctx.shadowBlur = 12;
-        ctx.fillText('▶ [ NORMAL ] ◀', CANVAS_WIDTH / 2 - 100, 438);
-      } else {
-        ctx.fillStyle = '#667788';
-        ctx.shadowBlur = 0;
-        ctx.fillText('  [ NORMAL ]  ', CANVAS_WIDTH / 2 - 100, 438);
-      }
-
-      // HARD
-      if (isHard) {
-        ctx.fillStyle = '#ff2255';
-        ctx.shadowColor = '#ff2255';
-        ctx.shadowBlur = 14;
-        ctx.fillText('▶ [ HARD ] ◀', CANVAS_WIDTH / 2 + 100, 438);
-      } else {
-        ctx.fillStyle = '#667788';
-        ctx.shadowBlur = 0;
-        ctx.fillText('  [ HARD ]  ', CANVAS_WIDTH / 2 + 100, 438);
+      const diffEntries: { key: 'EASY' | 'NORMAL' | 'HARD'; label: string; x: number; color: string }[] = [
+        { key: 'EASY', label: 'EASY', x: CANVAS_WIDTH / 2 - 168, color: '#44ff88' },
+        { key: 'NORMAL', label: 'NORMAL', x: CANVAS_WIDTH / 2, color: '#00f0ff' },
+        { key: 'HARD', label: 'HARD', x: CANVAS_WIDTH / 2 + 168, color: '#ff2255' },
+      ];
+      for (const d of diffEntries) {
+        const on = this.difficulty === d.key;
+        if (on) {
+          ctx.fillStyle = d.color;
+          ctx.shadowColor = d.color;
+          ctx.shadowBlur = 12;
+          ctx.fillText(`\u25b6 [ ${d.label} ] \u25c0`, d.x, 438);
+        } else {
+          ctx.fillStyle = '#667788';
+          ctx.shadowBlur = 0;
+          ctx.fillText(`  [ ${d.label} ]  `, d.x, 438);
+        }
       }
 
       ctx.shadowBlur = 0;
