@@ -26,7 +26,10 @@
 //   ユーザー要望：「指一本で移動もショットも行う／ポインティング移動に変える／
 //   テトリミノはショットでは回転もノックバックもしない／テトリミノ直接タッチで回転とノックバック」
 //   → 左右ゾーン分割と仮想スティックは廃止。タッチは1系統（POINT）に統一し、
-//     触れている間は「自機がその座標へ追従」＋「撃ちっぱなし」になる。
+//     触れている間は「自機が動く」＋「撃ちっぱなし」になる。
+//   ★ 2026-09 再修正（ユーザー要望）：移動は「指を置いた場所へ等速で寄っていく」絶対座標方式ではなく、
+//     **指を動かした分だけ自機も動く相対方式（マウス／トラックパッドと同じ）** にした。
+//     指の移動量をそのまま（1:1で）自機へ渡すので、移動速度＝指の速度になる。
 //     ただし落下中のテトリミノに触れたタップだけは touchTapFilter で横取りし、
 //     自機を動かさず回転／ノックバックにだけ使う（role: 'CONSUMED'）。
 type PointerRole = 'POINT' | 'FIRE' | 'CONSUMED';
@@ -35,6 +38,8 @@ interface TrackedPointer {
   role: PointerRole;
   originX: number; // タッチ開始位置（キャンバス座標）
   originY: number;
+  lastX: number; // 直前フレームの指の位置。相対移動量の算出に使う
+  lastY: number;
   lastMoveAt: number; // 最後に動いた時刻（ms）。取りこぼし検知用
   stale: boolean; // 解放イベントを取りこぼした疑いあり（入力として無効扱い）
 }
@@ -66,7 +71,11 @@ export class Input {
   public isMouseDown = false;
   public justMouseDown = false;
 
-  // ★ スマホ：ポインティング移動の目標座標（キャンバス座標）。触れている間だけ有効。
+  // ★ スマホ：このフレームに指が動いた量（キャンバス座標）。自機はこの分だけ相対的に動く。
+  //   毎フレーム resetPerFrame() で 0 に戻す（＝指を止めれば自機も止まる）。
+  public moveDeltaX = 0;
+  public moveDeltaY = 0;
+  // 指が触れているか＆その位置（レティクル表示と、指が居るかの判定に使う）
   public touchPointActive = false;
   public touchPointX = 0;
   public touchPointY = 0;
@@ -216,6 +225,7 @@ export class Input {
     this.stickActive = false;
   }
 
+  /** 指の現在位置を記録する（移動量そのものは onPointerMove で積む） */
   private setTouchPoint(x: number, y: number): void {
     this.touchPointActive = true;
     this.touchPointX = x;
@@ -251,7 +261,7 @@ export class Input {
 
       // ★ 落下テトリミノへの直接タッチは回転／ノックバック専用。自機は動かさず弾も撃たない
       if (this.touchTapFilter && this.touchTapFilter(p.x, p.y)) {
-        this.pointers.set(id, { role: 'CONSUMED', originX: p.x, originY: p.y, lastMoveAt: performance.now(), stale: false });
+        this.pointers.set(id, { role: 'CONSUMED', originX: p.x, originY: p.y, lastX: p.x, lastY: p.y, lastMoveAt: performance.now(), stale: false });
         return;
       }
 
@@ -259,14 +269,15 @@ export class Input {
       for (const [pid, tp] of this.pointers) {
         if (tp.role === 'POINT') this.pointers.delete(pid);
       }
-      this.pointers.set(id, { role: 'POINT', originX: p.x, originY: p.y, lastMoveAt: performance.now(), stale: false });
+      // ★ 相対移動：触れた瞬間は動かさない。ここからの移動量だけを自機へ渡す
+      this.pointers.set(id, { role: 'POINT', originX: p.x, originY: p.y, lastX: p.x, lastY: p.y, lastMoveAt: performance.now(), stale: false });
       this.setTouchPoint(p.x, p.y);
       this.refreshPointerShoot();
       return;
     }
 
     // PCのクリック：ショット
-    this.pointers.set(id, { role: 'FIRE', originX: p.x, originY: p.y, lastMoveAt: performance.now(), stale: false });
+    this.pointers.set(id, { role: 'FIRE', originX: p.x, originY: p.y, lastX: p.x, lastY: p.y, lastMoveAt: performance.now(), stale: false });
     this.refreshPointerShoot();
   }
 
@@ -289,10 +300,15 @@ export class Input {
     this.mouseX = p.x;
     this.mouseY = p.y;
 
-    // ポインティング移動：指の位置がそのまま自機の目標座標
+    // ★ 相対移動：指が動いた分だけ自機も動く（マウス／トラックパッドと同じ）。
+    //   1:1 で渡すので、自機の移動速度はそのまま指の移動速度になる。
     if (tp.role === 'POINT') {
+      this.moveDeltaX += p.x - tp.lastX;
+      this.moveDeltaY += p.y - tp.lastY;
       this.setTouchPoint(p.x, p.y);
     }
+    tp.lastX = p.x;
+    tp.lastY = p.y;
   }
 
   private onPointerUp(id: number): void {
@@ -331,6 +347,8 @@ export class Input {
     this.syncDirections();
     this.keyShoot = false;
     this.pointers.clear();
+    this.moveDeltaX = 0;
+    this.moveDeltaY = 0;
     this.touchPointActive = false;
     this.stickActive = false;
     this.pointerShoot = false;
@@ -704,6 +722,9 @@ export class Input {
 
   public resetPerFrame(): void {
     this.reapLostPointers();
+    // ★ 相対移動量はそのフレームで消費しきる（指を止めれば自機も止まる）
+    this.moveDeltaX = 0;
+    this.moveDeltaY = 0;
     this.mutePressed = false;
     this.justEscape = false;
     this.justLeft = false;
