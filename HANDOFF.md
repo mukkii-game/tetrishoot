@@ -1,4 +1,4 @@
-# テトリシュー (TETRISHOOT) AI 引き継ぎ資料 (HANDOFF.md)
+# ギャラクトリス (Galaxtris) AI 引き継ぎ資料 (HANDOFF.md)
 
 本ドキュメントは、次回セッションや他のAIモデル（Claude 3.7 / Opus 等）が作業を継続・発展させるための引き継ぎリファレンスです。
 

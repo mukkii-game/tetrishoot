@@ -173,7 +173,7 @@ export class GameManager {
   public terrainHitCooldown = 0;
   public isInvincibleMode = false; // 撮影用無敵モード
 
-  // バトル中に落ちてくる救済テトリミノ（Oミノのみになった時の緊急ドッキング）
+  // バトル中に落ちてくる救済ブロックパーツ（Oミノのみになった時の緊急ドッキング）
   public battlePiece: FallingPieceItem | null = null;
   public gameOverSelection: 'CONTINUE' | 'TITLE' = 'CONTINUE';
   public pauseMenuSelection: 'RESUME' | 'RESTART_STAGE' | 'TITLE' = 'RESUME';
@@ -189,8 +189,8 @@ export class GameManager {
   private static readonly TITLE_ROW_H = { START: 60, DIFFICULTY: 44, STAGE: 44 };
   public selectedStage: number = 1; // タイトル画面＆ポーズ画面で選べるステージ (1〜10)
   private rescueSpawnCooldown = 0;
-  // ★ ユーザー要望：救済テトリミノは1つ目も2つ目以降も3秒後
-  // ★ ユーザー要望：最初のレスキューテトリミノは 3.0 → 1.5 秒後（早く武装できるように）
+  // ★ ユーザー要望：救済ブロックパーツは1つ目も2つ目以降も3秒後
+  // ★ ユーザー要望：最初のレスキューブロックパーツは 3.0 → 1.5 秒後（早く武装できるように）
   private static readonly RESCUE_FIRST_DELAY = 1.5;
   private static readonly RESCUE_NEXT_DELAY = 3.0;
   public dockingTimer = 30.0; // ユーザー要望：ドッキングせよ 30.0から減っていく
@@ -388,7 +388,7 @@ export class GameManager {
 
   public update(dt: number, input: Input): void {
     this.lastInput = input; // 指位置レティクルHUDの描画用
-    // ★ ユーザー要望（スマホ）：落下テトリミノへの直接タッチで回転＋ノックバック。
+    // ★ ユーザー要望（スマホ）：落下ブロックパーツへの直接タッチで回転＋ノックバック。
     //   Input 側はタップ開始位置をこのフィルタに問い合わせ、true なら
     //   そのタップを「回転操作」として消費する（自機は動かず、弾も出ない）
     input.touchTapFilter = this.touchTapFilterFn;
@@ -727,7 +727,7 @@ export class GameManager {
   // ==========================================
   private spawnTetrominoes(): void {
     // ★ ユーザー要望：「oミノは、決して落ちてこない、でいいよ。つかえないから。最初のだけoミノってことで。」
-    // 降下テトリミノからOミノを完全に排除し、砲門・翼・拡張パーツとして機能する6種（I, J, L, S, T, Z）のみを投下
+    // 降下ブロックパーツからOミノを完全に排除し、砲門・翼・拡張パーツとして機能する6種（I, J, L, S, T, Z）のみを投下
     const types: TetrominoType[] = ['I', 'J', 'L', 'S', 'T', 'Z'];
     this.fallingPieces = [];
 
@@ -1404,9 +1404,9 @@ export class GameManager {
     }
 
     // ★ ユーザー要望：
-    // ・Oミノだけになってから10秒後にテトリミノが落ちてくる
-    // ・2つのテトリミノ（Oミノ＋1つ）になってから10秒たったらまたテトリミノが落ちてくる
-    // ・もし3つ以上のテトリミノの時は特に追加で出さない
+    // ・Oミノだけになってから10秒後にブロックパーツが落ちてくる
+    // ・2つのブロックパーツ（Oミノ＋1つ）になってから10秒たったらまたブロックパーツが落ちてくる
+    // ・もし3つ以上のブロックパーツの時は特に追加で出さない
     const pieceCount = this.player.pieces.length;
     // ★ ユーザー要望：mp3 イントロ待ち中（stageTextDelay > 0）はレスキュー猶予を全く消費しない
     //   （減算もリセットもしない）。「STAGE n」表示（本編開始）と同時にカウントを開始し、
@@ -1422,12 +1422,12 @@ export class GameManager {
           }
         }
       } else {
-        // 3つ以上のテトリミノがある時は追加で出さない（タイマーは7秒待機でリセット）
+        // 3つ以上のブロックパーツがある時は追加で出さない（タイマーは7秒待機でリセット）
         this.rescueSpawnCooldown = GameManager.RESCUE_NEXT_DELAY;
       }
     }
 
-    // シューティング中の救済落下テトリミノ更新＆ドッキング判定
+    // シューティング中の救済落下ブロックパーツ更新＆ドッキング判定
     if (this.battlePiece && !this.battlePiece.settled) {
       this.battlePiece.fallTimer += dt;
       if (this.battlePiece.dockCooldown && this.battlePiece.dockCooldown > 0) {
@@ -1435,7 +1435,7 @@ export class GameManager {
       }
 
       const GRAVITY = 140;
-      const MAX_FALL_SPEED = 78; // ★ 救済テトリミノも約3割アップ
+      const MAX_FALL_SPEED = 78; // ★ 救済ブロックパーツも約3割アップ
       this.battlePiece.vy += GRAVITY * dt;
       if (this.battlePiece.vy > MAX_FALL_SPEED) {
         this.battlePiece.vy = MAX_FALL_SPEED;
@@ -1570,7 +1570,7 @@ export class GameManager {
             this.screenShake = 12;
             this.terrainHitCooldown = 0.35; // 最低0.35秒のクールダウンで連続即死を防止
 
-            // ★ ユーザー要望：壁に当たった時、まだ外装テトリミノが付いていればそれが身代わりに壊れ、
+            // ★ ユーザー要望：壁に当たった時、まだ外装ブロックパーツが付いていればそれが身代わりに壊れ、
             //   本体は数秒間の無敵時間に入る（壁に沿った連続ヒットで即死しない）
             if (hitRes.pieceDestroyed && !this.player.isDead) {
               const WALL_GRACE = 2.5;
@@ -2305,7 +2305,7 @@ export class GameManager {
     this.player.initInitialPiece();
   }
 
-  // ★ ユーザー要望：Oミノだけになった時の救済テトリミノ投下
+  // ★ ユーザー要望：Oミノだけになった時の救済ブロックパーツ投下
   private spawnRescuePiece(): void {
     const candidateTypes: TetrominoType[] = ['T', 'L', 'J', 'I', 'S', 'Z'];
     const pType = candidateTypes[Math.floor(Math.random() * candidateTypes.length)];
@@ -2430,7 +2430,7 @@ export class GameManager {
       }
 
     } else if (this.phase === 'SHOOTING') {
-      // ★ ユーザー要望：Oミノ救済テトリミノの描画＆「DOCKING!」の誘導表示
+      // ★ ユーザー要望：Oミノ救済ブロックパーツの描画＆「DOCKING!」の誘導表示
       if (this.battlePiece && !this.battlePiece.settled) {
         for (const cell of this.battlePiece.piece.cells) {
           const px = this.battlePiece.x + cell.gx * BLOCK_SIZE;
@@ -2672,7 +2672,7 @@ export class GameManager {
   }
 
   /**
-   * ★ ユーザー要望（スマホ）：落下中のテトリミノを直接タッチすると、回転＋ノックバック。
+   * ★ ユーザー要望（スマホ）：落下中のブロックパーツを直接タッチすると、回転＋ノックバック。
    *   PC のように「どこに当たったかで回転方向が変わる」テクニカル要素は入れず、
    *   触れたら必ず時計回りに1回転・真上へ反動、という分かりやすい操作にする。
    *   指は細かく狙えないので、外接矩形に少し余裕（TOUCH_PAD）を持たせる。
@@ -2686,7 +2686,7 @@ export class GameManager {
       x >= bx.minX - TOUCH_PAD && x <= bx.maxX + TOUCH_PAD &&
       y >= bx.minY - TOUCH_PAD && y <= bx.maxY + TOUCH_PAD;
 
-    // ★ ドッキングフェーズ：3つの落下テトリミノ。ここが本来の「ミノを回して組む」場面。
+    // ★ ドッキングフェーズ：3つの落下ブロックパーツ。ここが本来の「ミノを回して組む」場面。
     //   以前はここに実装が無く、スマホでタップしても何も起きなかった。
     if (this.phase === 'TETRIS') {
       // 手前（下にあるもの）から優先して拾う
@@ -2774,7 +2774,7 @@ export class GameManager {
           this.player.barrierTimer = 5.0;
           this.score += 1000;
         } else if (item.type === 'RESCUE_CAPSULE') {
-          // 緊急救済テトリミノを即時投下
+          // 緊急救済ブロックパーツを即時投下
           this.spawnRescuePiece();
           this.score += 800;
         }
@@ -3019,7 +3019,7 @@ export class GameManager {
     ctx.fillText('PAUSE', 504, 44);
     ctx.textBaseline = 'top';
 
-    // ── テトリスフェーズ中: ムーンクレスタ忠実再現 ──
+    // ── ドッキング（パズル）フェーズ中: ムーンクレスタ忠実再現 ──
     // 原作と同じく「レバーとボタンでドッキングせよ」＋タイマーを中央に控えめに表示
     if (this.phase === 'TETRIS' && this.state === 'PLAYING') {
       const hasFallingPiece = this.fallingPieces.some(p => !p.settled);

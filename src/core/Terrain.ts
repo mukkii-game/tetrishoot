@@ -157,7 +157,7 @@ export class TerrainManager {
   }
 
   // ★ 斜めスクロール面：画面Y座標ごとの左下壁・右上壁の張り出し幅（px）。
-  //   ユーザー要望：通路は最低でも画面幅の1/3を保証（テトリミノを多く付けていても抜けられるように）
+  //   ユーザー要望：通路は最低でも画面幅の1/3を保証（ブロックパーツを多く付けていても抜けられるように）
   public getDiagDepths(y: number): { left: number; right: number } {
     const diagCoord = (CANVAS_HEIGHT - y) * 0.9 + this.scrollOffset;
     const { w1, w2 } = this.getWallThickness(diagCoord);
