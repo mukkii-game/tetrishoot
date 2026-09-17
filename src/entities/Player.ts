@@ -321,7 +321,10 @@ export class Player {
       down: boolean;
       mouseX?: number | null;
       mouseY?: number | null;
-      // ★ スマホ：ポインティング移動の目標座標（自機の中心をここへ寄せる）
+      // ★ スマホ：このフレームに指が動いた量。自機はこの分だけ相対的に動く（マウス方式）
+      dragDX?: number;
+      dragDY?: number;
+      // ★ click しか届かない環境のフォールバック：この座標へ等速で寄っていく
       pointX?: number | null;
       pointY?: number | null;
     }
@@ -349,10 +352,14 @@ export class Player {
       this.vy *= 0.7071;
     }
 
-    // ★ ユーザー要望：スマホは「指一本でポインティング移動」。
-    //   指の座標へ自機の中心が最短距離で向かう。速度は PLAYER_SPEED で頭打ち、
-    //   残り距離が1フレーム分より短ければちょうど到達させる（行き過ぎて振動しない）。
-    //   （PCのマウス移動では自機を動かさない ＝ 旧 mouseDelta 加算は廃止）
+    // ★ ユーザー要望：スマホは「指を動かした分だけ自機も動く」相対移動（マウス／トラックパッド方式）。
+    //   指の移動量をそのまま位置へ足すので、自機の移動速度は指の移動速度と等しくなる。
+    //   （以前は「指を置いた場所へ PLAYER_SPEED で寄っていく」絶対座標方式だった）
+    //   速度ベース（vx/vy）ではなく位置に直接足すため、dt には依存しない。
+    const dragDX = inputs.dragDX ?? 0;
+    const dragDY = inputs.dragDY ?? 0;
+
+    // ★ click しか届かない環境のフォールバックのみ：指定座標へ等速で寄る
     const pointX = inputs.pointX ?? null;
     const pointY = inputs.pointY ?? null;
     if (pointX !== null && pointY !== null) {
@@ -371,8 +378,8 @@ export class Player {
       }
     }
 
-    this.anchorX += this.vx * dt;
-    this.anchorY += this.vy * dt;
+    this.anchorX += this.vx * dt + dragDX;
+    this.anchorY += this.vy * dt + dragDY;
 
     // 画面外境界クランプ（滑らかな当たり）
     const minAnchorX = minScreenX - (bounds.minX - this.anchorX);

@@ -2784,14 +2784,14 @@ export class GameManager {
   private movementInput(input: Input): {
     left: boolean; right: boolean; up: boolean; down: boolean;
     mouseX?: number | null; mouseY?: number | null;
+    dragDX?: number; dragDY?: number;
     pointX?: number | null; pointY?: number | null;
   } {
+    // ★ スマホ：指を動かした分だけ自機も動く（相対移動）。
+    //   click しか届かない環境だけは、タップ位置へ寄っていく絶対移動のままにする
     let pointX: number | null = null;
     let pointY: number | null = null;
-    if (input.touchPointActive) {
-      pointX = input.touchPointX;
-      pointY = input.touchPointY;
-    } else if (this.clickMoveTargetX !== null && this.clickMoveTargetY !== null) {
+    if (!input.touchPointActive && this.clickMoveTargetX !== null && this.clickMoveTargetY !== null) {
       pointX = this.clickMoveTargetX;
       pointY = this.clickMoveTargetY;
     }
@@ -2802,6 +2802,8 @@ export class GameManager {
       down: input.down,
       mouseX: input.mouseX,
       mouseY: input.mouseY,
+      dragDX: input.moveDeltaX,
+      dragDY: input.moveDeltaY,
       pointX,
       pointY,
     };
