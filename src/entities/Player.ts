@@ -16,6 +16,8 @@ export class Player {
   public vy = 0; // エクセリオン風慣性速度Y
   public pieces: AttachedPiece[] = [];
   public fireCooldown = 0;
+  // ★ 被弾後の無敵時間（秒）。連続被弾での理不尽な即死を防ぐ
+  public static readonly HIT_GRACE = 2.0;
   public barrierTimer = 0;
   // ★ 壁衝突後などの猶予無敵（点滅＋白フラッシュで表示。バリアのリングは出さない）
   public graceTimer = 0;
@@ -627,6 +629,10 @@ export class Player {
         const cellY = this.anchorY + (attached.relGy + cell.gy) * BLOCK_SIZE;
 
         if (px >= cellX && px < cellX + BLOCK_SIZE && py >= cellY && py < cellY + BLOCK_SIZE) {
+          // ★ ユーザー要望：一度くらったら2秒間は無敵。
+          //   弾や敵が固まって飛んでくると1フレームに複数回被弾して即死することがあったため。
+          //   無敵中は点滅＋白フラッシュ（draw の graceTimer 表示）で分かるようにしてある。
+          this.graceTimer = Math.max(this.graceTimer, Player.HIT_GRACE);
           // ★ ユーザー要望：0ミノにあたったら死亡ルールでしたが、もしまだテトリミノがついていたらそのうちのどれかが代わりに犠牲になる
           if (piece.type === 'O') {
             const nonOPieces = this.pieces.filter(p => p.piece.type !== 'O');
