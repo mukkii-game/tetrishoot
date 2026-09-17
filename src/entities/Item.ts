@@ -114,7 +114,7 @@ export class FieldItem {
       ctx.lineWidth = 2;
       ctx.strokeRect(-this.radius * 0.7, -this.radius * 0.7, this.radius * 1.4, this.radius * 1.4);
     } else if (this.type === 'RESCUE_CAPSULE') {
-      // テトリミノ召喚カプセル（シアン＋イエローネオン）
+      // ブロックパーツ召喚カプセル（シアン＋イエローネオン）
       ctx.shadowColor = '#00ffff';
       ctx.shadowBlur = 12;
 
@@ -127,7 +127,7 @@ export class FieldItem {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(-6, -6, 12, 12);
 
-      // テトリス「T」マーク
+      // ブロックパーツ「T」マーク
       ctx.fillStyle = '#cc00ff';
       ctx.fillRect(-8, -10, 16, 4);
       ctx.fillRect(-2, -6, 4, 12);

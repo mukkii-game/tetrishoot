@@ -76,7 +76,7 @@ export class Player {
     return cells;
   }
 
-  // ★ バリアの円（描画用の外周半径）。付けているテトリミノの大きさで変わる
+  // ★ バリアの円（描画用の外周半径）。付けているブロックパーツの大きさで変わる
   public getBarrierRadius(): number {
     const b = this.getBoundingBox();
     return Math.max(b.maxX - b.minX, b.maxY - b.minY) * 0.75 + 14;
@@ -85,7 +85,7 @@ export class Player {
   /**
    * ★ ユーザー要望：バリアの当たり判定は「見た目の円より少し内側」。
    *   円にかすっただけで敵が消えると手応えが薄いので、少しめり込むまで当たらない。
-   *   （描画半径の 0.80 倍。以前は円は描画専用で、判定はテトリミノのセルだけだった）
+   *   （描画半径の 0.80 倍。以前は円は描画専用で、判定はブロックパーツのセルだけだった）
    */
   public getBarrierHitRadius(): number {
     return this.getBarrierRadius() * 0.8;
@@ -654,11 +654,11 @@ export class Player {
           //   弾や敵が固まって飛んでくると1フレームに複数回被弾して即死することがあったため。
           //   無敵中は点滅＋白フラッシュ（draw の graceTimer 表示）で分かるようにしてある。
           this.graceTimer = Math.max(this.graceTimer, Player.HIT_GRACE);
-          // ★ ユーザー要望：0ミノにあたったら死亡ルールでしたが、もしまだテトリミノがついていたらそのうちのどれかが代わりに犠牲になる
+          // ★ ユーザー要望：0ミノにあたったら死亡ルールでしたが、もしまだブロックパーツがついていたらそのうちのどれかが代わりに犠牲になる
           if (piece.type === 'O') {
             const nonOPieces = this.pieces.filter(p => p.piece.type !== 'O');
             if (nonOPieces.length > 0) {
-              // 接続されている外装テトリミノの1つが身代わりとして犠牲になる！
+              // 接続されている外装ブロックパーツの1つが身代わりとして犠牲になる！
               const sacrificeAttached = nonOPieces[nonOPieces.length - 1];
               const sacrificeIndex = this.pieces.indexOf(sacrificeAttached);
               const sacrificePiece = sacrificeAttached.piece;

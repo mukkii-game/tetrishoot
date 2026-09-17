@@ -7,7 +7,7 @@ export interface GridCoord {
   gy: number; // 相対グリッドY
 }
 
-// 7つのテトリミノの形状定義（4セル）
+// 7つのブロックパーツの形状定義（4セル）
 export const TETROMINO_SHAPES: Record<TetrominoType, GridCoord[]> = {
   I: [
     { gx: 0, gy: 0 }, { gx: 1, gy: 0 }, { gx: 2, gy: 0 }, { gx: 3, gy: 0 }
@@ -205,7 +205,7 @@ export class TetrominoPiece {
     ctx.fillStyle = fill;
     ctx.fillRect(pixelX, pixelY, BLOCK_SIZE, BLOCK_SIZE);
 
-    // テトリスブロック風のハイライト
+    // ブロック風のハイライト
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.lineWidth = 2;
     ctx.beginPath();

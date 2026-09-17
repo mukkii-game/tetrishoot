@@ -304,7 +304,7 @@ export class Sound {
         if (!gain) return;
         const src = this.ctx.createBufferSource();
         src.buffer = this.shootBuffer;
-        // テトリミノに応じたピッチの微差（Iは高め、Tは標準、Sは鋭く）
+        // ブロックパーツに応じたピッチの微差（Iは高め、Tは標準、Sは鋭く）
         if (pieceType === 'I') src.playbackRate.value = 1.2 * detune;
         else if (pieceType === 'S') src.playbackRate.value = 1.1 * detune;
         else src.playbackRate.value = 1.0 * detune;
