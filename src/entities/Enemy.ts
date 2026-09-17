@@ -72,8 +72,21 @@ export class Enemy {
   public vx = 0;
   public vy = 0;
   // ★ 地表ミサイルの予備動作：壁際で上下に揺れてから突っ込む（残り秒数）
+  // ★ ユーザー要望（4面）：十字型のフォー・フライは「上から下」だけでなく
+  //   「右から左」「左から右」「下から上」の4方向の出方を持つ。動き方（ジグザグ）は共通
+  private _zigzagDir: 'DOWN' | 'UP' | 'LEFT' | 'RIGHT' = 'DOWN';
+  public get zigzagDir(): 'DOWN' | 'UP' | 'LEFT' | 'RIGHT' { return this._zigzagDir; }
+  /** 向きを差し替えたら進入位置も即座に置き直す（出現ディレイの有無に関わらず正しい端から入る） */
+  public set zigzagDir(dir: 'DOWN' | 'UP' | 'LEFT' | 'RIGHT') {
+    this._zigzagDir = dir;
+    if (this.pattern === 'ZIGZAG_DIVE') this.placeZigzagStart();
+  }
   public prelaunchTimer = 0;
   public prelaunchBaseY = 0;
+  // ★ ユーザー要望：予備動作の揺れ幅を倍にし、さらに「その幅のどの地点で突っ込み始めるか」を
+  //   毎回同じにしない。位相をランダムにすると、発射の瞬間の高さが揺れ幅全体に散らばる
+  public prelaunchPhase = Math.random() * Math.PI * 2;
+  public static readonly PRELAUNCH_TIME = 1.3;
   // ★ 個体ごとの時間倍率（ラスボスの倍速化などに使用。移動・フェーズ切替・アニメ全てに効く）
   public speedScale = 1.0;
   // ★ 7面用ステート
@@ -360,10 +373,13 @@ export class Enemy {
       this.vx = (Math.random() - 0.5) * 100;
       this.vy = 420 + Math.random() * 80; // 420〜500px/s の超高速ダイブ！
     } else if (pattern === 'ZIGZAG_DIVE') {
+      // 既定は従来どおり「上から下」。向き（zigzagDir）は生成後に差し替えられ、
+      // 出現待機中は毎フレーム placeZigzagStart() で正しい進入位置へ置き直される
       this.x = this.formationX;
       this.y = -50;
-      this.vx = 180;
-      this.vy = 120;
+      this.placeZigzagStart();
+      this.vx = 180; // 進行方向に対して直交する揺れ幅
+      this.vy = 120; // 進行方向の速さ
     } else if (pattern === 'ATOMIC_CHARGE') {
       this.x = this.formationX;
       this.y = -50;
@@ -545,8 +561,7 @@ export class Enemy {
         this.x = this.vx > 0 ? -60 : CANVAS_WIDTH + 60;
         this.y = this.formationY;
       } else if (this.pattern === 'ZIGZAG_DIVE') {
-        this.x = this.formationX;
-        this.y = -50;
+        this.placeZigzagStart();
       } else if (this.pattern === 'CROSS_SPLIT') {
         this.x = this.formationX < CANVAS_WIDTH / 2 ? -40 : CANVAS_WIDTH + 40;
         this.y = -40;
@@ -872,14 +887,29 @@ export class Enemy {
 
       // ★ ムーンクレスタ名物：カミソリ急降下（電光石火の左右切り返しジグザグ）
       case 'ZIGZAG_DIVE': {
-        this.y += this.vy * dt;
-        // 高速な三角波的左右往復
-        const zig = Math.sin(this.timeAlive * 4.5);
-        this.x += zig * this.vx * dt;
-        if (this.y > CANVAS_HEIGHT + 30) {
-          this.y = -50;
-          this.x = this.formationX;
+        // ★ 動き方（高速な三角波的な往復）は4方向とも共通。進行軸だけが向きで変わる
+        const zig = Math.sin(this.timeAlive * 4.5) * this.vx * dt;
+        const adv = this.vy * dt;
+        let escaped = false;
+        switch (this._zigzagDir) {
+          case 'DOWN':
+            this.y += adv; this.x += zig;
+            escaped = this.y > CANVAS_HEIGHT + 30;
+            break;
+          case 'UP':
+            this.y -= adv; this.x += zig;
+            escaped = this.y < -30 - this.height;
+            break;
+          case 'RIGHT':
+            this.x += adv; this.y += zig;
+            escaped = this.x > CANVAS_WIDTH + 30;
+            break;
+          case 'LEFT':
+            this.x -= adv; this.y += zig;
+            escaped = this.x < -30 - this.width;
+            break;
         }
+        if (escaped) this.placeZigzagStart();
         break;
       }
 
@@ -1176,7 +1206,8 @@ export class Enemy {
         if (!this.terrainArmed) {
           this.terrainArmed = true;
           if (this.prelaunchTimer <= 0) {
-            this.prelaunchTimer = 1.3;
+            this.prelaunchTimer = Enemy.PRELAUNCH_TIME;
+            this.prelaunchPhase = Math.random() * Math.PI * 2;
             this.prelaunchBaseY = this.y;
           }
           // ★ ユーザー要望：予備動作の位置は必ず画面の左端か右端（出どころに関わらず統一）
@@ -1185,10 +1216,11 @@ export class Enemy {
         // ★ 予備動作：壁から顔を出し、上下に揺れて「どこから刺すか」を見せてから発射
         if (this.prelaunchTimer > 0) {
           this.prelaunchTimer -= dt;
-          const elapsed = 1.3 - this.prelaunchTimer;
-          // 揺れは次第に速く・大きく（最大±30px）
-          const amp = Math.min(30, 8 + elapsed * 22);
-          this.y = this.prelaunchBaseY + Math.sin(elapsed * 9) * amp;
+          const elapsed = Enemy.PRELAUNCH_TIME - this.prelaunchTimer;
+          // 揺れは次第に速く・大きく（★最大±60px＝従来の倍）。
+          // 位相をミサイルごとにランダムにずらすことで、発射する高さが毎回変わる
+          const amp = Math.min(60, 16 + elapsed * 44);
+          this.y = this.prelaunchBaseY + Math.sin(elapsed * 9 + this.prelaunchPhase) * amp;
           if (this.prelaunchTimer <= 0) {
             // 発射！狙いは最後に揺れていた高さ。少し勢いを付けて突進
             this.prelaunchBaseY = this.y;
@@ -1206,13 +1238,15 @@ export class Enemy {
           this.x = CANVAS_WIDTH - this.width - 12;
           this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
           this.vx = -Math.abs(this.vx) * 0.6;
-          this.prelaunchTimer = 1.3;
+          this.prelaunchTimer = Enemy.PRELAUNCH_TIME;
+          this.prelaunchPhase = Math.random() * Math.PI * 2;
           this.prelaunchBaseY = this.y;
         } else if (this.x > CANVAS_WIDTH + 60) {
           this.x = 12;
           this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
           this.vx = Math.abs(this.vx) * 0.6;
-          this.prelaunchTimer = 1.3;
+          this.prelaunchTimer = Enemy.PRELAUNCH_TIME;
+          this.prelaunchPhase = Math.random() * Math.PI * 2;
           this.prelaunchBaseY = this.y;
         }
         if (this.y > CANVAS_HEIGHT + 60) {
@@ -1525,6 +1559,28 @@ export class Enemy {
         const y = 175 + Math.sin(angle) * 215 + t * 88;
         return { x: x - this.width / 2, y: y - this.height / 2 };
       }
+    }
+  }
+
+  /** ZIGZAG_DIVE の進入位置を向きに応じて決める（待機中は毎フレームここへ戻される） */
+  private placeZigzagStart(): void {
+    switch (this._zigzagDir) {
+      case 'DOWN':
+        this.x = this.formationX;
+        this.y = -50;
+        break;
+      case 'UP':
+        this.x = this.formationX;
+        this.y = CANVAS_HEIGHT + 50;
+        break;
+      case 'RIGHT': // 左から右へ
+        this.x = -50;
+        this.y = this.formationY;
+        break;
+      case 'LEFT': // 右から左へ
+        this.x = CANVAS_WIDTH + 50;
+        this.y = this.formationY;
+        break;
     }
   }
 
@@ -2126,6 +2182,24 @@ export class Enemy {
         ctx.fillRect(-3, -3, 6, 6);
         break;
       }
+    }
+
+    // ★ ユーザー要望：ボスがダメージを受けたときの白フラッシュ。
+    //   スプライトの上から加算合成で白い楕円を重ね、機体全体が一瞬白く飛ぶように見せる。
+    //   （source-atop はキャンバス全体の不透明画素に乗ってしまうので使えない）
+    if (isHitFlashing && (this.isBoss || isGiant)) {
+      const k = Math.min(1, this.flashTime / 0.2);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.55 * k;
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff';
+      const rx = this.width / (2 * s);
+      const ry = this.height / (2 * s);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
     }
 
     // ユーザー要望：ボスのHPゲージは完全に撤廃（死にそうになったら赤・黄色点滅ストロボで表現）

@@ -129,6 +129,7 @@ export class GameManager {
   // ボス出現・撃破管理
   public bossSpawned = false;
   private lastScriptedSpawnTime = 0; // spawnAlienFleet で予定した最後のザコ出現時刻（秒）
+  private rescueSpawnCount = 0; // このステージで出したレスキューの数（1つ目は画面中央最上部から出す）
   private lastInput: Input | null = null; // 直近フレームの入力（指位置レティクルHUD描画用）
   private touchTapFilterFn = (x: number, y: number): boolean => this.tryTouchRotatePiece(x, y);
   // ★ click しか届かないアプリ内ブラウザ用の代替操作
@@ -159,7 +160,8 @@ export class GameManager {
   public selectedStage: number = 1; // タイトル画面＆ポーズ画面で選べるステージ (1〜10)
   private rescueSpawnCooldown = 0;
   // ★ ユーザー要望：救済テトリミノは1つ目も2つ目以降も3秒後
-  private static readonly RESCUE_FIRST_DELAY = 3.0;
+  // ★ ユーザー要望：最初のレスキューテトリミノは 3.0 → 1.5 秒後（早く武装できるように）
+  private static readonly RESCUE_FIRST_DELAY = 1.5;
   private static readonly RESCUE_NEXT_DELAY = 3.0;
   public dockingTimer = 30.0; // ユーザー要望：ドッキングせよ 30.0から減っていく
 
@@ -266,6 +268,7 @@ export class GameManager {
     this.formationOffsetAngle = 0;
     this.battlePiece = null;
     this.rescueSpawnCooldown = GameManager.RESCUE_FIRST_DELAY;
+    this.rescueSpawnCount = 0;
     this.bossSpawned = false;
     this.bossWarningActive = false;
     this.bossWarningTimer = 0;
@@ -967,8 +970,23 @@ export class GameManager {
           this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 3 + (k % 4), 2, START_DELAY + 6.0, 'INFINITY_DIVE_RIGHT', k));
         }
         // フェーズ3（t=14.0〜）：ムーンクレスタ名物「フォー・フライ」（カミソリ急降下ジグザグ）
-        for (let i = 0; i < this.hc(10); i++) {
-          this.enemies.push(new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 0, START_DELAY + 12.5 + i * 0.3));
+        // ★ ユーザー要望：ただ上から降りてくるだけだと弱いので、
+        //   「上→下」「左→右」「右→左」「下→上」の4方向の出方を用意し、
+        //   ボスの前に4種類すべてを出す（動き方＝ジグザグ自体は共通）
+        {
+          const flyWaves: { dir: 'DOWN' | 'RIGHT' | 'LEFT' | 'UP'; at: number }[] = [
+            { dir: 'DOWN', at: 12.5 },
+            { dir: 'RIGHT', at: 16.5 },
+            { dir: 'LEFT', at: 20.5 },
+            { dir: 'UP', at: 24.5 },
+          ];
+          for (const w of flyWaves) {
+            for (let i = 0; i < this.hc(6); i++) {
+              const e = new Enemy('FOUR_FLY', 'ZIGZAG_DIVE', 1 + (i % 8), 1 + (i % 6), START_DELAY + w.at + i * 0.3);
+              e.zigzagDir = w.dir;
+              this.enemies.push(e);
+            }
+          }
         }
         break;
 
@@ -1430,7 +1448,8 @@ export class GameManager {
       m.vx = vx;
       m.vy = vy;
       // ★ 壁際で約1.3秒、上下に揺れる予備動作を見せてから突っ込む
-      m.prelaunchTimer = 1.3;
+      m.prelaunchTimer = Enemy.PRELAUNCH_TIME;
+      m.prelaunchPhase = Math.random() * Math.PI * 2;
       m.prelaunchBaseY = ly;
       this.enemies.push(m);
       this.particles.emitSparks(lx, ly, '#ff4400', 8);
@@ -1844,6 +1863,16 @@ export class GameManager {
               this.hitStopTimer = isGiant ? 0.05 : 0.025;
               this.screenShake = Math.max(this.screenShake, isGiant ? 6 : 2.5);
             }
+          } else if (isBossTarget) {
+            // ★ ユーザー要望：ボスがダメージを受けているときのエフェクトをもっと派手に。
+            //   白フラッシュ（Enemy 側で白い発光オーバーレイ）＋衝撃波リング＋火花＋強めの揺れ
+            enemy.flashTime = Math.max(enemy.flashTime, 0.2);
+            this.particles.emitSparks(pb.x, pb.y, '#ffffff', 16);
+            this.particles.emitSparks(pb.x, pb.y, '#ffee66', 10);
+            this.particles.emitDockRing(pb.x, pb.y, '#ffffff');
+            this.particles.emitExplosion(pb.x, pb.y, '#ffffff', 10, false);
+            this.hitStopTimer = Math.max(this.hitStopTimer, 0.045);
+            this.screenShake = Math.max(this.screenShake, 6);
           } else {
             this.hitStopTimer = 0.025;
             this.screenShake = Math.max(this.screenShake, 3);
@@ -2241,8 +2270,14 @@ export class GameManager {
     if (centerDrop) {
       spawnX = CANVAS_WIDTH / 2 - BLOCK_SIZE * 1.5 + (Math.random() - 0.5) * 40;
     }
+    // ★ ユーザー要望：このステージで最初の1つは必ず画面中央の一番上から、ブレなく落とす
+    const isFirstOfStage = this.rescueSpawnCount === 0;
+    if (isFirstOfStage) {
+      spawnX = CANVAS_WIDTH / 2 - BLOCK_SIZE * 1.5;
+    }
+    this.rescueSpawnCount++;
     // 中央投下の面は横ドリフトなしでまっすぐ落とす（従来は±35px/sの横流れで落下中に大きくずれていた）
-    const driftVx = centerDrop ? 0 : (Math.random() > 0.5 ? 1 : -1) * 35;
+    const driftVx = (centerDrop || isFirstOfStage) ? 0 : (Math.random() > 0.5 ? 1 : -1) * 35;
 
     this.battlePiece = {
       index: 0,

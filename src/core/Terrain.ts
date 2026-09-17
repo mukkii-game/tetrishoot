@@ -137,38 +137,56 @@ export class TerrainManager {
     return null;
   }
 
-  // ★ 斜めスクロール面（5面）の斜め張り出し勾配。開放ゾーンでは勾配を大きく弱め、道が広く・地形面積が減る区間を作る
-  private getDiagGradient(diagCoord: number): number {
-    const zonePeriod = 1400;
-    const zonePhase = ((diagCoord + this.seed * 200) % zonePeriod + zonePeriod) % zonePeriod;
-    const zoneRatio = zonePhase / zonePeriod;
-    // 開放ゾーン（0.20〜0.35 / 0.55〜0.70 / 0.90〜1.00）は勾配 0.12、その他は 0.32（従来 0.45）
-    const isOpen = (zoneRatio >= 0.20 && zoneRatio < 0.35) || (zoneRatio >= 0.55 && zoneRatio < 0.70) || zoneRatio >= 0.90;
-    if (isOpen) return 0.12;
-    // ゾーン境界付近はなめらかに補間
-    const edges = [0.20, 0.35, 0.55, 0.70, 0.90];
-    let nearest = 1;
-    for (const e of edges) nearest = Math.min(nearest, Math.abs(zoneRatio - e));
-    const blend = Math.min(1, nearest / 0.04);
-    return 0.12 + (0.32 - 0.12) * blend;
-  }
-
-  // ★ 斜めスクロール面：画面Y座標ごとの左下壁・右上壁の張り出し幅（px）。
-  //   ユーザー要望：通路は最低でも画面幅の1/3を保証（テトリミノを多く付けていても抜けられるように）
+  /**
+   * ★ 斜めスクロール面（5面）：画面Y座標ごとの左壁・右壁の張り出し幅（px）。
+   *
+   * ユーザー要望：「地形は左下から右上にかけた対角線の道があり、左上と右下に地形があり、
+   * それが多少隆起したりするが塞がれることはない」。
+   *
+   * 以前は上下スクロール用の壁生成（getWallThickness）に勾配を足して斜めを作っていたが、
+   * 元のノイズの振れ幅が勾配より大きく、斜めの道にならず実質ただの上スクロールに見えていた。
+   * そこで「道の中心線」を対角線として先に決め、その左右にノイズで揺らぐ壁を置く方式に変えた。
+   *   ・道の中心は 画面下端で x≈0.28W、上端で x≈0.72W（＝左下から右上への対角線）
+   *   ・左壁は上へ行くほど厚い → 左上に地形
+   *   ・右壁は下へ行くほど厚い → 右下に地形
+   *   ・壁はノイズで内外に隆起するが、通路の半幅には下限（W/6）があるので塞がらない
+   *     （通路は常に画面幅の1/3以上＝180px以上）
+   */
   public getDiagDepths(y: number): { left: number; right: number } {
-    const diagCoord = (CANVAS_HEIGHT - y) * 0.9 + this.scrollOffset;
-    const { w1, w2 } = this.getWallThickness(diagCoord);
-    const grad = this.getDiagGradient(diagCoord + this.scrollOffset);
-    let left = w1 > 0 ? Math.max(0, w1 + Math.floor((y - CANVAS_HEIGHT * 0.45) * grad)) : 0;
-    let right = w2 > 0 ? Math.max(0, w2 + Math.floor((CANVAS_HEIGHT * 0.55 - y) * grad)) : 0;
-    const minPassage = Math.floor(CANVAS_WIDTH / 3);
-    const maxTotal = CANVAS_WIDTH - minPassage;
+    const W = CANVAS_WIDTH;
+    const H = CANVAS_HEIGHT;
+
+    // 道の中心線（対角線）。ゆっくり横に流れて単調にならないようにする
+    const t = Math.min(1, Math.max(0, y / H));
+    const drift = Math.sin(this.scrollOffset * 0.0016 + this.seed) * 38;
+    const center = W * (0.72 - 0.44 * t) + drift;
+
+    // 壁の隆起ノイズ（スクロールに乗って流れる）
+    const coord = (H - y) * 0.9 + this.scrollOffset;
+    const s = this.seed;
+    const n = Math.sin(coord * 0.0040 + s) + Math.sin(coord * 0.0110 + s * 1.7) * 0.5;
+    const m = Math.sin(coord * 0.0037 + s * 2.1) + Math.sin(coord * 0.0130 + s * 2.9) * 0.5;
+
+    // 通路の半幅。MIN_HALF を下回らないので、どれだけ隆起しても道は残る
+    const MIN_HALF = W / 6; // 90px（左右合わせて180px＝画面幅の1/3）
+    const halfL = Math.max(MIN_HALF, MIN_HALF + 34 + n * 34);
+    const halfR = Math.max(MIN_HALF, MIN_HALF + 34 + m * 34);
+
+    // ステージ開始直後は壁を徐々に迫らせる（開始即死の防止）
+    const introFactor = Math.min(1.0, this.elapsedTime / 3.0);
+    let left = Math.max(0, center - halfL) * introFactor;
+    let right = Math.max(0, W - (center + halfR)) * introFactor;
+
+    // 保険：それでも通路が画面幅の1/3を下回らないようにする
+    const maxTotal = W - Math.floor(W / 3);
     if (left + right > maxTotal) {
       const scale = maxTotal / (left + right);
-      left = Math.floor(left * scale);
-      right = Math.floor(right * scale);
+      left *= scale;
+      right *= scale;
     }
-    return { left, right };
+
+    // 描画と同じ 20px ブロック単位に量子化（見た目と当たりを一致させる）
+    return { left: Math.floor(left / 20) * 20, right: Math.floor(right / 20) * 20 };
   }
 
   public getWallThickness(screenCoord: number): { w1: number; w2: number } {
