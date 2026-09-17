@@ -87,10 +87,18 @@ export class Enemy {
   //   毎回同じにしない。位相をランダムにすると、発射の瞬間の高さが揺れ幅全体に散らばる
   public prelaunchPhase = Math.random() * Math.PI * 2;
   public static readonly PRELAUNCH_TIME = 1.3;
+  // ★ ユーザー要望：横ミサイルに「すごく速いの」と「普通の」が混ざっていたのを普通に統一。
+  //   原因は、発射のたびに vx *= 1.5 を掛けていたこと。ミサイルは画面外へ抜けると
+  //   反対側から再突入して再び予備動作→発射するので、1.5倍が再突入のたびに累積し、
+  //   さらに飛行中の 1.004/frame（毎秒約1.27倍）も乗っていた。
+  //   → 発射速度は毎回この固定値にし、飛行中の加速にも上限を設ける。
+  private static readonly MISSILE_LAUNCH_SPEED = 165; // 従来の「普通の1発目」相当（110 × 1.5）
+  private static readonly MISSILE_MAX_SPEED = 230;   // 飛行中の加速はここで頭打ち
   // ★ ユーザー要望：降りてきて自機のY座標に合わせて突っ込んでくる敵（スターフォースの直角旋回機）は
   //   速すぎるので 2/3 に減速。5面だけでなく全ステージ共通（3面・5面で使用）
   private static readonly CORNER_FALL_SPEED = 280 * (2 / 3); // 落下 280 → 約187px/s
-  private static readonly CORNER_DASH_SPEED = 440 * (2 / 3); // 突進 440 → 約293px/s
+  // ★ 追加要望：90度曲がって横移動に入ってからがまだ速いので、突進だけさらに落とした
+  private static readonly CORNER_DASH_SPEED = 440 * 0.5; // 突進 440 → 220px/s
   // ★ 個体ごとの時間倍率（ラスボスの倍速化などに使用。移動・フェーズ切替・アニメ全てに効く）
   public speedScale = 1.0;
   // ★ 7面用ステート
@@ -141,6 +149,11 @@ export class Enemy {
   // ★ ユーザー要望：バリアは即死ではなく「焼かれた時間」で倒す。
   //   かすった程度では死なず、突っ込むと途中で焼き切れる。深いほど速く溜まる
   public barrierBurn = 0;
+  // ★ ユーザー要望（2面）：超高速8の字の編隊を短い間隔で複数出すため、
+  //   編隊ごとに「通るルート」を変えて重ならないようにする（0/1/2 で高さ帯を分ける）
+  public curveRouteIndex = 0;
+  // 曲線飛行の速度倍率（1.0 が従来。小さいほどゆっくり大回りする）
+  public streamSpeedScale = 1.0;
   public bossDiveVariant = 0;
   // ★ ユーザー要望：落下は画面中央固定ではなく「そのとき自機がいた横位置」へ。
   //   突進フェーズに入った瞬間の自機Xを記録し、まず横移動してから真下に落ちる
@@ -610,7 +623,7 @@ export class Enemy {
       // ★ ギャプラス＆ギャラガ完全再現：曲線で連なって流れる美しい大編隊！（速度・旋回力UP！）
       case 'STREAM_CURVE': {
         // ★ ユーザー要望：登場時（曲線の序盤）は5割速く進入し、その後の旋回は従来（1.15）の2/3程度に緩和
-        const entrySpeed = this.streamProgress < 1.2 ? 0.77 * 1.5 : 0.77;
+        const entrySpeed = (this.streamProgress < 1.2 ? 0.77 * 1.5 : 0.77) * this.streamSpeedScale;
         this.streamProgress += dt * entrySpeed;
         const t = this.streamProgress;
 
@@ -1226,9 +1239,10 @@ export class Enemy {
           const amp = Math.min(60, 16 + elapsed * 44);
           this.y = this.prelaunchBaseY + Math.sin(elapsed * 9 + this.prelaunchPhase) * amp;
           if (this.prelaunchTimer <= 0) {
-            // 発射！狙いは最後に揺れていた高さ。少し勢いを付けて突進
+            // 発射！狙いは最後に揺れていた高さ。
+            // 速度は毎回この固定値（倍率を掛け続けると再突入のたびに際限なく速くなる）
             this.prelaunchBaseY = this.y;
-            this.vx *= 1.5;
+            this.vx = (this.vx >= 0 ? 1 : -1) * Enemy.MISSILE_LAUNCH_SPEED;
           }
           break;
         }
@@ -1236,19 +1250,23 @@ export class Enemy {
         this.y += this.vy * dt;
         this.vx *= 1.004; // 緩やかな加速
         this.vy *= 1.003;
+        // 加速の上限（これが無いと長く飛んだ個体だけ極端に速くなる）
+        if (Math.abs(this.vx) > Enemy.MISSILE_MAX_SPEED) {
+          this.vx = (this.vx >= 0 ? 1 : -1) * Enemy.MISSILE_MAX_SPEED;
+        }
 
         // 画面外へ抜けたら消滅させず、反対側・別高度から再突入（再突入時も必ず予備動作を見せる）
         if (this.x < -60) {
           this.x = CANVAS_WIDTH - this.width - 12;
           this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
-          this.vx = -Math.abs(this.vx) * 0.6;
+          this.vx = -Enemy.MISSILE_LAUNCH_SPEED;
           this.prelaunchTimer = Enemy.PRELAUNCH_TIME;
           this.prelaunchPhase = Math.random() * Math.PI * 2;
           this.prelaunchBaseY = this.y;
         } else if (this.x > CANVAS_WIDTH + 60) {
           this.x = 12;
           this.y = 80 + Math.random() * (CANVAS_HEIGHT * 0.5);
-          this.vx = Math.abs(this.vx) * 0.6;
+          this.vx = Enemy.MISSILE_LAUNCH_SPEED;
           this.prelaunchTimer = Enemy.PRELAUNCH_TIME;
           this.prelaunchPhase = Math.random() * Math.PI * 2;
           this.prelaunchBaseY = this.y;
@@ -1506,11 +1524,20 @@ export class Enemy {
     const cx = CANVAS_WIDTH / 2;
 
     switch (path) {
-      // 1. ギャラガ8の字ループ（リサジューインフィニティ：画面横幅・下部まで大きく旋回！）
+      // 1. ギャラガ8の字ループ（リサジューインフィニティ）
+      //    ★ ユーザー要望：もっと大回りに。画面を横切り、少しはみ出すくらいまで。
+      //      横は画面幅の0.60倍振れるので、左右とも約54pxずつ画面外へ抜けてから戻ってくる。
+      //    ★ ユーザー要望：編隊を短い間隔で重ねて出すので、ルートが被らないよう
+      //      curveRouteIndex（0/1/2）で高さ帯を分ける。3つの帯は重ならない：
+      //        route0 y 65〜235 ／ route1 y 270〜440 ／ route2 y 475〜645
+      //      さらに帯ごとに回る向きを変え、同じ動きに見えないようにしている。
       case 'FIGURE_EIGHT': {
-        const angle = t * Math.PI * 1.35;
-        const x = cx + Math.sin(angle) * (CANVAS_WIDTH * 0.44);
-        const y = 300 + Math.sin(angle * 2) * 260; // y: 40 〜 560 まで大きく旋回
+        const route = ((this.curveRouteIndex % 3) + 3) % 3;
+        const bandCenter = [150, 355, 560][route];
+        const dir = route === 1 ? -1 : 1;
+        const angle = t * Math.PI * 1.35 * dir;
+        const x = cx + Math.sin(angle) * (CANVAS_WIDTH * 0.60);
+        const y = bandCenter + Math.sin(angle * 2) * 85;
         return { x: x - this.width / 2, y: y - this.height / 2 };
       }
 

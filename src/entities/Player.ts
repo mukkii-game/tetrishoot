@@ -19,6 +19,9 @@ export class Player {
   // ★ 被弾後の無敵時間（秒）。連続被弾での理不尽な即死を防ぐ
   public static readonly HIT_GRACE = 2.0;
   public barrierTimer = 0;
+  // ★ ユーザー要望：ステージクリアの瞬間から次のステージが始まるまで、バリアの残り時間を止める。
+  //   ドッキングにいくら時間がかかってもバリアは外れず、ステージ開始からカウントを再開する
+  public barrierFrozen = false;
   // ★ 壁衝突後などの猶予無敵（点滅＋白フラッシュで表示。バリアのリングは出さない）
   public graceTimer = 0;
   // ★ ユーザー要望：ステージ開始直後の無敵。始まった瞬間に地形へ当たって死ぬことがあるため。
@@ -396,7 +399,7 @@ export class Player {
       this.fireCooldown -= dt;
     }
 
-    if (this.barrierTimer > 0) {
+    if (this.barrierTimer > 0 && !this.barrierFrozen) {
       this.barrierTimer -= dt;
     }
     if (this.graceTimer > 0) {

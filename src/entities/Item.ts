@@ -38,7 +38,12 @@ export class FieldItem {
     } else if (scrollDir === 'LEFT') {
       dx = scrollSpeed * dt;
     } else if (scrollDir === 'DIAGONAL_UP_RIGHT') {
-      dx = -scrollSpeed * 0.7 * dt;
+      // ★ ユーザー要望：5面は斜めスクロールだが見た目は実質「上方向」なので、
+      //   アイテムも上から素直に降ってくる扱いにする。
+      //   以前は左下へ斜めに流していたため、左右の蛇行で画面左端に張り付き、
+      //   端でクランプされて画面外へ抜けられず、その場に残り続けていた
+      //   （実測：14秒経っても消えず y=550 付近で停滞）。
+      dx = 0;
       dy = scrollSpeed * 0.7 * dt;
     }
 
