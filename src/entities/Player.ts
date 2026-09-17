@@ -21,6 +21,10 @@ export class Player {
   public barrierTimer = 0;
   // ★ 壁衝突後などの猶予無敵（点滅＋白フラッシュで表示。バリアのリングは出さない）
   public graceTimer = 0;
+  // ★ ユーザー要望：ステージ開始直後の無敵。始まった瞬間に地形へ当たって死ぬことがあるため。
+  //   こちらは演出なし（見た目は通常どおり）。graceTimer と違い描画に一切影響させない
+  public static readonly SPAWN_GRACE = 2.0;
+  public spawnGraceTimer = 0;
   public isInvincible = false; // 撮影用無敵モードフラグ
   public isDead = false;
 
@@ -398,6 +402,9 @@ export class Player {
     if (this.graceTimer > 0) {
       this.graceTimer -= dt;
     }
+    if (this.spawnGraceTimer > 0) {
+      this.spawnGraceTimer -= dt;
+    }
 
     for (const attached of this.pieces) {
       attached.piece.update(dt);
@@ -617,6 +624,10 @@ export class Player {
     // 猶予無敵中はダメージ無効（火花のみ）
     if (this.graceTimer > 0) {
       particles.emitSparks(px, py, '#ffffff', 6);
+      return { hit: false, pieceDestroyed: false };
+    }
+    // ★ ステージ開始直後の無敵。演出を出さないので、火花も出さず静かに無効化する
+    if (this.spawnGraceTimer > 0) {
       return { hit: false, pieceDestroyed: false };
     }
 

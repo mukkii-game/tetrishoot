@@ -262,6 +262,10 @@ export class GameManager {
     //   通算だと毎回まったく同じ場所で出てしまい、驚きが無くなるため
     this.totalKills = 0;
     this.nextBarrierKills = GameManager.BARRIER_KILL_INTERVAL;
+    // ★ ユーザー要望：開始直後に地形へぶつかって即死することがあるので、
+    //   ステージ開始から2秒は無敵にする。こちらは演出なし（見た目は通常どおり）
+    this.player.spawnGraceTimer = Player.SPAWN_GRACE;
+    this.player.graceTimer = 0;
     this.shootingTimeTotal = this.stage === 9 ? 100 : this.stage === 5 ? 78 : 65;
     this.shootingTimeLimit = this.shootingTimeTotal;
     this.bossRushIndex = 0;
@@ -1460,7 +1464,8 @@ export class GameManager {
       this.terrainHitCooldown -= dt;
     }
 
-    if (this.terrain.enabled && !this.player.isDead && this.terrainHitCooldown <= 0) {
+    // ★ 開始直後の無敵中は、地形に触れても音・画面揺れ・バウンドを一切起こさない（演出なしの無敵）
+    if (this.terrain.enabled && !this.player.isDead && this.terrainHitCooldown <= 0 && this.player.spawnGraceTimer <= 0) {
       // コア（Oミノ）以外の外装パーツから優先して衝突判定（外装が壁に当たって削れる）
       const nonCorePieces = this.player.pieces.filter(p => p.piece.type !== 'O');
       const targetPieces = nonCorePieces.length > 0 ? nonCorePieces : this.player.pieces;
