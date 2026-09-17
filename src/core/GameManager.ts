@@ -170,7 +170,15 @@ export class GameManager {
   public gameOverSelection: 'CONTINUE' | 'TITLE' = 'CONTINUE';
   public pauseMenuSelection: 'RESUME' | 'RESTART_STAGE' | 'TITLE' = 'RESUME';
   // ★ タイトル画面のカーソル行（難易度 / ステージ）。初期は難易度（NORMAL）に合わせる
-  public titleMenuSelection: 'DIFFICULTY' | 'STAGE' = 'DIFFICULTY';
+  // ★ ユーザー要望：タイトルの並びは 上から START / 難易度 / ステージセレクト。
+  //   最初のカーソルは START に合わせる（難易度の初期値は NORMAL のまま）
+  public titleMenuSelection: 'START' | 'DIFFICULTY' | 'STAGE' = 'START';
+  private static readonly TITLE_ROWS: ('START' | 'DIFFICULTY' | 'STAGE')[] = ['START', 'DIFFICULTY', 'STAGE'];
+  // タイトルの各行の枠（Y座標と高さ）。入力の当たり判定と描画で共有する。
+  // ★ ユーザー要望：START は大きな文字で画面の真ん中あたり（以前の難易度の位置）に置き、
+  //   その下に難易度・ステージセレクトを並べる
+  private static readonly TITLE_ROW_Y = { START: 424, DIFFICULTY: 496, STAGE: 548 };
+  private static readonly TITLE_ROW_H = { START: 60, DIFFICULTY: 44, STAGE: 44 };
   public selectedStage: number = 1; // タイトル画面＆ポーズ画面で選べるステージ (1〜10)
   private rescueSpawnCooldown = 0;
   // ★ ユーザー要望：救済テトリミノは1つ目も2つ目以降も3秒後
@@ -458,14 +466,18 @@ export class GameManager {
           break;
         }
 
-        // ★ 上下キーで「難易度」⇔「ステージ」の行を行き来
+        // ★ 上下キーで START ⇔ 難易度 ⇔ ステージ の行を行き来
         if (input.justRotate || input.justDrop) {
-          this.titleMenuSelection = this.titleMenuSelection === 'DIFFICULTY' ? 'STAGE' : 'DIFFICULTY';
+          const rows = GameManager.TITLE_ROWS;
+          const i = rows.indexOf(this.titleMenuSelection);
+          this.titleMenuSelection = input.justRotate
+            ? rows[(i - 1 + rows.length) % rows.length]
+            : rows[(i + 1) % rows.length];
           this.sound.playHit();
         }
 
         // 左右キー：選択中の行の値を変更（難易度 or ステージ）
-        if (input.justLeft || input.justRight) {
+        if ((input.justLeft || input.justRight) && this.titleMenuSelection !== 'START') {
           if (this.titleMenuSelection === 'DIFFICULTY') {
             const list = GameManager.DIFFICULTIES;
             const i = list.indexOf(this.difficulty);
@@ -480,8 +492,11 @@ export class GameManager {
           this.sound.playHit();
         }
 
-        // 難易度切り替えタップ判定 (Y: 420..468)
-        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 420 && input.mouseY <= 468) {
+        // 難易度切り替えタップ判定（難易度の行だけ）
+        const rowTop = GameManager.TITLE_ROW_Y;
+        const rowH = GameManager.TITLE_ROW_H;
+        if (input.justMouseDown && input.mouseY !== null &&
+            input.mouseY >= rowTop.DIFFICULTY && input.mouseY <= rowTop.DIFFICULTY + rowH.DIFFICULTY) {
           this.titleMenuSelection = 'DIFFICULTY';
           if (input.mouseX !== null) {
             // 画面を3分割：左=EASY／中=NORMAL／右=HARD
@@ -496,8 +511,9 @@ export class GameManager {
           break;
         }
 
-        // 面セレクト切り替えタップ判定 (Y: 475..528)
-        if (input.justMouseDown && input.mouseY !== null && input.mouseY >= 475 && input.mouseY <= 528) {
+        // 面セレクト切り替えタップ判定（ステージの行だけ）
+        if (input.justMouseDown && input.mouseY !== null &&
+            input.mouseY >= rowTop.STAGE && input.mouseY <= rowTop.STAGE + rowH.STAGE) {
           this.titleMenuSelection = 'STAGE';
           if (input.mouseX !== null) {
             if (input.mouseX < CANVAS_WIDTH / 2) {
@@ -512,8 +528,10 @@ export class GameManager {
           break;
         }
 
-        // ゲーム開始（単発Space、Enter、またはゲーム開始エリアのタップ）
-        if (input.justShoot || input.justEnter || (input.justMouseDown && (input.mouseY === null || input.mouseY < 420 || input.mouseY > 530))) {
+        // ★ ユーザー要望：ゲーム開始は「単発Space／Enter」または
+        //   「難易度の行とステージセレクトの行以外のどこか」をタップ。
+        //   （難易度／ステージの行は上の分岐で break 済みなので、ここへは来ない）
+        if (input.justShoot || input.justEnter || input.justMouseDown) {
           this.startNewGame();
         }
         break;
@@ -825,10 +843,14 @@ export class GameManager {
 
       // 弾 vs 落下中ミノの回転＆上反動判定！
       // ユーザー要望：球打つと一旦離れて飛ぶ / 少し上に反動で行ったりするといいな
+      // ★ ユーザー要望（スマホ）：タッチ操作では弾でミノを回転・ノックバックさせない。
+      //   代わりにミノを直接タップして回す（tryTouchRotatePiece 参照）。
+      //   弾は当たり判定ごと素通りさせ、自機の弾がミノに吸われないようにする。
       const pieceBounds = item.piece.getBoundingBox(item.x, item.y);
       const pieceCenterX = (pieceBounds.minX + pieceBounds.maxX) / 2;
+      const bulletsRotate = !(this.lastInput && this.lastInput.touchMode);
 
-      for (let bi = this.playerBullets.length - 1; bi >= 0; bi--) {
+      for (let bi = bulletsRotate ? this.playerBullets.length - 1 : -1; bi >= 0; bi--) {
         const pb = this.playerBullets[bi];
         if (pb.isDead) continue;
 
@@ -1118,20 +1140,26 @@ export class GameManager {
       case 8:
         // 【WAVE 8：左スクロール・バンガード岩盤回廊 ＋ ギャラガ・総力大編隊（インフィニティ大乱舞＆四方包囲）】
         // ★ ユーザー要望：Stage 8 は地形のある左スクロール面（Stage 6 の反対方向）
-        // ★ ユーザー要望：最初に一度に出すぎるので、4グループをそれぞれ約3秒ずつずらして出現させ、
+        // ★ ユーザー要望：最初に一度に出すぎるので、4グループをそれぞれずらして出現させ、
         //   総数も従来（78機）の約2/3（52機）に削減（2秒間隔だとHARDでまだ3種類が重なるとのことで3秒に拡大）
-        for (let k = 0; k < this.hc(13); k++) {
-          this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, 0.12, 'INFINITY_DIVE_LEFT', k));
-          this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, 0.12, 'INFINITY_DIVE_RIGHT', k));
-        }
-        for (let i = 0; i < this.hc(9); i++) {
-          this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, 3.2 + i * 0.18));
-        }
-        for (let i = 0; i < this.hc(9); i++) {
-          this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, 6.2 + i * 0.16));
-        }
-        for (let i = 0; i < this.hc(7); i++) {
-          this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, 9.2 + i * 0.15));
+        // ★ ユーザー要望（追加）：それでも複数種が最初から混ざって大変なので、
+        //   次の敵軍が来るまでの間隔をさらに1.5倍に（約3.04秒 → 約4.55秒間隔）。
+        //   各グループ内の1機ごとの間隔は変えていない（グループの塊としての密度は従来どおり）
+        {
+          const G = [0.12, 4.67, 9.23, 13.78]; // 各グループの出現開始時刻（間隔 ≒ 4.55秒）
+          for (let k = 0; k < this.hc(13); k++) {
+            this.enemies.push(new Enemy('GREEN_DRONE', 'STREAM_CURVE', 1 + (k % 5), 3, G[0], 'INFINITY_DIVE_LEFT', k));
+            this.enemies.push(new Enemy('RED_GUARD', 'STREAM_CURVE', 4 + (k % 5), 3, G[0], 'INFINITY_DIVE_RIGHT', k));
+          }
+          for (let i = 0; i < this.hc(9); i++) {
+            this.enemies.push(new Enemy('GRADIUS_FAN', 'GRADIUS_FLEET', 1 + (i % 6), 0, G[1] + i * 0.18));
+          }
+          for (let i = 0; i < this.hc(9); i++) {
+            this.enemies.push(new Enemy('DART_MISSILE', 'DELAYED_DART', 1 + (i % 6), 0, G[2] + i * 0.16));
+          }
+          for (let i = 0; i < this.hc(7); i++) {
+            this.enemies.push(new Enemy('FAST_FLYBY', 'FLYBY_CROSS', 1 + (i % 5), 0, G[3] + i * 0.15));
+          }
         }
         break;
 
@@ -2164,7 +2192,7 @@ export class GameManager {
       this.state = 'TITLE';
       this.stage = 1;
       this.selectedStage = 1; // ★ タイトルに戻ったら必ず STAGE 1 に戻す
-      this.titleMenuSelection = 'DIFFICULTY';
+      this.titleMenuSelection = 'START';
       this.score = 0;
       this.screenShake = 0;
       this.fallingPieces = [];
@@ -2223,7 +2251,7 @@ export class GameManager {
       this.state = 'TITLE';
       this.stage = 1;
       this.selectedStage = 1; // ★ タイトルに戻ったら必ず STAGE 1 に戻す
-      this.titleMenuSelection = 'DIFFICULTY';
+      this.titleMenuSelection = 'START';
       this.score = 0;
       this.screenShake = 0;
       this.fallingPieces = [];
@@ -2248,7 +2276,7 @@ export class GameManager {
     this.state = 'TITLE';
     this.stage = 1;
     this.selectedStage = 1;
-    this.titleMenuSelection = 'DIFFICULTY';
+    this.titleMenuSelection = 'START';
     this.score = 0;
     this.screenShake = 0;
     this.fallingPieces = [];
@@ -2640,14 +2668,39 @@ export class GameManager {
    *   @returns このタップをミノ操作として消費したか（true なら自機は動かず弾も出ない）
    */
   private tryTouchRotatePiece(x: number, y: number): boolean {
-    if (this.state !== 'PLAYING' || this.phase !== 'SHOOTING') return false;
-    const bp = this.battlePiece;
-    if (!bp || bp.settled) return false;
+    if (this.state !== 'PLAYING') return false;
 
     const TOUCH_PAD = 20;
-    const b = bp.piece.getBoundingBox(bp.x, bp.y);
-    if (x < b.minX - TOUCH_PAD || x > b.maxX + TOUCH_PAD) return false;
-    if (y < b.minY - TOUCH_PAD || y > b.maxY + TOUCH_PAD) return false;
+    const hits = (bx: { minX: number; maxX: number; minY: number; maxY: number }): boolean =>
+      x >= bx.minX - TOUCH_PAD && x <= bx.maxX + TOUCH_PAD &&
+      y >= bx.minY - TOUCH_PAD && y <= bx.maxY + TOUCH_PAD;
+
+    // ★ ドッキングフェーズ：3つの落下テトリミノ。ここが本来の「ミノを回して組む」場面。
+    //   以前はここに実装が無く、スマホでタップしても何も起きなかった。
+    if (this.phase === 'TETRIS') {
+      // 手前（下にあるもの）から優先して拾う
+      const candidates = this.fallingPieces.filter(it => !it.settled);
+      candidates.sort((a, b) => b.y - a.y);
+      for (const item of candidates) {
+        if (!hits(item.piece.getBoundingBox(item.x, item.y))) continue;
+        // 弾を当てたときと同じ手応え（当てるたびに反動が強くなる）を、タップでも再現する
+        item.hitCount = (item.hitCount || 0) + 1;
+        const mul = Math.min(4.0, 1 + item.hitCount * 0.24);
+        item.piece.rotate();
+        item.vy = -140 * mul; // 真上へノックバック
+        item.vx *= 0.5;
+        item.dockCooldown = 0.4;
+        this.particles.emitSparks(x, y, item.piece.color, 14);
+        this.sound.playHit();
+        return true;
+      }
+      return false;
+    }
+
+    // ★ シューティングフェーズ：レスキューで落ちてくるミノ
+    const bp = this.battlePiece;
+    if (!bp || bp.settled) return false;
+    if (!hits(bp.piece.getBoundingBox(bp.x, bp.y))) return false;
 
     bp.piece.rotate();
     bp.vy = -150; // 真上へノックバック
@@ -2922,18 +2975,35 @@ export class GameManager {
     ctx.fillText(this.sound.isMuted ? '🔇' : '🔊', 458, 26);
 
     // PAUSE (x: 486..522, y: 10..42)
-    ctx.fillStyle = 'rgba(20, 30, 48, 0.7)';
-    ctx.strokeStyle = '#304560';
-    ctx.lineWidth = 1.5;
+    // ★ ユーザー要望：ESCの代わりのボタンが分かりづらいので目立たせる。
+    //   明るい枠＋発光、二本線のポーズ記号を自前で描き（絵文字はOSによって細く沈む）、
+    //   下に小さく「PAUSE」と添えて用途が一目で分かるようにした。
+    ctx.fillStyle = 'rgba(0, 60, 90, 0.92)';
+    ctx.strokeStyle = '#ffea00';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#ffea00';
+    ctx.shadowBlur = 10;
     ctx.beginPath();
     if (ctx.roundRect) ctx.roundRect(486, 10, 36, 32, 6);
     else ctx.rect(486, 10, 36, 32);
     ctx.fill();
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    ctx.font = 'bold 16px "Segoe UI Emoji", "Apple Color Emoji", monospace';
-    ctx.fillStyle = '#00f0ff';
-    ctx.fillText('⏸', 504, 26);
+    // ポーズ記号（二本の縦棒）を自前描画
+    ctx.fillStyle = '#ffea00';
+    ctx.shadowColor = '#ffea00';
+    ctx.shadowBlur = 6;
+    ctx.fillRect(497, 17, 4, 13);
+    ctx.fillRect(507, 17, 4, 13);
+    ctx.shadowBlur = 0;
+
+    // ボタンの下に用途ラベル
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = '#ffea00';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('PAUSE', 504, 44);
     ctx.textBaseline = 'top';
 
     // ── テトリスフェーズ中: ムーンクレスタ忠実再現 ──
@@ -3009,11 +3079,13 @@ export class GameManager {
       ctx.shadowBlur = 8;
       ctx.fillText('ブロックを合体して全方位ビームでエイリアンを撃破せよ！', CANVAS_WIDTH / 2, 390);
 
-      // 2. 難易度セレクター（EASY / NORMAL / HARD）
-      // ★ ユーザー要望：イージーを NORMAL の左に追加
-      const selDiff = this.titleMenuSelection === 'DIFFICULTY';
+      // ★ ユーザー要望：上から START / 難易度 / ステージセレクト の3行。
+      //   最初のカーソルは START に合っている（難易度の初期値は NORMAL）。
+      const ROW = GameManager.TITLE_ROW_Y;
+      const ROW_H = GameManager.TITLE_ROW_H;
+      const sel = this.titleMenuSelection;
 
-      // ★ 選択中の行（難易度 or ステージ）にだけ四角枠を表示
+      // ★ 選択中の行にだけ四角枠を表示
       const drawSelectFrame = (y: number, h: number, w = 380) => {
         ctx.fillStyle = 'rgba(0, 40, 80, 0.45)';
         ctx.strokeStyle = '#00ffff';
@@ -3025,60 +3097,70 @@ export class GameManager {
         ctx.fill();
         ctx.stroke();
       };
-      // 3つ並ぶので枠は横いっぱいに広げる
-      if (selDiff) drawSelectFrame(414, 48, 516);
 
-      // 3つ入るよう少しだけ小さめの字に
-      ctx.font = '900 16px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
+      // 2. START（画面中央あたり・初期カーソル位置・大きな文字）
+      if (sel === 'START') drawSelectFrame(ROW.START, ROW_H.START, 500);
+      const blink = Math.sin(Date.now() / 250) > 0;
+      ctx.font = '900 26px monospace';
+      if (sel === 'START' && blink) {
+        ctx.fillStyle = '#ffea00';
+        ctx.shadowColor = '#ffea00';
+        ctx.shadowBlur = 12;
+      } else if (sel === 'START') {
+        ctx.fillStyle = '#8a7a20';
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = '#667788';
+        ctx.shadowBlur = 0;
+      }
+      ctx.fillText(
+        sel === 'START' ? '\u25b6 TAP OR PRESS TO START \u25c0' : '  TAP OR PRESS TO START  ',
+        CANVAS_WIDTH / 2,
+        ROW.START + ROW_H.START / 2
+      );
+      ctx.shadowBlur = 0;
+
+      // 3. 難易度セレクター（EASY / NORMAL / HARD）
+      if (sel === 'DIFFICULTY') drawSelectFrame(ROW.DIFFICULTY, ROW_H.DIFFICULTY, 516);
+      ctx.font = '900 16px monospace';
       const diffEntries: { key: 'EASY' | 'NORMAL' | 'HARD'; label: string; x: number; color: string }[] = [
         { key: 'EASY', label: 'EASY', x: CANVAS_WIDTH / 2 - 168, color: '#44ff88' },
         { key: 'NORMAL', label: 'NORMAL', x: CANVAS_WIDTH / 2, color: '#00f0ff' },
         { key: 'HARD', label: 'HARD', x: CANVAS_WIDTH / 2 + 168, color: '#ff2255' },
       ];
       for (const d of diffEntries) {
-        const on = this.difficulty === d.key;
-        if (on) {
+        if (this.difficulty === d.key) {
           ctx.fillStyle = d.color;
           ctx.shadowColor = d.color;
           ctx.shadowBlur = 12;
-          ctx.fillText(`\u25b6 [ ${d.label} ] \u25c0`, d.x, 438);
+          ctx.fillText(`\u25b6 [ ${d.label} ] \u25c0`, d.x, ROW.DIFFICULTY + ROW_H.DIFFICULTY / 2);
         } else {
           ctx.fillStyle = '#667788';
           ctx.shadowBlur = 0;
-          ctx.fillText(`  [ ${d.label} ]  `, d.x, 438);
+          ctx.fillText(`  [ ${d.label} ]  `, d.x, ROW.DIFFICULTY + ROW_H.DIFFICULTY / 2);
         }
       }
-
       ctx.shadowBlur = 0;
-      ctx.textBaseline = 'alphabetic';
 
-      // 3. 面セレクト（STAGE SELECT: ◀ STAGE [ X ] ▶）
-      if (!selDiff) drawSelectFrame(478, 48);
-
+      // 4. 面セレクト（STAGE SELECT: ◀ STAGE [ X ] ▶）
+      if (sel === 'STAGE') drawSelectFrame(ROW.STAGE, ROW_H.STAGE);
       ctx.font = '900 19px monospace';
-      ctx.fillStyle = selDiff ? '#5599aa' : '#00ffff';
+      ctx.fillStyle = sel === 'STAGE' ? '#00ffff' : '#5599aa';
       ctx.shadowColor = '#00ffff';
-      ctx.shadowBlur = selDiff ? 0 : 10;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(selDiff ? `   STAGE  [ ${this.selectedStage} ]   ` : `◀  STAGE  [ ${this.selectedStage} ]  ▶`, CANVAS_WIDTH / 2, 478 + 24); // 枠(478〜526)の上下中央
+      ctx.shadowBlur = sel === 'STAGE' ? 10 : 0;
+      ctx.fillText(
+        sel === 'STAGE' ? `\u25c0  STAGE  [ ${this.selectedStage} ]  \u25b6` : `   STAGE  [ ${this.selectedStage} ]   `,
+        CANVAS_WIDTH / 2,
+        ROW.STAGE + ROW_H.STAGE / 2
+      );
       ctx.textBaseline = 'alphabetic';
       ctx.shadowBlur = 0;
-
-      // 4. スタートプロンプト
-      const blink = Math.sin(Date.now() / 250) > 0;
-      if (blink) {
-        ctx.font = 'bold 17px "Courier New", monospace';
-        ctx.fillStyle = '#ffea00';
-        ctx.shadowColor = '#ffea00';
-        ctx.shadowBlur = 10;
-        ctx.fillText('TAP OR PRESS SPACE TO START', CANVAS_WIDTH / 2, 554);
-      }
 
       // 5. 画面最下部に往年のNAMCO風「MUKKII」作者ロゴ！
-      this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 608);
+      this.drawNamcoStyleMukkiiLogo(ctx, CANVAS_WIDTH / 2, 624);
 
       ctx.restore();
     } else if (this.state === 'PAUSED') {
