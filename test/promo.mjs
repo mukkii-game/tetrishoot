@@ -15,7 +15,7 @@ const root=path.resolve('dist');
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.mp3':'audio/mpeg','.json':'application/json'};
 const srv=http.createServer((q,r)=>{let p=path.join(root,decodeURIComponent(q.url.split('?')[0]));if(p.endsWith('/'))p+='index.html';fs.readFile(p,(e,d)=>{if(e){r.writeHead(404);r.end();return;}r.writeHead(200,{'content-type':types[path.extname(p)]||'application/octet-stream'});r.end(d);});}).listen(8277);
 const OUT = process.argv[2] || '.';
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox','--mute-audio']});
+const b=await chromium.launch({executablePath: process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox','--mute-audio']});
 const page=await b.newPage({viewport:{width:560,height:760}});
 await page.goto('http://127.0.0.1:8277/');
 await page.waitForFunction(()=>!!window.__gm,null,{timeout:15000});

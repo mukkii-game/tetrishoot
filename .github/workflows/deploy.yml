@@ -54,6 +54,15 @@ jobs:
           mkdir -p ../dist/trial
           cp -r dist/. ../dist/trial/
 
+      # ★ 公開キット：配布用 ZIP・画像・動画・日英の文面・投稿画面へのリンクを
+      #   1 ページにまとめて /kit/ に載せる。iPhone から開いて、コピーして貼るだけにする。
+      #   (ZIP は kit/ を含めない本体だけを固める)
+      - name: Build publish kit
+        run: |
+          cd dist && zip -qr ../galaxtris-html5.zip . -x '.*' 'trial/*' 'kit/*' && cd ..
+          mkdir -p dist/kit && mv galaxtris-html5.zip dist/kit/
+          node tools/build-kit.mjs dist publish.json
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
